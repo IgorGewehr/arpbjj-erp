@@ -20,9 +20,25 @@ import {
   Autocomplete,
   Checkbox,
 } from '@mui/material';
-import { User, Phone, X, GraduationCap, CreditCard, CheckSquare } from 'lucide-react';
+import { User, Phone, X, GraduationCap, CreditCard, Award } from 'lucide-react';
 import { useStudents, useClasses, usePlans } from '@/hooks';
-import { Class, Plan } from '@/types';
+import { Class, Plan, BeltColor, KidsBeltColor, Stripes, StudentCategory } from '@/types';
+
+const adultBelts: { value: BeltColor; label: string; color: string }[] = [
+  { value: 'white', label: 'Branca', color: '#FFFFFF' },
+  { value: 'blue', label: 'Azul', color: '#1E40AF' },
+  { value: 'purple', label: 'Roxa', color: '#7C3AED' },
+  { value: 'brown', label: 'Marrom', color: '#78350F' },
+  { value: 'black', label: 'Preta', color: '#000000' },
+];
+
+const kidsBelts: { value: KidsBeltColor; label: string; color: string }[] = [
+  { value: 'white', label: 'Branca', color: '#FFFFFF' },
+  { value: 'grey', label: 'Cinza', color: '#6B7280' },
+  { value: 'yellow', label: 'Amarela', color: '#EAB308' },
+  { value: 'orange', label: 'Laranja', color: '#EA580C' },
+  { value: 'green', label: 'Verde', color: '#16A34A' },
+];
 
 // ============================================
 // Props Interface
@@ -48,6 +64,9 @@ export function QuickRegisterDialog({
   const [formData, setFormData] = useState({
     fullName: '',
     phone: '',
+    category: 'adult' as StudentCategory,
+    currentBelt: 'white' as BeltColor | KidsBeltColor,
+    currentStripes: 0 as Stripes,
     selectedClasses: [] as string[],
     selectedPlanId: '',
   });
@@ -93,9 +112,8 @@ export function QuickRegisterDialog({
       newErrors.fullName = 'Nome deve ter pelo menos 3 caracteres';
     }
 
-    if (!formData.phone.trim()) {
-      newErrors.phone = 'WhatsApp é obrigatório';
-    } else {
+    // Phone is optional, but if provided, validate format
+    if (formData.phone.trim()) {
       const phoneDigits = formData.phone.replace(/\D/g, '');
       if (phoneDigits.length < 10 || phoneDigits.length > 11) {
         newErrors.phone = 'Número de telefone inválido';
@@ -113,9 +131,13 @@ export function QuickRegisterDialog({
     if (!validate()) return;
 
     try {
+      const phoneDigits = formData.phone.replace(/\D/g, '');
       const student = await quickCreateStudent({
         fullName: formData.fullName.trim(),
-        phone: formData.phone.replace(/\D/g, ''),
+        phone: phoneDigits || undefined,
+        category: formData.category,
+        currentBelt: formData.currentBelt,
+        currentStripes: formData.currentStripes,
       });
 
       // Add student to selected classes
@@ -132,7 +154,7 @@ export function QuickRegisterDialog({
       }
 
       // Reset form
-      setFormData({ fullName: '', phone: '', selectedClasses: [], selectedPlanId: '' });
+      setFormData({ fullName: '', phone: '', category: 'adult', currentBelt: 'white', currentStripes: 0, selectedClasses: [], selectedPlanId: '' });
       setErrors({});
 
       // Close dialog
@@ -150,7 +172,7 @@ export function QuickRegisterDialog({
   // Handle close
   const handleClose = useCallback(() => {
     if (!isCreating) {
-      setFormData({ fullName: '', phone: '', selectedClasses: [], selectedPlanId: '' });
+      setFormData({ fullName: '', phone: '', category: 'adult', currentBelt: 'white', currentStripes: 0, selectedClasses: [], selectedPlanId: '' });
       setErrors({});
       onClose();
     }
@@ -189,7 +211,7 @@ export function QuickRegisterDialog({
             Cadastro Rápido
           </Typography>
           <Typography variant="body2" color="text.secondary">
-            Apenas nome e WhatsApp para começar
+            Apenas o nome é obrigatório
           </Typography>
         </Box>
         <Button
@@ -226,7 +248,7 @@ export function QuickRegisterDialog({
 
             <TextField
               name="phone"
-              label="WhatsApp"
+              label="WhatsApp (opcional)"
               placeholder="(11) 99999-9999"
               value={formData.phone}
               onChange={handleChange}
@@ -242,6 +264,71 @@ export function QuickRegisterDialog({
                 ),
               }}
             />
+
+            {/* Category, Belt and Stripes */}
+            <Box sx={{ display: 'flex', gap: 1.5 }}>
+              <FormControl size="small" sx={{ minWidth: 100 }} disabled={isCreating}>
+                <InputLabel>Categoria</InputLabel>
+                <Select
+                  value={formData.category}
+                  label="Categoria"
+                  onChange={(e) => setFormData((prev) => ({
+                    ...prev,
+                    category: e.target.value as StudentCategory,
+                    currentBelt: 'white' as BeltColor
+                  }))}
+                >
+                  <MenuItem value="adult">Adulto</MenuItem>
+                  <MenuItem value="kids">Kids</MenuItem>
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ flex: 1 }} disabled={isCreating}>
+                <InputLabel>Faixa</InputLabel>
+                <Select
+                  value={formData.currentBelt}
+                  label="Faixa"
+                  onChange={(e) => setFormData((prev) => ({ ...prev, currentBelt: e.target.value as BeltColor | KidsBeltColor }))}
+                  startAdornment={
+                    <InputAdornment position="start">
+                      <Award size={18} />
+                    </InputAdornment>
+                  }
+                >
+                  {(formData.category === 'kids' ? kidsBelts : adultBelts).map((belt) => (
+                    <MenuItem key={belt.value} value={belt.value}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box
+                          sx={{
+                            width: 14,
+                            height: 14,
+                            borderRadius: '50%',
+                            bgcolor: belt.color,
+                            border: belt.value === 'white' ? '1px solid #ccc' : 'none',
+                          }}
+                        />
+                        {belt.label}
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 80 }} disabled={isCreating}>
+                <InputLabel>Graus</InputLabel>
+                <Select
+                  value={formData.currentStripes}
+                  label="Graus"
+                  onChange={(e) => setFormData((prev) => ({ ...prev, currentStripes: e.target.value as Stripes }))}
+                >
+                  {[0, 1, 2, 3, 4].map((stripe) => (
+                    <MenuItem key={stripe} value={stripe}>
+                      {stripe}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
 
             {/* Class Selection */}
             <Box>

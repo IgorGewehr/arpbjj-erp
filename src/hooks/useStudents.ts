@@ -4,7 +4,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { studentService } from '@/services';
 import { useAuth, useFeedback } from '@/components/providers';
-import { Student, StudentFilters, StudentStatus, StudentCategory, BeltColor } from '@/types';
+import { Student, StudentFilters, StudentStatus, StudentCategory, BeltColor, KidsBeltColor, Stripes } from '@/types';
 
 // ============================================
 // Query Keys
@@ -93,10 +93,28 @@ export function useStudents(options: UseStudentsOptions = {}) {
   // ============================================
   // Quick Create Mutation
   // ============================================
+  interface QuickCreateParams {
+    fullName: string;
+    phone?: string;
+    category?: StudentCategory;
+    currentBelt?: BeltColor | KidsBeltColor;
+    currentStripes?: Stripes;
+  }
+
   const quickCreateMutation = useMutation({
-    mutationFn: async ({ fullName, phone }: { fullName: string; phone: string }) => {
+    mutationFn: async ({ fullName, phone, category = 'adult', currentBelt = 'white', currentStripes = 0 }: QuickCreateParams) => {
       if (!user) throw new Error('User not authenticated');
-      return studentService.quickCreate(fullName, phone, user.id);
+      return studentService.create({
+        fullName,
+        phone: phone || undefined,
+        category,
+        currentBelt,
+        currentStripes,
+        status: 'active',
+        startDate: new Date(),
+        tuitionValue: 0,
+        tuitionDay: 10,
+      }, user.id);
     },
     onSuccess: (student) => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.students] });

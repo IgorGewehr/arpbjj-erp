@@ -19,6 +19,7 @@ import {
 } from '@mui/material';
 import { Mail, Lock, Eye, EyeOff, GraduationCap, User, Shield, ArrowLeft } from 'lucide-react';
 import { useAuth } from '@/components/providers';
+import { useAcademySettings } from '@/hooks';
 
 type LoginMode = 'student' | 'teacher';
 
@@ -27,6 +28,7 @@ export default function LoginPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { signIn, signUp, isAuthenticated, loading, error, clearError } = useAuth();
+  const { academyName } = useAcademySettings();
 
   const [mode, setMode] = useState<LoginMode>('student');
   const [isSignUp, setIsSignUp] = useState(false);
@@ -195,7 +197,7 @@ export default function LoginPage() {
               gutterBottom
               sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
             >
-              MarcusJJ
+              {academyName}
             </Typography>
 
             {/* Mode Indicator */}

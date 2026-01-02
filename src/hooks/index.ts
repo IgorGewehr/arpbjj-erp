@@ -5,3 +5,4 @@ export { useBeltProgression, useStudentProgression } from './useBeltProgression'
 export { useAssessment, useStudentAssessment } from './useAssessment';
 export { useClasses } from './useClasses';
 export { usePlans } from './usePlans';
+export { useAcademySettings } from './useAcademySettings';

@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { Box, Typography, Grid, Paper, Skeleton } from '@mui/material';
 import {
@@ -19,6 +19,7 @@ import { QuickActions } from './QuickActions';
 import { AttendanceChart } from './AttendanceChart';
 import { RevenueOverview } from './RevenueOverview';
 import { AlertsPanel } from './AlertsPanel';
+import { QuickStudentDialog } from './QuickStudentDialog';
 
 // ============================================
 // DashboardView Component
@@ -26,9 +27,12 @@ import { AlertsPanel } from './AlertsPanel';
 export function DashboardView() {
   const router = useRouter();
   const { user } = useAuth();
-  const { students, stats: studentStats, isLoading: loadingStudents } = useStudents();
+  const { students, stats: studentStats, isLoading: loadingStudents, refresh: refreshStudents } = useStudents();
   const { pendingPayments, overduePayments, monthlySummary, isLoading: loadingFinancial } = useFinancial();
   const { eligibleStudents, isLoadingEligible } = useBeltProgression();
+
+  // Quick student dialog state
+  const [quickStudentOpen, setQuickStudentOpen] = useState(false);
 
   // ============================================
   // Greeting based on time
@@ -50,13 +54,13 @@ export function DashboardView() {
   // ============================================
   // Quick actions handlers
   // ============================================
-  const handleQuickAction = (action: string) => {
+  const handleQuickAction = useCallback((action: string) => {
     switch (action) {
       case 'attendance':
         router.push('/chamada');
         break;
       case 'newStudent':
-        router.push('/alunos/novo');
+        setQuickStudentOpen(true);
         break;
       case 'financial':
         router.push('/financeiro');
@@ -65,7 +69,11 @@ export function DashboardView() {
         router.push('/relatorios');
         break;
     }
-  };
+  }, [router]);
+
+  const handleQuickStudentSuccess = useCallback(() => {
+    refreshStudents();
+  }, [refreshStudents]);
 
   // ============================================
   // Loading state
@@ -186,6 +194,13 @@ export function DashboardView() {
           />
         </Grid>
       </Grid>
+
+      {/* Quick Student Dialog */}
+      <QuickStudentDialog
+        open={quickStudentOpen}
+        onClose={() => setQuickStudentOpen(false)}
+        onSuccess={handleQuickStudentSuccess}
+      />
     </Box>
   );
 }

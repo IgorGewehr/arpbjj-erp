@@ -1,6 +1,5 @@
 'use client';
 
-import { useMemo } from 'react';
 import { Box, Typography, Paper, useTheme, useMediaQuery } from '@mui/material';
 import {
   BarChart,
@@ -11,8 +10,7 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from 'recharts';
-import { subDays, format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { BarChart3 } from 'lucide-react';
 
 // ============================================
 // Custom Tooltip
@@ -44,31 +42,66 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 }
 
 // ============================================
+// Props Interface
+// ============================================
+interface AttendanceChartProps {
+  data?: Array<{
+    day: string;
+    fullDate: string;
+    count: number;
+  }>;
+}
+
+// ============================================
 // AttendanceChart Component
 // ============================================
-export function AttendanceChart() {
+export function AttendanceChart({ data = [] }: AttendanceChartProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  // Generate mock data for last 7 days
-  // In production, this would come from useAttendance hook
-  const chartData = useMemo(() => {
-    const data = [];
-    for (let i = 6; i >= 0; i--) {
-      const date = subDays(new Date(), i);
-      data.push({
-        day: format(date, isMobile ? 'EEEEE' : 'EEE', { locale: ptBR }),
-        fullDate: format(date, "dd 'de' MMM", { locale: ptBR }),
-        count: Math.floor(Math.random() * 30) + 15, // Mock data
-      });
-    }
-    return data;
-  }, [isMobile]);
+  // Calculate average attendance
+  const avgAttendance = data.length > 0
+    ? Math.round(data.reduce((acc, d) => acc + d.count, 0) / data.length)
+    : 0;
 
-  const avgAttendance = useMemo(() => {
-    const total = chartData.reduce((acc, d) => acc + d.count, 0);
-    return Math.round(total / chartData.length);
-  }, [chartData]);
+  // Empty state
+  if (data.length === 0) {
+    return (
+      <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: { xs: 'column', sm: 'row' },
+            justifyContent: 'space-between',
+            alignItems: { xs: 'flex-start', sm: 'center' },
+            gap: 1,
+            mb: 2
+          }}
+        >
+          <Typography variant="h6" fontWeight={600} sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+            Presenca - Ultimos 7 Dias
+          </Typography>
+        </Box>
+
+        <Box
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: { xs: 150, sm: 180 },
+            bgcolor: 'action.hover',
+            borderRadius: 2,
+          }}
+        >
+          <BarChart3 size={32} style={{ color: '#9ca3af', marginBottom: 8 }} />
+          <Typography variant="body2" color="text.secondary" textAlign="center">
+            Registre presencas para visualizar o grafico
+          </Typography>
+        </Box>
+      </Paper>
+    );
+  }
 
   return (
     <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
@@ -98,7 +131,7 @@ export function AttendanceChart() {
       <Box sx={{ width: '100%', height: { xs: 150, sm: 180 } }}>
         <ResponsiveContainer>
           <BarChart
-            data={chartData}
+            data={data}
             margin={{
               top: 10,
               right: isMobile ? 5 : 10,

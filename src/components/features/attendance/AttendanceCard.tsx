@@ -127,7 +127,7 @@ export function AttendanceCard({
     handleMenuClose();
     if (onWhatsApp) {
       onWhatsApp(student);
-    } else {
+    } else if (student.phone) {
       // Default: open WhatsApp
       const phone = student.phone.replace(/\D/g, '');
       window.open(`https://wa.me/55${phone}`, '_blank');

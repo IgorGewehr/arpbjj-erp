@@ -190,10 +190,10 @@ export default function StudentEditPage() {
       setFormData({
         fullName: student.fullName,
         nickname: student.nickname || '',
-        birthDate: formatDateForInput(student.birthDate),
+        birthDate: student.birthDate ? formatDateForInput(student.birthDate) : '',
         cpf: student.cpf ? formatCPF(student.cpf) : '',
         rg: student.rg || '',
-        phone: formatPhone(student.phone),
+        phone: student.phone ? formatPhone(student.phone) : '',
         email: student.email || '',
         street: student.address?.street || '',
         number: student.address?.number || '',

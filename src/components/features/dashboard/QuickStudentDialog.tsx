@@ -90,8 +90,6 @@ export function QuickStudentDialog({ open, onClose, onSuccess }: QuickStudentDia
         startDate: new Date(),
         tuitionValue: 0,
         tuitionDay: 10,
-        classIds: [],
-        attendanceCount: 0,
       });
 
       setSuccess(true);

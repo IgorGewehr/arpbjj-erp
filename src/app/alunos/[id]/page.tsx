@@ -373,7 +373,7 @@ export default function StudentProfilePage() {
 
   // Calculate age
   const age = useMemo(() => {
-    if (!student) return null;
+    if (!student || !student.birthDate) return null;
     return differenceInYears(new Date(), student.birthDate);
   }, [student]);
 
@@ -394,7 +394,7 @@ export default function StudentProfilePage() {
 
   // Handle WhatsApp
   const handleWhatsApp = useCallback(() => {
-    if (student) {
+    if (student && student.phone) {
       const phone = student.phone.replace(/\D/g, '');
       window.open(`https://wa.me/55${phone}`, '_blank');
     }
@@ -706,16 +706,20 @@ export default function StudentProfilePage() {
                           DADOS PESSOAIS
                         </Typography>
 
-                        <InfoItem
-                          icon={Calendar}
-                          label="Data de Nascimento"
-                          value={`${format(student.birthDate, 'dd/MM/yyyy', { locale: ptBR })} (${age} anos)`}
-                        />
-                        <InfoItem
-                          icon={Phone}
-                          label="Telefone"
-                          value={student.phone}
-                        />
+                        {student.birthDate && (
+                          <InfoItem
+                            icon={Calendar}
+                            label="Data de Nascimento"
+                            value={`${format(student.birthDate, 'dd/MM/yyyy', { locale: ptBR })}${age !== null ? ` (${age} anos)` : ''}`}
+                          />
+                        )}
+                        {student.phone && (
+                          <InfoItem
+                            icon={Phone}
+                            label="Telefone"
+                            value={student.phone}
+                          />
+                        )}
                         {student.email && (
                           <InfoItem
                             icon={Mail}

@@ -202,7 +202,7 @@ export const studentService = {
   // ============================================
   // Create Student
   // ============================================
-  async create(student: Omit<Student, 'id' | 'createdAt' | 'updatedAt'>, createdBy: string): Promise<Student> {
+  async create(student: Omit<Student, 'id' | 'createdAt' | 'updatedAt'>, createdBy: string = 'system'): Promise<Student> {
     const now = serverTimestamp();
 
     const docData = {

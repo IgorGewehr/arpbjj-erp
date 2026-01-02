@@ -135,7 +135,7 @@ export default function StudentProfilePage() {
     return `${months} mês${months !== 1 ? 'es' : ''}`;
   })() : '';
 
-  const age = student ? differenceInYears(new Date(), student.birthDate) : 0;
+  const age = student && student.birthDate ? differenceInYears(new Date(), student.birthDate) : null;
 
   // Handle save
   const handleSave = useCallback(async () => {
@@ -348,7 +348,9 @@ export default function StudentProfilePage() {
                       Data de Nascimento
                     </Typography>
                     <Typography variant="body2" fontWeight={500}>
-                      {format(student.birthDate, "d 'de' MMMM 'de' yyyy", { locale: ptBR })} ({age} anos)
+                      {student.birthDate
+                        ? `${format(student.birthDate, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}${age !== null ? ` (${age} anos)` : ''}`
+                        : 'Não informada'}
                     </Typography>
                   </Box>
                 </Box>
@@ -364,7 +366,7 @@ export default function StudentProfilePage() {
                       Telefone
                     </Typography>
                     <Typography variant="body2" fontWeight={500}>
-                      {student.phone}
+                      {student.phone || 'Não informado'}
                     </Typography>
                   </Box>
                 </Box>

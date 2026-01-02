@@ -96,7 +96,7 @@ export function StudentList() {
         (s) =>
           s.fullName.toLowerCase().includes(term) ||
           s.nickname?.toLowerCase().includes(term) ||
-          s.phone.includes(term)
+          s.phone?.includes(term)
       );
     }
 

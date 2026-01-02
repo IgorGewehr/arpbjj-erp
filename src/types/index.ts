@@ -92,10 +92,10 @@ export interface Student {
   // Personal Info
   fullName: string;
   nickname?: string;
-  birthDate: Date;
+  birthDate?: Date;
   cpf?: string;
   rg?: string;
-  phone: string;
+  phone?: string;
   email?: string;
   photoUrl?: string;
 
@@ -148,13 +148,13 @@ export interface Student {
   };
 
   // Privacy & Account Link
-  isProfilePublic: boolean;     // Whether profile is visible publicly
+  isProfilePublic?: boolean;     // Whether profile is visible publicly (defaults to false)
   linkedUserId?: string;        // Firebase user ID linked to this student
 
   // Metadata
   createdAt: Date;
   updatedAt: Date;
-  createdBy: string;
+  createdBy?: string;
 }
 
 // ============================================

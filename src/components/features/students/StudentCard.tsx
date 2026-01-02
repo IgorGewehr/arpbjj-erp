@@ -70,7 +70,7 @@ export function StudentCard({
     e.stopPropagation();
     if (onWhatsApp) {
       onWhatsApp(student);
-    } else {
+    } else if (student.phone) {
       const phone = student.phone.replace(/\D/g, '');
       window.open(`https://wa.me/55${phone}`, '_blank');
     }

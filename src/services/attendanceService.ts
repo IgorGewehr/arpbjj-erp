@@ -7,7 +7,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
   serverTimestamp,
   Timestamp,
   DocumentSnapshot,
@@ -40,7 +39,12 @@ const docToAttendance = (doc: DocumentSnapshot): Attendance => {
     verifiedBy: data.verifiedBy,
     verifiedByName: data.verifiedByName,
     notes: data.notes,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
+    // createdAt might not be set immediately when using serverTimestamp()
+    createdAt: data.createdAt instanceof Timestamp
+      ? data.createdAt.toDate()
+      : data.createdAt
+        ? new Date(data.createdAt)
+        : new Date(),
   };
 };
 
@@ -55,16 +59,20 @@ export const attendanceService = {
     const start = startOfDay(date);
     const end = endOfDay(date);
 
+    // Query by classId first, then filter by date in memory
+    // This avoids needing a composite index
     const q = query(
       collection(db, COLLECTION),
-      where('classId', '==', classId),
-      where('date', '>=', Timestamp.fromDate(start)),
-      where('date', '<=', Timestamp.fromDate(end)),
-      orderBy('date', 'desc')
+      where('classId', '==', classId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToAttendance);
+    const allAttendance = snapshot.docs.map(docToAttendance);
+
+    // Filter by date range using getTime() for robust comparison
+    return allAttendance
+      .filter(a => a.date.getTime() >= start.getTime() && a.date.getTime() <= end.getTime())
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
   },
 
   // ============================================
@@ -80,12 +88,15 @@ export const attendanceService = {
   async getByStudent(studentId: string, limitCount = 50): Promise<Attendance[]> {
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      orderBy('date', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.slice(0, limitCount).map(docToAttendance);
+    const attendance = snapshot.docs.map(docToAttendance);
+    // Sort client-side and limit
+    return attendance
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, limitCount);
   },
 
   // ============================================
@@ -96,15 +107,15 @@ export const attendanceService = {
     endDate: Date,
     filters?: AttendanceFilters
   ): Promise<Attendance[]> {
-    const q = query(
-      collection(db, COLLECTION),
-      where('date', '>=', Timestamp.fromDate(startOfDay(startDate))),
-      where('date', '<=', Timestamp.fromDate(endOfDay(endDate))),
-      orderBy('date', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
+    // Fetch all attendance and filter in memory to avoid composite index
+    const snapshot = await getDocs(collection(db, COLLECTION));
     let results = snapshot.docs.map(docToAttendance);
+
+    const start = startOfDay(startDate);
+    const end = endOfDay(endDate);
+
+    // Filter by date range using getTime() for robust comparison
+    results = results.filter(a => a.date.getTime() >= start.getTime() && a.date.getTime() <= end.getTime());
 
     // Apply additional filters in memory
     if (filters?.classId) {
@@ -114,7 +125,8 @@ export const attendanceService = {
       results = results.filter((a) => a.studentId === filters.studentId);
     }
 
-    return results;
+    // Sort by date descending
+    return results.sort((a, b) => b.date.getTime() - a.date.getTime());
   },
 
   // ============================================
@@ -124,16 +136,21 @@ export const attendanceService = {
     const start = startOfDay(date);
     const end = endOfDay(date);
 
+    // Query by studentId only and filter in memory to avoid composite index
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      where('classId', '==', classId),
-      where('date', '>=', Timestamp.fromDate(start)),
-      where('date', '<=', Timestamp.fromDate(end))
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return !snapshot.empty;
+    const attendance = snapshot.docs.map(docToAttendance);
+
+    // Filter by classId and date in memory using getTime() for robust comparison
+    return attendance.some(
+      a => a.classId === classId &&
+           a.date.getTime() >= start.getTime() &&
+           a.date.getTime() <= end.getTime()
+    );
   },
 
   // ============================================
@@ -157,28 +174,48 @@ export const attendanceService = {
     date: Date = new Date(),
     notes?: string
   ): Promise<Attendance> {
+    // Normalize date to noon to avoid timezone issues
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(12, 0, 0, 0);
+
     // Check if already marked
-    const isPresent = await this.isStudentPresent(studentId, classId, date);
+    const isPresent = await this.isStudentPresent(studentId, classId, normalizedDate);
     if (isPresent) {
       throw new Error('Aluno já marcado como presente');
     }
 
-    const docData = {
+    const now = new Date();
+    const docData: Record<string, unknown> = {
       studentId,
       studentName,
       classId,
       className,
-      date: Timestamp.fromDate(date),
+      date: Timestamp.fromDate(normalizedDate),
+      verifiedBy,
+      verifiedByName,
+      createdAt: Timestamp.fromDate(now),
+    };
+
+    // Only add notes if it has a value (Firestore doesn't accept undefined)
+    if (notes) {
+      docData.notes = notes;
+    }
+
+    const docRef = await addDoc(collection(db, COLLECTION), docData);
+
+    // Return the attendance object directly without re-fetching
+    const attendance: Attendance = {
+      id: docRef.id,
+      studentId,
+      studentName,
+      classId,
+      className,
+      date: normalizedDate,
       verifiedBy,
       verifiedByName,
       notes,
-      createdAt: serverTimestamp(),
+      createdAt: now,
     };
-
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
-    const newDoc = await getDoc(docRef);
-
-    const attendance = docToAttendance(newDoc);
 
     // Check for attendance milestones (async, don't block)
     this.checkAttendanceMilestone(studentId, studentName, verifiedBy).catch(() => {
@@ -221,26 +258,36 @@ export const attendanceService = {
   // Remove Attendance (Unmark)
   // ============================================
   async unmarkPresent(studentId: string, classId: string, date: Date): Promise<void> {
-    const start = startOfDay(date);
-    const end = endOfDay(date);
+    // Normalize date for consistent comparison
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(12, 0, 0, 0);
+    const start = startOfDay(normalizedDate);
+    const end = endOfDay(normalizedDate);
 
+    // Query by studentId only and filter in memory to avoid composite index
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      where('classId', '==', classId),
-      where('date', '>=', Timestamp.fromDate(start)),
-      where('date', '<=', Timestamp.fromDate(end))
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
 
-    if (snapshot.empty) {
+    // Filter by classId and date in memory using getTime() for robust comparison
+    const matchingDocs = snapshot.docs.filter(doc => {
+      const data = doc.data();
+      const docDate = data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date);
+      return data.classId === classId &&
+             docDate.getTime() >= start.getTime() &&
+             docDate.getTime() <= end.getTime();
+    });
+
+    if (matchingDocs.length === 0) {
       throw new Error('Presença não encontrada');
     }
 
     // Delete all matches (should be only one)
     const batch = writeBatch(db);
-    snapshot.docs.forEach((doc) => {
+    matchingDocs.forEach((doc) => {
       batch.delete(doc.ref);
     });
 
@@ -258,6 +305,10 @@ export const attendanceService = {
     verifiedByName: string,
     date: Date = new Date()
   ): Promise<Attendance[]> {
+    // Normalize date for consistency
+    const normalizedDate = new Date(date);
+    normalizedDate.setHours(12, 0, 0, 0);
+
     const results: Attendance[] = [];
 
     for (const student of students) {
@@ -269,7 +320,7 @@ export const attendanceService = {
           className,
           verifiedBy,
           verifiedByName,
-          date
+          normalizedDate
         );
         results.push(attendance);
       } catch {
@@ -282,7 +333,7 @@ export const attendanceService = {
   },
 
   // ============================================
-  // Get Student Attendance Count
+  // Get Student Attendance Count (system only, without initial)
   // ============================================
   async getStudentAttendanceCount(studentId: string): Promise<number> {
     const q = query(
@@ -292,6 +343,14 @@ export const attendanceService = {
 
     const snapshot = await getDocs(q);
     return snapshot.size;
+  },
+
+  // ============================================
+  // Get Total Student Attendance Count (including initial)
+  // ============================================
+  async getTotalStudentAttendanceCount(studentId: string, initialCount: number = 0): Promise<number> {
+    const systemCount = await this.getStudentAttendanceCount(studentId);
+    return systemCount + initialCount;
   },
 
   // ============================================

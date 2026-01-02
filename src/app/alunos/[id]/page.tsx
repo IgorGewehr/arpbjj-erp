@@ -61,7 +61,7 @@ import { getBeltChipColor } from '@/lib/theme';
 import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode } from '@/types';
-import { financialService } from '@/services';
+import { financialService, attendanceService } from '@/services';
 import { linkCodeService } from '@/services/linkCodeService';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
@@ -272,6 +272,7 @@ export default function StudentProfilePage() {
   }, [studentId, plans]);
 
   const [activeTab, setActiveTab] = useState(0);
+  const [totalAttendanceCount, setTotalAttendanceCount] = useState<number | null>(null);
   const [assessmentScores, setAssessmentScores] = useState<AssessmentScores>({
     respeito: 3,
     disciplina: 3,
@@ -337,6 +338,16 @@ export default function StudentProfilePage() {
       setNewStripes(student.currentStripes);
     }
   }, [student]);
+
+  // Load total attendance count
+  useEffect(() => {
+    if (student && studentId) {
+      attendanceService.getTotalStudentAttendanceCount(
+        studentId,
+        student.initialAttendanceCount || 0
+      ).then(setTotalAttendanceCount).catch(() => setTotalAttendanceCount(null));
+    }
+  }, [student, studentId]);
 
   // Handle assessment score change
   const handleScoreChange = useCallback((key: keyof AssessmentScores, value: number) => {
@@ -756,6 +767,11 @@ export default function StudentProfilePage() {
                           icon={User}
                           label="Categoria"
                           value={student.category === 'kids' ? 'Kids' : 'Adulto'}
+                        />
+                        <InfoItem
+                          icon={ClipboardCheck}
+                          label="Total de Treinos"
+                          value={totalAttendanceCount !== null ? `${totalAttendanceCount} treinos` : 'Carregando...'}
                         />
                         {studentHasPlan ? (
                           <InfoItem

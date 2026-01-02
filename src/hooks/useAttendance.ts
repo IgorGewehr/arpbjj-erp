@@ -218,7 +218,9 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
           context.previousPresent
         );
       }
-      showError('Erro ao marcar presenca');
+      console.error('Erro ao marcar presenca:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao marcar presenca';
+      showError(errorMessage);
     },
     onSuccess: (_data, { student }) => {
       success(`${student.nickname || student.fullName} - Presenca registrada!`);
@@ -273,7 +275,9 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
           context.previousPresent
         );
       }
-      showError('Erro ao remover presenca');
+      console.error('Erro ao remover presenca:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao remover presenca';
+      showError(errorMessage);
     },
     onSuccess: () => {
       success('Presenca removida');
@@ -333,7 +337,9 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
           context.previousPresent
         );
       }
-      showError('Erro ao marcar presencas');
+      console.error('Erro ao marcar presencas:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao marcar presencas';
+      showError(errorMessage);
     },
     onSuccess: (data) => {
       success(`${data.length} alunos marcados como presentes!`);

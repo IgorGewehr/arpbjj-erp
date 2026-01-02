@@ -123,6 +123,7 @@ interface FormData {
   tuitionValue: string;
   tuitionDay: string;
   weight: string;
+  initialAttendanceCount: string;
   beltHistory: BeltHistoryEntry[];
   bloodType: string;
   healthNotes: string;
@@ -229,6 +230,7 @@ export default function StudentEditPage() {
         tuitionValue: student.tuitionValue?.toString() || '150',
         tuitionDay: student.tuitionDay?.toString() || '10',
         weight: student.weight?.toString() || '',
+        initialAttendanceCount: student.initialAttendanceCount?.toString() || '',
         beltHistory: student.beltHistory?.map(entry => ({
           belt: entry.belt,
           stripes: entry.stripes,
@@ -336,6 +338,7 @@ export default function StudentEditPage() {
         tuitionValue: parseFloat(formData.tuitionValue) || 150,
         tuitionDay: parseInt(formData.tuitionDay) || 10,
         weight: formData.weight ? parseFloat(formData.weight) : undefined,
+        initialAttendanceCount: formData.initialAttendanceCount ? parseInt(formData.initialAttendanceCount) : undefined,
 
         // Convert belt history
         beltHistory: formData.beltHistory.length > 0
@@ -552,7 +555,7 @@ export default function StudentEditPage() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid size={{ xs: 12, md: 3 }}>
+              <Grid size={{ xs: 6, md: 3 }}>
                 <TextField
                   label="Peso (kg)"
                   type="number"
@@ -564,6 +567,17 @@ export default function StudentEditPage() {
                       endAdornment: <InputAdornment position="end">kg</InputAdornment>
                     }
                   }}
+                />
+              </Grid>
+              <Grid size={{ xs: 6, md: 3 }}>
+                <TextField
+                  label="Treinos Anteriores"
+                  type="number"
+                  value={formData.initialAttendanceCount}
+                  onChange={(e) => handleChange('initialAttendanceCount', e.target.value)}
+                  fullWidth
+                  placeholder="Ex: 150"
+                  helperText="Total de treinos ja realizados"
                 />
               </Grid>
               <Grid size={{ xs: 12, md: 4 }}>

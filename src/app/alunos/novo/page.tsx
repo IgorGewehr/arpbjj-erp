@@ -138,9 +138,8 @@ interface FormData {
   currentStripes: Stripes;
   status: StudentStatus;
   statusNote: string;
-  tuitionValue: string;
-  tuitionDay: string;
   weight: string;
+  initialAttendanceCount: string;
   beltHistory: BeltHistoryEntry[];
 
   // Medical
@@ -182,9 +181,8 @@ const initialFormData: FormData = {
   currentStripes: 0,
   status: 'active',
   statusNote: '',
-  tuitionValue: '150',
-  tuitionDay: '10',
   weight: '',
+  initialAttendanceCount: '',
   beltHistory: [],
   bloodType: '',
   healthNotes: '',
@@ -348,9 +346,10 @@ export default function StudentRegistrationPage() {
         currentStripes: formData.currentStripes,
         status: formData.status,
         statusNote: formData.statusNote.trim() || undefined,
-        tuitionValue: parseFloat(formData.tuitionValue) || 150,
-        tuitionDay: parseInt(formData.tuitionDay) || 10,
+        tuitionValue: 0, // Controlled by plans - 0 means social project
+        tuitionDay: 10,  // Default day
         weight: formData.weight ? parseFloat(formData.weight) : undefined,
+        initialAttendanceCount: formData.initialAttendanceCount ? parseInt(formData.initialAttendanceCount) : undefined,
 
         // Convert belt history
         beltHistory: formData.beltHistory.length > 0
@@ -602,7 +601,7 @@ export default function StudentRegistrationPage() {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, md: 3 }}>
+            <Grid size={{ xs: 6, md: 3 }}>
               <TextField
                 label="Peso (kg)"
                 type="number"
@@ -615,6 +614,17 @@ export default function StudentRegistrationPage() {
                     endAdornment: <InputAdornment position="end">kg</InputAdornment>
                   }
                 }}
+              />
+            </Grid>
+            <Grid size={{ xs: 6, md: 3 }}>
+              <TextField
+                label="Treinos Anteriores"
+                type="number"
+                value={formData.initialAttendanceCount}
+                onChange={(e) => handleChange('initialAttendanceCount', e.target.value)}
+                fullWidth
+                placeholder="Ex: 150"
+                helperText="Total de treinos ja realizados"
               />
             </Grid>
 
@@ -776,42 +786,6 @@ export default function StudentRegistrationPage() {
               >
                 Adicionar Graduacao
               </Button>
-            </Grid>
-
-            {/* Financial */}
-            <Grid size={12}>
-              <Divider sx={{ my: 2 }}>
-                <Typography variant="body2" color="text.secondary">Financeiro</Typography>
-              </Divider>
-            </Grid>
-
-            <Grid size={{ xs: 12, md: 6 }}>
-              <TextField
-                label="Valor da Mensalidade"
-                type="number"
-                value={formData.tuitionValue}
-                onChange={(e) => handleChange('tuitionValue', e.target.value)}
-                fullWidth
-                slotProps={{
-                  input: {
-                    startAdornment: <InputAdornment position="start">R$</InputAdornment>
-                  }
-                }}
-              />
-            </Grid>
-            <Grid size={{ xs: 12, md: 6 }}>
-              <FormControl fullWidth>
-                <InputLabel>Dia de Vencimento</InputLabel>
-                <Select
-                  value={formData.tuitionDay}
-                  onChange={(e) => handleChange('tuitionDay', e.target.value)}
-                  label="Dia de Vencimento"
-                >
-                  {Array.from({ length: 28 }, (_, i) => i + 1).map(day => (
-                    <MenuItem key={day} value={day.toString()}>Dia {day}</MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
             </Grid>
 
             {/* Guardian (for kids) */}

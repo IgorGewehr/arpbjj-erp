@@ -136,6 +136,9 @@ export interface Student {
     notes?: string;
   }>;
 
+  // Attendance tracking
+  initialAttendanceCount?: number;  // Previous attendances (from other systems/academies)
+
   // Status
   status: StudentStatus;
   statusNote?: string;

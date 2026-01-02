@@ -8,7 +8,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
   limit,
   startAfter,
   DocumentSnapshot,
@@ -58,6 +57,7 @@ const docToStudent = (doc: DocumentSnapshot): Student => {
     teamId: data.teamId,
     weight: data.weight,
     beltHistory,
+    initialAttendanceCount: data.initialAttendanceCount,
     status: data.status,
     statusNote: data.statusNote,
     tuitionValue: data.tuitionValue,
@@ -134,36 +134,35 @@ export const studentService = {
     perPage = 50,
     lastDoc?: DocumentSnapshot
   ): Promise<PaginatedResponse<Student>> {
-    const constraints: QueryConstraint[] = [];
+    // Build filter constraints (without orderBy to avoid composite index)
+    const filterConstraints: QueryConstraint[] = [];
 
-    // Apply filters
     if (filters.status) {
-      constraints.push(where('status', '==', filters.status));
+      filterConstraints.push(where('status', '==', filters.status));
     }
     if (filters.category) {
-      constraints.push(where('category', '==', filters.category));
+      filterConstraints.push(where('category', '==', filters.category));
     }
     if (filters.belt) {
-      constraints.push(where('currentBelt', '==', filters.belt));
+      filterConstraints.push(where('currentBelt', '==', filters.belt));
     }
 
-    // Order by name
-    constraints.push(orderBy('fullName'));
-
-    // Pagination
-    constraints.push(limit(perPage));
-
+    // Build pagination constraints
+    const paginationConstraints: QueryConstraint[] = [limit(perPage)];
     if (lastDoc) {
-      constraints.push(startAfter(lastDoc));
+      paginationConstraints.push(startAfter(lastDoc));
     }
 
-    const q = query(collection(db, COLLECTION), ...constraints);
+    // Query with filters + pagination
+    const q = query(collection(db, COLLECTION), ...filterConstraints, ...paginationConstraints);
     const snapshot = await getDocs(q);
 
     const students = snapshot.docs.map(docToStudent);
+    // Sort client-side to avoid Firestore composite index requirement
+    students.sort((a, b) => a.fullName.localeCompare(b.fullName));
 
-    // Get total count
-    const totalQuery = query(collection(db, COLLECTION), ...constraints.slice(0, -2));
+    // Get total count (only filter constraints, no pagination)
+    const totalQuery = query(collection(db, COLLECTION), ...filterConstraints);
     const totalSnapshot = await getDocs(totalQuery);
 
     const pagination: Pagination = {
@@ -200,12 +199,13 @@ export const studentService = {
   async getByStatus(status: Student['status']): Promise<Student[]> {
     const q = query(
       collection(db, COLLECTION),
-      where('status', '==', status),
-      orderBy('fullName')
+      where('status', '==', status)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToStudent);
+    const students = snapshot.docs.map(docToStudent);
+    // Sort client-side to avoid Firestore composite index requirement
+    return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
   },
 
   // ============================================
@@ -324,12 +324,13 @@ export const studentService = {
     const q = query(
       collection(db, COLLECTION),
       where('currentBelt', '==', belt),
-      where('status', '==', 'active'),
-      orderBy('fullName')
+      where('status', '==', 'active')
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToStudent);
+    const students = snapshot.docs.map(docToStudent);
+    // Sort client-side to avoid Firestore composite index requirement
+    return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
   },
 
   // ============================================
@@ -339,12 +340,13 @@ export const studentService = {
     const q = query(
       collection(db, COLLECTION),
       where('category', '==', category),
-      where('status', '==', 'active'),
-      orderBy('fullName')
+      where('status', '==', 'active')
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToStudent);
+    const students = snapshot.docs.map(docToStudent);
+    // Sort client-side to avoid Firestore composite index requirement
+    return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
   },
 
   // ============================================

@@ -1,0 +1,11 @@
+export { studentService } from './studentService';
+export { classService } from './classService';
+export { attendanceService } from './attendanceService';
+export { financialService } from './financialService';
+export { assessmentService } from './assessmentService';
+export { achievementService } from './achievementService';
+export { beltProgressionService } from './beltProgressionService';
+export { planService } from './planService';
+export { settingsService } from './settingsService';
+export { linkCodeService } from './linkCodeService';
+export { competitionService } from './competitionService';

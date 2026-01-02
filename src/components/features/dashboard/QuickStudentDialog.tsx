@@ -19,9 +19,9 @@ import {
   IconButton,
   Alert,
 } from '@mui/material';
-import { User, Phone, Mail, Calendar, X, UserPlus, Check } from 'lucide-react';
+import { User, Phone, Mail, Calendar, X, UserPlus, Check, Award } from 'lucide-react';
 import { studentService } from '@/services';
-import { StudentCategory, BeltColor } from '@/types';
+import { StudentCategory, BeltColor, KidsBeltColor, Stripes } from '@/types';
 
 interface QuickStudentDialogProps {
   open: boolean;
@@ -35,6 +35,8 @@ interface QuickStudentForm {
   email: string;
   birthDate: string;
   category: StudentCategory;
+  currentBelt: BeltColor | KidsBeltColor;
+  currentStripes: Stripes;
 }
 
 const initialForm: QuickStudentForm = {
@@ -43,7 +45,25 @@ const initialForm: QuickStudentForm = {
   email: '',
   birthDate: '',
   category: 'adult',
+  currentBelt: 'white',
+  currentStripes: 0,
 };
+
+const adultBelts: { value: BeltColor; label: string; color: string }[] = [
+  { value: 'white', label: 'Branca', color: '#FFFFFF' },
+  { value: 'blue', label: 'Azul', color: '#1E40AF' },
+  { value: 'purple', label: 'Roxa', color: '#7C3AED' },
+  { value: 'brown', label: 'Marrom', color: '#78350F' },
+  { value: 'black', label: 'Preta', color: '#000000' },
+];
+
+const kidsBelts: { value: KidsBeltColor; label: string; color: string }[] = [
+  { value: 'white', label: 'Branca', color: '#FFFFFF' },
+  { value: 'grey', label: 'Cinza', color: '#6B7280' },
+  { value: 'yellow', label: 'Amarela', color: '#EAB308' },
+  { value: 'orange', label: 'Laranja', color: '#EA580C' },
+  { value: 'green', label: 'Verde', color: '#16A34A' },
+];
 
 export function QuickStudentDialog({ open, onClose, onSuccess }: QuickStudentDialogProps) {
   const [form, setForm] = useState<QuickStudentForm>(initialForm);
@@ -51,8 +71,14 @@ export function QuickStudentDialog({ open, onClose, onSuccess }: QuickStudentDia
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
-  const handleChange = useCallback((field: keyof QuickStudentForm, value: string) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+  const handleChange = useCallback(<K extends keyof QuickStudentForm>(field: K, value: QuickStudentForm[K]) => {
+    setForm((prev) => {
+      // If category changes, reset belt to white
+      if (field === 'category') {
+        return { ...prev, [field]: value, currentBelt: 'white' as BeltColor | KidsBeltColor };
+      }
+      return { ...prev, [field]: value };
+    });
     setError(null);
   }, []);
 
@@ -83,9 +109,8 @@ export function QuickStudentDialog({ open, onClose, onSuccess }: QuickStudentDia
         email: form.email || undefined,
         birthDate: form.birthDate ? new Date(form.birthDate) : undefined,
         category: form.category,
-        // Default values
-        currentBelt: 'white' as BeltColor,
-        currentStripes: 0,
+        currentBelt: form.currentBelt,
+        currentStripes: form.currentStripes,
         status: 'active',
         startDate: new Date(),
         tuitionValue: 0,
@@ -205,6 +230,64 @@ export function QuickStudentDialog({ open, onClose, onSuccess }: QuickStudentDia
             />
 
             <Box sx={{ display: 'flex', gap: 2 }}>
+              <FormControl fullWidth>
+                <InputLabel>Categoria</InputLabel>
+                <Select
+                  value={form.category}
+                  label="Categoria"
+                  onChange={(e) => handleChange('category', e.target.value as StudentCategory)}
+                >
+                  <MenuItem value="adult">Adulto</MenuItem>
+                  <MenuItem value="kids">Kids</MenuItem>
+                </Select>
+              </FormControl>
+              <FormControl fullWidth>
+                <InputLabel>Faixa</InputLabel>
+                <Select
+                  value={form.currentBelt}
+                  label="Faixa"
+                  onChange={(e) => handleChange('currentBelt', e.target.value)}
+                  startAdornment={
+                    <InputAdornment position="start">
+                      <Award size={18} />
+                    </InputAdornment>
+                  }
+                >
+                  {(form.category === 'kids' ? kidsBelts : adultBelts).map((belt) => (
+                    <MenuItem key={belt.value} value={belt.value}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <Box
+                          sx={{
+                            width: 16,
+                            height: 16,
+                            borderRadius: '50%',
+                            bgcolor: belt.color,
+                            border: belt.value === 'white' ? '1px solid #ccc' : 'none',
+                          }}
+                        />
+                        {belt.label}
+                      </Box>
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl sx={{ minWidth: 100 }}>
+                <InputLabel>Graus</InputLabel>
+                <Select
+                  value={form.currentStripes}
+                  label="Graus"
+                  onChange={(e) => handleChange('currentStripes', e.target.value as Stripes)}
+                >
+                  {[0, 1, 2, 3, 4].map((stripe) => (
+                    <MenuItem key={stripe} value={stripe}>
+                      {stripe}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
                 fullWidth
                 label="Telefone"
@@ -218,20 +301,6 @@ export function QuickStudentDialog({ open, onClose, onSuccess }: QuickStudentDia
                   ),
                 }}
               />
-              <FormControl fullWidth>
-                <InputLabel>Categoria</InputLabel>
-                <Select
-                  value={form.category}
-                  label="Categoria"
-                  onChange={(e) => handleChange('category', e.target.value as StudentCategory)}
-                >
-                  <MenuItem value="adult">Adulto</MenuItem>
-                  <MenuItem value="kids">Kids</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
-
-            <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
                 fullWidth
                 label="Email"
@@ -246,22 +315,23 @@ export function QuickStudentDialog({ open, onClose, onSuccess }: QuickStudentDia
                   ),
                 }}
               />
-              <TextField
-                fullWidth
-                label="Data de Nascimento"
-                type="date"
-                value={form.birthDate}
-                onChange={(e) => handleChange('birthDate', e.target.value)}
-                InputLabelProps={{ shrink: true }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Calendar size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-              />
             </Box>
+
+            <TextField
+              fullWidth
+              label="Data de Nascimento"
+              type="date"
+              value={form.birthDate}
+              onChange={(e) => handleChange('birthDate', e.target.value)}
+              InputLabelProps={{ shrink: true }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Calendar size={18} />
+                  </InputAdornment>
+                ),
+              }}
+            />
 
             <Alert severity="info" sx={{ mt: 1 }}>
               <Typography variant="caption">

@@ -463,8 +463,10 @@ export default function StudentProfilePage() {
       const linkCode = await linkCodeService.generate(studentId, student.fullName, user.id);
       setGeneratedLinkCode(linkCode);
       setLinkCodeDialogOpen(true);
-    } catch {
-      showError('Erro ao gerar código de acesso');
+    } catch (err) {
+      console.error('Erro ao gerar código de acesso:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao gerar código de acesso';
+      showError(errorMessage);
     } finally {
       setGeneratingCode(false);
     }

@@ -8,9 +8,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
-  limit,
-  serverTimestamp,
   Timestamp,
   DocumentSnapshot,
 } from 'firebase/firestore';
@@ -97,12 +94,13 @@ export const achievementService = {
   async getByStudent(studentId: string): Promise<Achievement[]> {
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      orderBy('date', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToAchievement);
+    const achievements = snapshot.docs.map(docToAchievement);
+    // Sort client-side to avoid composite index
+    return achievements.sort((a, b) => b.date.getTime() - a.date.getTime());
   },
 
   // Alias for getByStudent
@@ -128,44 +126,49 @@ export const achievementService = {
   // Get Achievements by Type
   // ============================================
   async getByType(studentId: string, type: AchievementType): Promise<Achievement[]> {
+    // Query by studentId only and filter by type client-side to avoid composite index
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      where('type', '==', type),
-      orderBy('date', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToAchievement);
+    const achievements = snapshot.docs.map(docToAchievement);
+    // Filter by type and sort client-side
+    return achievements
+      .filter((a) => a.type === type)
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
   },
 
   // ============================================
   // Get Public Achievements (for sharing)
   // ============================================
   async getPublic(studentId: string): Promise<Achievement[]> {
+    // Query by studentId only and filter by isPublic client-side to avoid composite index
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      where('isPublic', '==', true),
-      orderBy('date', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToAchievement);
+    const achievements = snapshot.docs.map(docToAchievement);
+    // Filter by isPublic and sort client-side
+    return achievements
+      .filter((a) => a.isPublic)
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
   },
 
   // ============================================
   // Get Recent Achievements
   // ============================================
   async getRecent(limitCount = 10): Promise<Achievement[]> {
-    const q = query(
-      collection(db, COLLECTION),
-      orderBy('date', 'desc'),
-      limit(limitCount)
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToAchievement);
+    // Fetch all and sort/limit client-side to avoid index issues
+    const snapshot = await getDocs(collection(db, COLLECTION));
+    const achievements = snapshot.docs.map(docToAchievement);
+    // Sort by date desc and limit
+    return achievements
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, limitCount);
   },
 
   // ============================================
@@ -200,17 +203,58 @@ export const achievementService = {
     data: Omit<Achievement, 'id' | 'createdAt'>,
     createdBy?: string
   ): Promise<Achievement> {
-    const docData = {
-      ...data,
+    const now = new Date();
+
+    // Build docData carefully to avoid undefined values
+    const docData: Record<string, unknown> = {
+      studentId: data.studentId,
+      studentName: data.studentName,
+      type: data.type,
+      title: data.title,
       date: Timestamp.fromDate(new Date(data.date)),
-      createdBy,
-      createdAt: serverTimestamp(),
+      isPublic: data.isPublic ?? true,
+      createdAt: Timestamp.fromDate(now),
     };
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
-    const newDoc = await getDoc(docRef);
+    // Only add optional fields if they have values
+    if (data.description) docData.description = data.description;
+    if (createdBy) docData.createdBy = createdBy;
+    if (data.fromBelt) docData.fromBelt = data.fromBelt;
+    if (data.toBelt) docData.toBelt = data.toBelt;
+    if (data.fromStripes !== undefined) docData.fromStripes = data.fromStripes;
+    if (data.toStripes !== undefined) docData.toStripes = data.toStripes;
+    if (data.competitionId) docData.competitionId = data.competitionId;
+    if (data.competitionName) docData.competitionName = data.competitionName;
+    if (data.position) docData.position = data.position;
+    if (data.milestone) docData.milestone = data.milestone;
+    if (data.photoUrl) docData.photoUrl = data.photoUrl;
 
-    return docToAchievement(newDoc);
+    const docRef = await addDoc(collection(db, COLLECTION), docData);
+
+    // Return the achievement object directly without re-fetching
+    const achievement: Achievement = {
+      id: docRef.id,
+      studentId: data.studentId,
+      studentName: data.studentName,
+      type: data.type,
+      title: data.title,
+      description: data.description,
+      date: new Date(data.date),
+      fromBelt: data.fromBelt,
+      toBelt: data.toBelt,
+      fromStripes: data.fromStripes,
+      toStripes: data.toStripes,
+      competitionId: data.competitionId,
+      competitionName: data.competitionName,
+      position: data.position,
+      milestone: data.milestone,
+      photoUrl: data.photoUrl,
+      isPublic: data.isPublic ?? true,
+      createdAt: now,
+      createdBy,
+    };
+
+    return achievement;
   },
 
   // ============================================

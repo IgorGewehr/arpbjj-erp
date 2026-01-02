@@ -6,9 +6,6 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
-  query,
-  orderBy,
-  serverTimestamp,
   Timestamp,
   DocumentSnapshot,
 } from 'firebase/firestore';
@@ -45,9 +42,11 @@ export const planService = {
   // Get All Plans
   // ============================================
   async list(): Promise<Plan[]> {
-    const q = query(collection(db, COLLECTION), orderBy('monthlyValue', 'asc'));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToPlan);
+    // Fetch all and sort client-side to avoid index issues
+    const snapshot = await getDocs(collection(db, COLLECTION));
+    const plans = snapshot.docs.map(docToPlan);
+    // Sort by monthlyValue asc
+    return plans.sort((a, b) => a.monthlyValue - b.monthlyValue);
   },
 
   // ============================================
@@ -76,19 +75,38 @@ export const planService = {
   // Create Plan
   // ============================================
   async create(data: Omit<Plan, 'id' | 'createdAt' | 'updatedAt' | 'studentIds'>): Promise<Plan> {
-    const now = serverTimestamp();
+    const now = new Date();
 
-    const docData = {
-      ...data,
+    // Build docData carefully to avoid undefined values
+    const docData: Record<string, unknown> = {
+      name: data.name,
+      monthlyValue: data.monthlyValue,
+      classesPerWeek: data.classesPerWeek,
+      isActive: data.isActive,
       studentIds: [],
+      createdAt: Timestamp.fromDate(now),
+      updatedAt: Timestamp.fromDate(now),
+    };
+
+    // Only add description if it has a value
+    if (data.description) docData.description = data.description;
+
+    const docRef = await addDoc(collection(db, COLLECTION), docData);
+
+    // Return plan directly without re-fetching
+    const plan: Plan = {
+      id: docRef.id,
+      name: data.name,
+      description: data.description,
+      monthlyValue: data.monthlyValue,
+      classesPerWeek: data.classesPerWeek,
+      studentIds: [],
+      isActive: data.isActive,
       createdAt: now,
       updatedAt: now,
     };
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
-    const newDoc = await getDoc(docRef);
-
-    return docToPlan(newDoc);
+    return plan;
   },
 
   // ============================================
@@ -97,10 +115,19 @@ export const planService = {
   async update(id: string, data: Partial<Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Plan> {
     const docRef = doc(db, COLLECTION, id);
 
-    await updateDoc(docRef, {
-      ...data,
-      updatedAt: serverTimestamp(),
-    });
+    const updateData: Record<string, unknown> = {
+      updatedAt: Timestamp.fromDate(new Date()),
+    };
+
+    // Only add fields that are being updated
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.monthlyValue !== undefined) updateData.monthlyValue = data.monthlyValue;
+    if (data.classesPerWeek !== undefined) updateData.classesPerWeek = data.classesPerWeek;
+    if (data.isActive !== undefined) updateData.isActive = data.isActive;
+    if (data.studentIds !== undefined) updateData.studentIds = data.studentIds;
+
+    await updateDoc(docRef, updateData);
 
     const updatedDoc = await getDoc(docRef);
     return docToPlan(updatedDoc);

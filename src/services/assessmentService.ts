@@ -8,9 +8,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
-  limit,
-  serverTimestamp,
   Timestamp,
   DocumentSnapshot,
 } from 'firebase/firestore';
@@ -55,13 +52,15 @@ export const assessmentService = {
   async getByStudent(studentId: string, limitCount = 10): Promise<Assessment[]> {
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      orderBy('date', 'desc'),
-      limit(limitCount)
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToAssessment);
+    const assessments = snapshot.docs.map(docToAssessment);
+    // Sort by date desc and limit client-side
+    return assessments
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, limitCount);
   },
 
   // ============================================
@@ -92,16 +91,38 @@ export const assessmentService = {
   async create(
     data: Omit<Assessment, 'id' | 'createdAt'>,
   ): Promise<Assessment> {
-    const docData = {
-      ...data,
+    const now = new Date();
+
+    // Build docData carefully to avoid undefined values
+    const docData: Record<string, unknown> = {
+      studentId: data.studentId,
+      studentName: data.studentName,
       date: Timestamp.fromDate(new Date(data.date)),
-      createdAt: serverTimestamp(),
+      scores: data.scores,
+      evaluatedBy: data.evaluatedBy,
+      evaluatedByName: data.evaluatedByName,
+      createdAt: Timestamp.fromDate(now),
     };
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
-    const newDoc = await getDoc(docRef);
+    // Only add notes if it has a value
+    if (data.notes) docData.notes = data.notes;
 
-    return docToAssessment(newDoc);
+    const docRef = await addDoc(collection(db, COLLECTION), docData);
+
+    // Return assessment directly without re-fetching
+    const assessment: Assessment = {
+      id: docRef.id,
+      studentId: data.studentId,
+      studentName: data.studentName,
+      date: new Date(data.date),
+      scores: data.scores,
+      notes: data.notes,
+      evaluatedBy: data.evaluatedBy,
+      evaluatedByName: data.evaluatedByName,
+      createdAt: now,
+    };
+
+    return assessment;
   },
 
   // ============================================
@@ -201,14 +222,13 @@ export const assessmentService = {
   // Get Recent Assessments (all students)
   // ============================================
   async getRecent(limitCount = 20): Promise<Assessment[]> {
-    const q = query(
-      collection(db, COLLECTION),
-      orderBy('date', 'desc'),
-      limit(limitCount)
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToAssessment);
+    // Fetch all and sort/limit client-side to avoid index issues
+    const snapshot = await getDocs(collection(db, COLLECTION));
+    const assessments = snapshot.docs.map(docToAssessment);
+    // Sort by date desc and limit
+    return assessments
+      .sort((a, b) => b.date.getTime() - a.date.getTime())
+      .slice(0, limitCount);
   },
 
   // ============================================

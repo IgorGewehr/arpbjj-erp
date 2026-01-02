@@ -8,8 +8,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
-  serverTimestamp,
   Timestamp,
   DocumentSnapshot,
   writeBatch,
@@ -54,12 +52,11 @@ export const financialService = {
   // Get All Financials with Filters
   // ============================================
   async list(filters: FinancialFilters = {}): Promise<Financial[]> {
-    const q = query(collection(db, COLLECTION), orderBy('dueDate', 'desc'));
-
-    const snapshot = await getDocs(q);
+    // Fetch all and filter/sort client-side to avoid index issues
+    const snapshot = await getDocs(collection(db, COLLECTION));
     let results = snapshot.docs.map(docToFinancial);
 
-    // Apply filters in memory (Firestore limitation on multiple where clauses)
+    // Apply filters in memory
     if (filters.studentId) {
       results = results.filter((f) => f.studentId === filters.studentId);
     }
@@ -73,7 +70,8 @@ export const financialService = {
       results = results.filter((f) => f.referenceMonth === filters.month);
     }
 
-    return results;
+    // Sort by dueDate desc client-side
+    return results.sort((a, b) => b.dueDate.getTime() - a.dueDate.getTime());
   },
 
   // ============================================
@@ -96,40 +94,37 @@ export const financialService = {
   async getByStudent(studentId: string): Promise<Financial[]> {
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      orderBy('dueDate', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToFinancial);
+    const financials = snapshot.docs.map(docToFinancial);
+    // Sort by dueDate desc client-side
+    return financials.sort((a, b) => b.dueDate.getTime() - a.dueDate.getTime());
   },
 
   // ============================================
   // Get Pending Payments
   // ============================================
   async getPending(): Promise<Financial[]> {
-    const q = query(
-      collection(db, COLLECTION),
-      where('status', '==', 'pending'),
-      orderBy('dueDate', 'asc')
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToFinancial);
+    // Fetch all and filter/sort client-side to avoid composite index
+    const snapshot = await getDocs(collection(db, COLLECTION));
+    const financials = snapshot.docs.map(docToFinancial);
+    return financials
+      .filter((f) => f.status === 'pending')
+      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
   },
 
   // ============================================
   // Get Overdue Payments
   // ============================================
   async getOverdue(): Promise<Financial[]> {
-    const q = query(
-      collection(db, COLLECTION),
-      where('status', '==', 'overdue'),
-      orderBy('dueDate', 'asc')
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToFinancial);
+    // Fetch all and filter/sort client-side to avoid composite index
+    const snapshot = await getDocs(collection(db, COLLECTION));
+    const financials = snapshot.docs.map(docToFinancial);
+    return financials
+      .filter((f) => f.status === 'overdue')
+      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
   },
 
   // ============================================
@@ -140,15 +135,16 @@ export const financialService = {
     const start = startOfMonth(now);
     const end = endOfMonth(now);
 
-    const q = query(
-      collection(db, COLLECTION),
-      where('status', '==', 'paid'),
-      where('paymentDate', '>=', Timestamp.fromDate(start)),
-      where('paymentDate', '<=', Timestamp.fromDate(end))
-    );
+    // Fetch all and filter client-side to avoid composite index
+    const snapshot = await getDocs(collection(db, COLLECTION));
+    const financials = snapshot.docs.map(docToFinancial);
 
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToFinancial);
+    return financials.filter((f) =>
+      f.status === 'paid' &&
+      f.paymentDate &&
+      f.paymentDate.getTime() >= start.getTime() &&
+      f.paymentDate.getTime() <= end.getTime()
+    );
   },
 
   // ============================================
@@ -202,21 +198,50 @@ export const financialService = {
     data: Omit<Financial, 'id' | 'createdAt' | 'updatedAt'>,
     createdBy: string
   ): Promise<Financial> {
-    const now = serverTimestamp();
+    const now = new Date();
 
-    const docData = {
-      ...data,
+    // Build docData carefully to avoid undefined values
+    const docData: Record<string, unknown> = {
+      studentId: data.studentId,
+      studentName: data.studentName,
+      type: data.type,
+      description: data.description,
+      amount: data.amount,
       dueDate: Timestamp.fromDate(new Date(data.dueDate)),
-      paymentDate: data.paymentDate ? Timestamp.fromDate(new Date(data.paymentDate)) : null,
+      status: data.status,
       createdBy,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: Timestamp.fromDate(now),
+      updatedAt: Timestamp.fromDate(now),
     };
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
-    const newDoc = await getDoc(docRef);
+    // Only add optional fields if they have values
+    if (data.paymentDate) docData.paymentDate = Timestamp.fromDate(new Date(data.paymentDate));
+    if (data.method) docData.method = data.method;
+    if (data.referenceMonth) docData.referenceMonth = data.referenceMonth;
+    if (data.receiptUrl) docData.receiptUrl = data.receiptUrl;
 
-    return docToFinancial(newDoc);
+    const docRef = await addDoc(collection(db, COLLECTION), docData);
+
+    // Return financial directly without re-fetching
+    const financial: Financial = {
+      id: docRef.id,
+      studentId: data.studentId,
+      studentName: data.studentName,
+      type: data.type,
+      description: data.description,
+      amount: data.amount,
+      dueDate: new Date(data.dueDate),
+      status: data.status,
+      paymentDate: data.paymentDate ? new Date(data.paymentDate) : undefined,
+      method: data.method,
+      referenceMonth: data.referenceMonth,
+      receiptUrl: data.receiptUrl,
+      createdAt: now,
+      updatedAt: now,
+      createdBy,
+    };
+
+    return financial;
   },
 
   // ============================================
@@ -278,7 +303,7 @@ export const financialService = {
       status: 'paid',
       method,
       paymentDate: Timestamp.fromDate(paymentDate),
-      updatedAt: serverTimestamp(),
+      updatedAt: Timestamp.fromDate(new Date()),
     });
 
     const updatedDoc = await getDoc(docRef);
@@ -292,26 +317,29 @@ export const financialService = {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const q = query(
-      collection(db, COLLECTION),
-      where('status', '==', 'pending'),
-      where('dueDate', '<', Timestamp.fromDate(today))
+    // Fetch all and filter client-side to avoid composite index
+    const snapshot = await getDocs(collection(db, COLLECTION));
+    const financials = snapshot.docs.map(docToFinancial);
+
+    const overdueFinancials = financials.filter(
+      (f) => f.status === 'pending' && f.dueDate.getTime() < today.getTime()
     );
 
-    const snapshot = await getDocs(q);
-
-    if (snapshot.empty) return 0;
+    if (overdueFinancials.length === 0) return 0;
 
     const batch = writeBatch(db);
-    snapshot.docs.forEach((doc) => {
-      batch.update(doc.ref, {
+    const now = Timestamp.fromDate(new Date());
+
+    overdueFinancials.forEach((f) => {
+      const docRef = doc(db, COLLECTION, f.id);
+      batch.update(docRef, {
         status: 'overdue',
-        updatedAt: serverTimestamp(),
+        updatedAt: now,
       });
     });
 
     await batch.commit();
-    return snapshot.size;
+    return overdueFinancials.length;
   },
 
   // ============================================
@@ -322,7 +350,7 @@ export const financialService = {
 
     await updateDoc(docRef, {
       status: 'cancelled',
-      updatedAt: serverTimestamp(),
+      updatedAt: Timestamp.fromDate(new Date()),
     });
 
     const updatedDoc = await getDoc(docRef);
@@ -336,20 +364,24 @@ export const financialService = {
     const docRef = doc(db, COLLECTION, id);
 
     const updateData: Record<string, unknown> = {
-      ...data,
-      updatedAt: serverTimestamp(),
+      updatedAt: Timestamp.fromDate(new Date()),
     };
 
+    // Only add fields that are being updated
+    if (data.studentName !== undefined) updateData.studentName = data.studentName;
+    if (data.type !== undefined) updateData.type = data.type;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.amount !== undefined) updateData.amount = data.amount;
+    if (data.status !== undefined) updateData.status = data.status;
+    if (data.method !== undefined) updateData.method = data.method;
+    if (data.referenceMonth !== undefined) updateData.referenceMonth = data.referenceMonth;
+    if (data.receiptUrl !== undefined) updateData.receiptUrl = data.receiptUrl;
     if (data.dueDate) {
       updateData.dueDate = Timestamp.fromDate(new Date(data.dueDate));
     }
     if (data.paymentDate) {
       updateData.paymentDate = Timestamp.fromDate(new Date(data.paymentDate));
     }
-
-    // Remove undefined values
-    delete updateData.id;
-    delete updateData.createdAt;
 
     await updateDoc(docRef, updateData);
 

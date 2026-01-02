@@ -8,8 +8,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
-  serverTimestamp,
   Timestamp,
   DocumentSnapshot,
 } from 'firebase/firestore';
@@ -46,9 +44,21 @@ const docToLinkCode = (doc: DocumentSnapshot): LinkCode => {
     studentId: data.studentId,
     studentName: data.studentName,
     createdBy: data.createdBy,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    expiresAt: data.expiresAt instanceof Timestamp ? data.expiresAt.toDate() : new Date(data.expiresAt),
-    usedAt: data.usedAt instanceof Timestamp ? data.usedAt.toDate() : data.usedAt ? new Date(data.usedAt) : undefined,
+    createdAt: data.createdAt instanceof Timestamp
+      ? data.createdAt.toDate()
+      : data.createdAt
+        ? new Date(data.createdAt)
+        : new Date(),
+    expiresAt: data.expiresAt instanceof Timestamp
+      ? data.expiresAt.toDate()
+      : data.expiresAt
+        ? new Date(data.expiresAt)
+        : new Date(),
+    usedAt: data.usedAt instanceof Timestamp
+      ? data.usedAt.toDate()
+      : data.usedAt
+        ? new Date(data.usedAt)
+        : undefined,
     usedBy: data.usedBy,
   };
 };
@@ -90,14 +100,24 @@ export const linkCodeService = {
       studentId,
       studentName,
       createdBy,
-      createdAt: serverTimestamp(),
+      createdAt: Timestamp.fromDate(now),
       expiresAt: Timestamp.fromDate(expiresAt),
     };
 
     const docRef = await addDoc(collection(db, COLLECTION), docData);
-    const newDoc = await getDoc(docRef);
 
-    return docToLinkCode(newDoc);
+    // Return the link code object directly without re-fetching
+    const linkCode: LinkCode = {
+      id: docRef.id,
+      code,
+      studentId,
+      studentName,
+      createdBy,
+      createdAt: now,
+      expiresAt,
+    };
+
+    return linkCode;
   },
 
   // ============================================
@@ -151,34 +171,42 @@ export const linkCodeService = {
       throw new Error('Código não encontrado');
     }
 
+    const now = new Date();
     const docRef = doc(db, COLLECTION, linkCode.id);
 
     await updateDoc(docRef, {
-      usedAt: serverTimestamp(),
+      usedAt: Timestamp.fromDate(now),
       usedBy: userId,
     });
 
-    const updatedDoc = await getDoc(docRef);
-    return docToLinkCode(updatedDoc);
+    // Return updated link code without re-fetching
+    return {
+      ...linkCode,
+      usedAt: now,
+      usedBy: userId,
+    };
   },
 
   // ============================================
   // Get Active Code for Student
   // ============================================
   async getActiveForStudent(studentId: string): Promise<LinkCode | null> {
+    // Query by studentId only, sort client-side to avoid composite index
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      orderBy('createdAt', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
+    const codes = snapshot.docs.map(docToLinkCode);
 
-    for (const doc of snapshot.docs) {
-      const linkCode = docToLinkCode(doc);
+    // Sort by createdAt desc client-side
+    codes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-      // Check if code is still valid (not used and not expired)
-      if (!linkCode.usedAt && new Date() < linkCode.expiresAt) {
+    // Find first valid code (not used and not expired)
+    const now = new Date();
+    for (const linkCode of codes) {
+      if (!linkCode.usedAt && now < linkCode.expiresAt) {
         return linkCode;
       }
     }
@@ -190,14 +218,17 @@ export const linkCodeService = {
   // Get All Codes for Student
   // ============================================
   async getForStudent(studentId: string): Promise<LinkCode[]> {
+    // Query by studentId only, sort client-side to avoid composite index
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      orderBy('createdAt', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToLinkCode);
+    const codes = snapshot.docs.map(docToLinkCode);
+
+    // Sort by createdAt desc client-side
+    return codes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   },
 
   // ============================================
@@ -261,33 +292,32 @@ export const linkCodeService = {
   // Get Pending Codes (for admin view)
   // ============================================
   async getPending(): Promise<LinkCode[]> {
-    const q = query(
-      collection(db, COLLECTION),
-      orderBy('createdAt', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
+    // Fetch all and filter/sort client-side to avoid index issues
+    const snapshot = await getDocs(collection(db, COLLECTION));
     const allCodes = snapshot.docs.map(docToLinkCode);
 
     // Filter to only active (not used, not expired) codes
     const now = new Date();
-    return allCodes.filter((c) => !c.usedAt && c.expiresAt > now);
+    const pendingCodes = allCodes.filter((c) => !c.usedAt && c.expiresAt > now);
+
+    // Sort by createdAt desc
+    return pendingCodes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   },
 
   // ============================================
   // Get Recently Used Codes (for admin view)
   // ============================================
   async getRecentlyUsed(limitCount = 10): Promise<LinkCode[]> {
-    const q = query(
-      collection(db, COLLECTION),
-      orderBy('usedAt', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
+    // Fetch all and filter/sort client-side to avoid index issues
+    const snapshot = await getDocs(collection(db, COLLECTION));
     const allCodes = snapshot.docs.map(docToLinkCode);
 
-    // Filter to only used codes
-    return allCodes.filter((c) => c.usedAt).slice(0, limitCount);
+    // Filter to only used codes and sort by usedAt desc
+    const usedCodes = allCodes
+      .filter((c) => c.usedAt)
+      .sort((a, b) => (b.usedAt?.getTime() || 0) - (a.usedAt?.getTime() || 0));
+
+    return usedCodes.slice(0, limitCount);
   },
 };
 

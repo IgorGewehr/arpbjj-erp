@@ -8,8 +8,6 @@ import {
   deleteDoc,
   query,
   where,
-  orderBy,
-  serverTimestamp,
   Timestamp,
   DocumentSnapshot,
 } from 'firebase/firestore';
@@ -86,41 +84,34 @@ export const competitionService = {
   // List All Competitions
   // ============================================
   async list(): Promise<Competition[]> {
-    const q = query(
-      collection(db, COMPETITIONS_COLLECTION),
-      orderBy('date', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToCompetition);
+    const snapshot = await getDocs(collection(db, COMPETITIONS_COLLECTION));
+    const competitions = snapshot.docs.map(docToCompetition);
+    // Sort client-side to avoid index issues
+    return competitions.sort((a, b) => b.date.getTime() - a.date.getTime());
   },
 
   // ============================================
   // Get Upcoming Competitions
   // ============================================
   async getUpcoming(): Promise<Competition[]> {
-    const q = query(
-      collection(db, COMPETITIONS_COLLECTION),
-      where('status', '==', 'upcoming'),
-      orderBy('date', 'asc')
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToCompetition);
+    // Fetch all and filter/sort client-side to avoid composite index
+    const snapshot = await getDocs(collection(db, COMPETITIONS_COLLECTION));
+    const competitions = snapshot.docs.map(docToCompetition);
+    return competitions
+      .filter((c) => c.status === 'upcoming')
+      .sort((a, b) => a.date.getTime() - b.date.getTime());
   },
 
   // ============================================
   // Get Completed Competitions
   // ============================================
   async getCompleted(): Promise<Competition[]> {
-    const q = query(
-      collection(db, COMPETITIONS_COLLECTION),
-      where('status', '==', 'completed'),
-      orderBy('date', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToCompetition);
+    // Fetch all and filter/sort client-side to avoid composite index
+    const snapshot = await getDocs(collection(db, COMPETITIONS_COLLECTION));
+    const competitions = snapshot.docs.map(docToCompetition);
+    return competitions
+      .filter((c) => c.status === 'completed')
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
   },
 
   // ============================================
@@ -144,24 +135,44 @@ export const competitionService = {
     data: Omit<Competition, 'id' | 'createdAt' | 'updatedAt' | 'enrolledStudentIds'>,
     createdBy: string
   ): Promise<Competition> {
-    const now = serverTimestamp();
+    const now = new Date();
 
-    const docData = {
-      ...data,
+    // Build docData carefully to avoid undefined values
+    const docData: Record<string, unknown> = {
+      name: data.name,
       date: Timestamp.fromDate(new Date(data.date)),
-      registrationDeadline: data.registrationDeadline
-        ? Timestamp.fromDate(new Date(data.registrationDeadline))
-        : null,
+      location: data.location,
+      status: data.status,
       enrolledStudentIds: [],
       createdBy,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: Timestamp.fromDate(now),
+      updatedAt: Timestamp.fromDate(now),
     };
 
-    const docRef = await addDoc(collection(db, COMPETITIONS_COLLECTION), docData);
-    const newDoc = await getDoc(docRef);
+    // Only add optional fields if they have values
+    if (data.description) docData.description = data.description;
+    if (data.registrationDeadline) {
+      docData.registrationDeadline = Timestamp.fromDate(new Date(data.registrationDeadline));
+    }
 
-    return docToCompetition(newDoc);
+    const docRef = await addDoc(collection(db, COMPETITIONS_COLLECTION), docData);
+
+    // Return competition directly without re-fetching
+    const competition: Competition = {
+      id: docRef.id,
+      name: data.name,
+      date: new Date(data.date),
+      location: data.location,
+      description: data.description,
+      status: data.status,
+      registrationDeadline: data.registrationDeadline ? new Date(data.registrationDeadline) : undefined,
+      enrolledStudentIds: [],
+      createdAt: now,
+      updatedAt: now,
+      createdBy,
+    };
+
+    return competition;
   },
 
   // ============================================
@@ -171,19 +182,21 @@ export const competitionService = {
     const docRef = doc(db, COMPETITIONS_COLLECTION, id);
 
     const updateData: Record<string, unknown> = {
-      ...data,
-      updatedAt: serverTimestamp(),
+      updatedAt: Timestamp.fromDate(new Date()),
     };
 
+    // Only add fields that are being updated
+    if (data.name !== undefined) updateData.name = data.name;
+    if (data.location !== undefined) updateData.location = data.location;
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.status !== undefined) updateData.status = data.status;
+    if (data.enrolledStudentIds !== undefined) updateData.enrolledStudentIds = data.enrolledStudentIds;
     if (data.date) {
       updateData.date = Timestamp.fromDate(new Date(data.date));
     }
     if (data.registrationDeadline) {
       updateData.registrationDeadline = Timestamp.fromDate(new Date(data.registrationDeadline));
     }
-
-    delete updateData.id;
-    delete updateData.createdAt;
 
     await updateDoc(docRef, updateData);
 
@@ -279,20 +292,48 @@ export const competitionService = {
     data: Omit<CompetitionResult, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>,
     createdBy: string
   ): Promise<CompetitionResult> {
-    const now = serverTimestamp();
+    const now = new Date();
 
-    const docData = {
-      ...data,
+    // Build docData carefully to avoid undefined values
+    const docData: Record<string, unknown> = {
+      competitionId: data.competitionId,
+      competitionName: data.competitionName,
+      studentId: data.studentId,
+      studentName: data.studentName,
+      position: data.position,
+      beltCategory: data.beltCategory,
+      ageCategory: data.ageCategory,
       date: Timestamp.fromDate(new Date(data.date)),
       createdBy,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: Timestamp.fromDate(now),
+      updatedAt: Timestamp.fromDate(now),
     };
 
-    const docRef = await addDoc(collection(db, RESULTS_COLLECTION), docData);
-    const newDoc = await getDoc(docRef);
+    // Only add optional fields if they have values
+    if (data.weightCategory) docData.weightCategory = data.weightCategory;
+    if (data.notes) docData.notes = data.notes;
 
-    return docToResult(newDoc);
+    const docRef = await addDoc(collection(db, RESULTS_COLLECTION), docData);
+
+    // Return result directly without re-fetching
+    const result: CompetitionResult = {
+      id: docRef.id,
+      competitionId: data.competitionId,
+      competitionName: data.competitionName,
+      studentId: data.studentId,
+      studentName: data.studentName,
+      position: data.position,
+      beltCategory: data.beltCategory,
+      ageCategory: data.ageCategory,
+      weightCategory: data.weightCategory,
+      notes: data.notes,
+      date: new Date(data.date),
+      createdAt: now,
+      updatedAt: now,
+      createdBy,
+    };
+
+    return result;
   },
 
   // ============================================
@@ -301,12 +342,17 @@ export const competitionService = {
   async getResultsForCompetition(competitionId: string): Promise<CompetitionResult[]> {
     const q = query(
       collection(db, RESULTS_COLLECTION),
-      where('competitionId', '==', competitionId),
-      orderBy('position', 'asc')
+      where('competitionId', '==', competitionId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToResult);
+    const results = snapshot.docs.map(docToResult);
+
+    // Sort by position client-side (gold, silver, bronze, participant)
+    const positionOrder = { gold: 1, silver: 2, bronze: 3, participant: 4 };
+    return results.sort((a, b) =>
+      (positionOrder[a.position] || 5) - (positionOrder[b.position] || 5)
+    );
   },
 
   // ============================================
@@ -315,12 +361,13 @@ export const competitionService = {
   async getResultsForStudent(studentId: string): Promise<CompetitionResult[]> {
     const q = query(
       collection(db, RESULTS_COLLECTION),
-      where('studentId', '==', studentId),
-      orderBy('date', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToResult);
+    const results = snapshot.docs.map(docToResult);
+    // Sort by date desc client-side
+    return results.sort((a, b) => b.date.getTime() - a.date.getTime());
   },
 
   // ============================================
@@ -358,16 +405,20 @@ export const competitionService = {
     const docRef = doc(db, RESULTS_COLLECTION, id);
 
     const updateData: Record<string, unknown> = {
-      ...data,
-      updatedAt: serverTimestamp(),
+      updatedAt: Timestamp.fromDate(new Date()),
     };
 
+    // Only add fields that are being updated
+    if (data.competitionName !== undefined) updateData.competitionName = data.competitionName;
+    if (data.studentName !== undefined) updateData.studentName = data.studentName;
+    if (data.position !== undefined) updateData.position = data.position;
+    if (data.beltCategory !== undefined) updateData.beltCategory = data.beltCategory;
+    if (data.ageCategory !== undefined) updateData.ageCategory = data.ageCategory;
+    if (data.weightCategory !== undefined) updateData.weightCategory = data.weightCategory;
+    if (data.notes !== undefined) updateData.notes = data.notes;
     if (data.date) {
       updateData.date = Timestamp.fromDate(new Date(data.date));
     }
-
-    delete updateData.id;
-    delete updateData.createdAt;
 
     await updateDoc(docRef, updateData);
 

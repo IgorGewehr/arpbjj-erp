@@ -6,8 +6,6 @@ import {
   addDoc,
   query,
   where,
-  orderBy,
-  serverTimestamp,
   Timestamp,
   DocumentSnapshot,
 } from 'firebase/firestore';
@@ -73,12 +71,13 @@ export const beltProgressionService = {
   async getByStudent(studentId: string): Promise<BeltProgression[]> {
     const q = query(
       collection(db, COLLECTION),
-      where('studentId', '==', studentId),
-      orderBy('promotionDate', 'desc')
+      where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToBeltProgression);
+    const progressions = snapshot.docs.map(docToBeltProgression);
+    // Sort by promotionDate desc client-side
+    return progressions.sort((a, b) => b.promotionDate.getTime() - a.promotionDate.getTime());
   },
 
   // ============================================
@@ -225,21 +224,24 @@ export const beltProgressionService = {
     }
 
     const totalClasses = await attendanceService.getStudentAttendanceCount(studentId);
+    const now = new Date();
 
-    // Create progression record
-    const progressionData = {
+    // Build progression data carefully to avoid undefined values
+    const progressionData: Record<string, unknown> = {
       studentId,
       previousBelt: student.currentBelt,
       previousStripes: student.currentStripes,
       newBelt,
       newStripes,
-      promotionDate: Timestamp.now(),
+      promotionDate: Timestamp.fromDate(now),
       totalClasses,
       promotedBy,
       promotedByName,
-      notes,
-      createdAt: serverTimestamp(),
+      createdAt: Timestamp.fromDate(now),
     };
+
+    // Only add notes if it has a value
+    if (notes) progressionData.notes = notes;
 
     const docRef = await addDoc(collection(db, COLLECTION), progressionData);
 
@@ -339,13 +341,13 @@ export const beltProgressionService = {
   // Get Recent Promotions
   // ============================================
   async getRecentPromotions(limitCount = 10): Promise<BeltProgression[]> {
-    const q = query(
-      collection(db, COLLECTION),
-      orderBy('promotionDate', 'desc')
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.slice(0, limitCount).map(docToBeltProgression);
+    // Fetch all and sort/limit client-side to avoid index issues
+    const snapshot = await getDocs(collection(db, COLLECTION));
+    const progressions = snapshot.docs.map(docToBeltProgression);
+    // Sort by promotionDate desc and limit
+    return progressions
+      .sort((a, b) => b.promotionDate.getTime() - a.promotionDate.getTime())
+      .slice(0, limitCount);
   },
 
   // ============================================

@@ -375,8 +375,8 @@ export default function StudentRegistrationPage() {
         createdBy: '',
       };
 
-      const newStudent = await createStudent(studentData);
-      router.push(`/alunos/${newStudent.id}`);
+      await createStudent(studentData);
+      router.push('/alunos');
     } catch {
       // Error is handled by the mutation
     }

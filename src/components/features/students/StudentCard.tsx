@@ -90,9 +90,10 @@ export function StudentCard({
         sx={{
           borderRadius: 2,
           opacity: student.status === 'inactive' ? 0.6 : 1,
+          position: 'relative',
         }}
       >
-        <CardActionArea onClick={handleClick} sx={{ p: 2 }}>
+        <CardActionArea onClick={handleClick} sx={{ p: 2, pr: 12 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {/* Avatar */}
             <Avatar
@@ -159,22 +160,34 @@ export function StudentCard({
                 {student.phone}
               </Typography>
             </Box>
-
-            {/* WhatsApp Button */}
-            <IconButton
-              size="small"
-              onClick={handleWhatsApp}
-              sx={{
-                bgcolor: 'action.hover',
-                '&:hover': { bgcolor: 'success.light' },
-              }}
-            >
-              <Phone size={18} />
-            </IconButton>
-
-            <ChevronRight size={18} style={{ color: '#9ca3af' }} />
           </Box>
         </CardActionArea>
+
+        {/* Actions - positioned outside CardActionArea to avoid nested buttons */}
+        <Box
+          sx={{
+            position: 'absolute',
+            right: 16,
+            top: '50%',
+            transform: 'translateY(-50%)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1,
+            zIndex: 1,
+          }}
+        >
+          <IconButton
+            size="small"
+            onClick={handleWhatsApp}
+            sx={{
+              bgcolor: 'action.hover',
+              '&:hover': { bgcolor: 'success.light' },
+            }}
+          >
+            <Phone size={18} />
+          </IconButton>
+          <ChevronRight size={18} style={{ color: '#9ca3af' }} />
+        </Box>
       </Card>
     );
   }
@@ -187,7 +200,7 @@ export function StudentCard({
         position: 'relative',
       }}
     >
-      <CardActionArea onClick={handleClick} sx={{ p: 2.5 }}>
+      <CardActionArea onClick={handleClick} sx={{ p: 2.5, pr: 8 }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
           {/* Avatar */}
           <Avatar
@@ -251,22 +264,32 @@ export function StudentCard({
               />
             </Box>
           </Box>
-
-          {/* Actions */}
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <IconButton
-              size="small"
-              onClick={handleWhatsApp}
-              sx={{
-                bgcolor: 'action.hover',
-                '&:hover': { bgcolor: 'success.light' },
-              }}
-            >
-              <Phone size={18} />
-            </IconButton>
-          </Box>
         </Box>
       </CardActionArea>
+
+      {/* Actions - positioned outside CardActionArea to avoid nested buttons */}
+      <Box
+        sx={{
+          position: 'absolute',
+          right: 20,
+          top: 20,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 1,
+          zIndex: 1,
+        }}
+      >
+        <IconButton
+          size="small"
+          onClick={handleWhatsApp}
+          sx={{
+            bgcolor: 'action.hover',
+            '&:hover': { bgcolor: 'success.light' },
+          }}
+        >
+          <Phone size={18} />
+        </IconButton>
+      </Box>
     </Card>
   );
 }

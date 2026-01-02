@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { useParams, useRouter } from 'next/navigation';
 import {
   Box,
@@ -171,6 +172,7 @@ export default function StudentEditPage() {
   const { updateStudent, isUpdating } = useStudents({ autoLoad: false });
   const { activePlans, toggleStudent: togglePlanStudent, getPlanForStudent } = usePlans();
   const { classes } = useClasses();
+  const queryClient = useQueryClient();
 
   const [currentPlanId, setCurrentPlanId] = useState<string>('');
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
@@ -808,6 +810,9 @@ export default function StudentEditPage() {
                               await classService.addStudent(cls.id, studentId);
                               setSelectedClasses((prev) => [...prev, cls.id]);
                             }
+                            // Invalidate classes cache so attendance page reflects changes
+                            queryClient.invalidateQueries({ queryKey: ['classes'] });
+                            queryClient.invalidateQueries({ queryKey: ['allClasses'] });
                           }}
                           color={isSelected ? 'primary' : 'default'}
                           variant={isSelected ? 'filled' : 'outlined'}

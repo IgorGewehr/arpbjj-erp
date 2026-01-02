@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Dialog,
   DialogTitle,
@@ -60,6 +61,7 @@ export function QuickRegisterDialog({
   const { quickCreateStudent, isCreating } = useStudents({ autoLoad: false });
   const { classes } = useClasses();
   const { activePlans, toggleStudent } = usePlans();
+  const queryClient = useQueryClient();
 
   const [formData, setFormData] = useState({
     fullName: '',
@@ -146,6 +148,9 @@ export function QuickRegisterDialog({
         for (const classId of formData.selectedClasses) {
           await classService.addStudent(classId, student.id);
         }
+        // Invalidate classes cache so attendance page reflects changes
+        queryClient.invalidateQueries({ queryKey: ['classes'] });
+        queryClient.invalidateQueries({ queryKey: ['allClasses'] });
       }
 
       // Add student to selected plan

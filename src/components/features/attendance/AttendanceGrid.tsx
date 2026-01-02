@@ -40,6 +40,7 @@ import {
   ChevronRight,
   Calendar,
   History,
+  RefreshCw,
 } from 'lucide-react';
 import { AttendanceCard, AttendanceCardSkeleton } from './AttendanceCard';
 import { useAttendance } from '@/hooks';
@@ -456,6 +457,7 @@ export function AttendanceGrid({
     stats,
     isLoading,
     isMutating,
+    refresh,
   } = useAttendance({ autoDetectClass: true });
 
   // Handle class change
@@ -647,6 +649,14 @@ export function AttendanceGrid({
             disabled={addDays(selectedDate, 1) > new Date()}
           >
             <ChevronRight size={isMobile ? 18 : 20} />
+          </IconButton>
+          <IconButton
+            onClick={refresh}
+            size="small"
+            title="Atualizar dados"
+            sx={{ ml: 0.5 }}
+          >
+            <RefreshCw size={isMobile ? 16 : 18} />
           </IconButton>
         </Box>
       </Box>

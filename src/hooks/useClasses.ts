@@ -76,6 +76,8 @@ export function useClasses() {
     onSuccess: (newClass) => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.classes] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.weeklySchedule] });
+      // Also invalidate allClasses used by useAttendance
+      queryClient.invalidateQueries({ queryKey: ['allClasses'] });
       success(`Turma "${newClass.name}" criada com sucesso!`);
     },
     onError: () => {
@@ -94,6 +96,8 @@ export function useClasses() {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.classes] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.weeklySchedule] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.class, updatedClass.id] });
+      // Also invalidate allClasses used by useAttendance
+      queryClient.invalidateQueries({ queryKey: ['allClasses'] });
       success('Turma atualizada com sucesso!');
     },
     onError: () => {
@@ -111,6 +115,8 @@ export function useClasses() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.classes] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.weeklySchedule] });
+      // Also invalidate allClasses used by useAttendance
+      queryClient.invalidateQueries({ queryKey: ['allClasses'] });
       success('Turma desativada com sucesso!');
     },
     onError: () => {
@@ -127,6 +133,8 @@ export function useClasses() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.classes] });
+      // Also invalidate allClasses used by useAttendance
+      queryClient.invalidateQueries({ queryKey: ['allClasses'] });
     },
     onError: () => {
       showError('Erro ao atualizar aluno na turma');

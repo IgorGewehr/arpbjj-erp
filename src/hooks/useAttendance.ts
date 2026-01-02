@@ -59,7 +59,9 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
   } = useQuery({
     queryKey: [QUERY_KEYS.allClasses],
     queryFn: () => classService.list(),
-    staleTime: 1000 * 60 * 10, // 10 minutes
+    staleTime: 1000 * 60 * 2, // 2 minutes - shorter to catch class updates
+    refetchOnWindowFocus: true, // Refetch when user returns from editing
+    refetchOnMount: true, // Always check for updates when component mounts
   });
 
   // ============================================
@@ -142,7 +144,9 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
   } = useQuery({
     queryKey: [QUERY_KEYS.activeStudents],
     queryFn: () => studentService.getActive(),
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 1000 * 60 * 2, // 2 minutes - shorter to catch student updates
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 
   // ============================================
@@ -571,12 +575,13 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     isLoading,
     isMutating,
 
-    // Refresh
+    // Refresh - forces re-fetch of all data
     refresh: () => {
       const dateKey = format(selectedDate, 'yyyy-MM-dd');
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey] });
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activeStudents] });
+      // Invalidate all related queries to force fresh data
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.allClasses] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activeStudents] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey] });
     },
   };
 }

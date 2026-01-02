@@ -156,13 +156,11 @@ export function StudentList() {
     []
   );
 
-  // Handle new student success
-  const handleNewStudentSuccess = useCallback(
-    (studentId: string) => {
-      router.push(`/alunos/${studentId}`);
-    },
-    [router]
-  );
+  // Handle new student success - stay on /alunos page
+  const handleNewStudentSuccess = useCallback(() => {
+    // The list will auto-refresh via React Query invalidation
+    // No redirect needed - stay on current page
+  }, []);
 
   // Active filters count
   const activeFiltersCount = useMemo(() => {

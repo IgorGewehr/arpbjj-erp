@@ -28,11 +28,17 @@ const docToStudent = (doc: DocumentSnapshot): Student => {
   const data = doc.data();
   if (!data) throw new Error('Document data is undefined');
 
+  // Convert beltHistory dates
+  const beltHistory = data.beltHistory?.map((entry: { belt: string; stripes: number; date: Timestamp | Date; notes?: string }) => ({
+    ...entry,
+    date: entry.date instanceof Timestamp ? entry.date.toDate() : new Date(entry.date),
+  }));
+
   return {
     id: doc.id,
     fullName: data.fullName,
     nickname: data.nickname,
-    birthDate: data.birthDate instanceof Timestamp ? data.birthDate.toDate() : new Date(data.birthDate),
+    birthDate: data.birthDate instanceof Timestamp ? data.birthDate.toDate() : data.birthDate ? new Date(data.birthDate) : undefined,
     cpf: data.cpf,
     rg: data.rg,
     phone: data.phone,
@@ -41,10 +47,17 @@ const docToStudent = (doc: DocumentSnapshot): Student => {
     address: data.address,
     guardian: data.guardian,
     startDate: data.startDate instanceof Timestamp ? data.startDate.toDate() : new Date(data.startDate),
+    jiujitsuStartDate: data.jiujitsuStartDate instanceof Timestamp
+      ? data.jiujitsuStartDate.toDate()
+      : data.jiujitsuStartDate
+        ? new Date(data.jiujitsuStartDate)
+        : undefined,
     currentBelt: data.currentBelt,
     currentStripes: data.currentStripes,
     category: data.category,
     teamId: data.teamId,
+    weight: data.weight,
+    beltHistory,
     status: data.status,
     statusNote: data.statusNote,
     tuitionValue: data.tuitionValue,
@@ -80,8 +93,19 @@ const studentToDoc = (student: Partial<Student>): Record<string, unknown> => {
   if (student.startDate) {
     data.startDate = Timestamp.fromDate(new Date(student.startDate));
   }
+  if (student.jiujitsuStartDate) {
+    data.jiujitsuStartDate = Timestamp.fromDate(new Date(student.jiujitsuStartDate));
+  }
   if (student.medicalCertificateExpiry) {
     data.medicalCertificateExpiry = Timestamp.fromDate(new Date(student.medicalCertificateExpiry));
+  }
+
+  // Convert beltHistory dates to Timestamps
+  if (student.beltHistory && student.beltHistory.length > 0) {
+    data.beltHistory = student.beltHistory.map(entry => ({
+      ...entry,
+      date: Timestamp.fromDate(new Date(entry.date)),
+    }));
   }
 
   // Remove id from data (it's the document ID)

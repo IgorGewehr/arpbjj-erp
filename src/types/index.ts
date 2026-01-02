@@ -120,11 +120,21 @@ export interface Student {
   };
 
   // Jiu-Jitsu Info
-  startDate: Date;
+  startDate: Date;                          // When started at THIS academy
+  jiujitsuStartDate?: Date;                 // When started jiu-jitsu overall (at any academy)
   currentBelt: BeltColor | KidsBeltColor;
   currentStripes: Stripes;
   category: StudentCategory;
   teamId?: string;
+  weight?: number;                          // Weight in kg
+
+  // Belt History (for timeline)
+  beltHistory?: Array<{
+    belt: BeltColor | KidsBeltColor;
+    stripes: Stripes;
+    date: Date;
+    notes?: string;
+  }>;
 
   // Status
   status: StudentStatus;

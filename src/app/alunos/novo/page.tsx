@@ -27,7 +27,7 @@ import { ArrowLeft, ArrowRight, Save, User, MapPin, Shield, Heart, X, Plus } fro
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useStudents } from '@/hooks';
-import { BeltColor, KidsBeltColor, StudentCategory, StudentStatus, Stripes } from '@/types';
+import { BeltColor, KidsBeltColor, StudentCategory, StudentStatus, Stripes, Student } from '@/types';
 
 // ============================================
 // Steps Configuration
@@ -97,6 +97,13 @@ const brazilianStates = [
 // ============================================
 // Form Data Interface
 // ============================================
+interface BeltHistoryEntry {
+  belt: BeltColor | KidsBeltColor;
+  stripes: Stripes;
+  date: string;
+  notes: string;
+}
+
 interface FormData {
   // Personal
   fullName: string;
@@ -125,6 +132,7 @@ interface FormData {
 
   // JJ
   startDate: string;
+  jiujitsuStartDate: string;
   category: StudentCategory;
   currentBelt: BeltColor | KidsBeltColor;
   currentStripes: Stripes;
@@ -132,6 +140,8 @@ interface FormData {
   statusNote: string;
   tuitionValue: string;
   tuitionDay: string;
+  weight: string;
+  beltHistory: BeltHistoryEntry[];
 
   // Medical
   bloodType: string;
@@ -166,6 +176,7 @@ const initialFormData: FormData = {
   guardianCpf: '',
   guardianRelationship: '',
   startDate: new Date().toISOString().split('T')[0],
+  jiujitsuStartDate: '',
   category: 'adult',
   currentBelt: 'white',
   currentStripes: 0,
@@ -173,6 +184,8 @@ const initialFormData: FormData = {
   statusNote: '',
   tuitionValue: '150',
   tuitionDay: '10',
+  weight: '',
+  beltHistory: [],
   bloodType: '',
   healthNotes: '',
   allergies: [],
@@ -220,7 +233,7 @@ export default function StudentRegistrationPage() {
   // ============================================
   // Handle Field Change
   // ============================================
-  const handleChange = useCallback((field: keyof FormData, value: string | string[] | number) => {
+  const handleChange = useCallback((field: keyof FormData, value: string | string[] | number | BeltHistoryEntry[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
     setErrors(prev => ({ ...prev, [field]: undefined }));
   }, []);
@@ -269,21 +282,9 @@ export default function StudentRegistrationPage() {
   const validateStep = useCallback((step: number): boolean => {
     const newErrors: Partial<Record<keyof FormData, string>> = {};
 
+    // Only name is required
     if (step === 0) {
       if (!formData.fullName.trim()) newErrors.fullName = 'Nome completo obrigatorio';
-      if (!formData.phone.trim()) newErrors.phone = 'Telefone obrigatorio';
-      if (!formData.birthDate) newErrors.birthDate = 'Data de nascimento obrigatoria';
-    }
-
-    if (step === 2) {
-      if (!formData.startDate) newErrors.startDate = 'Data de inicio obrigatoria';
-      if (!formData.tuitionValue) newErrors.tuitionValue = 'Valor da mensalidade obrigatorio';
-
-      // Validate guardian for kids
-      if (formData.category === 'kids') {
-        if (!formData.guardianName.trim()) newErrors.guardianName = 'Nome do responsavel obrigatorio para kids';
-        if (!formData.guardianPhone.trim()) newErrors.guardianPhone = 'Telefone do responsavel obrigatorio para kids';
-      }
     }
 
     setErrors(newErrors);
@@ -316,10 +317,10 @@ export default function StudentRegistrationPage() {
       const studentData = {
         fullName: formData.fullName.trim(),
         nickname: formData.nickname.trim() || undefined,
-        birthDate: new Date(formData.birthDate),
+        birthDate: formData.birthDate ? new Date(formData.birthDate) : undefined,
         cpf: formData.cpf.replace(/\D/g, '') || undefined,
         rg: formData.rg.trim() || undefined,
-        phone: formData.phone.replace(/\D/g, ''),
+        phone: formData.phone.replace(/\D/g, '') || undefined,
         email: formData.email.trim() || undefined,
 
         address: formData.street ? {
@@ -340,7 +341,8 @@ export default function StudentRegistrationPage() {
           relationship: formData.guardianRelationship,
         } : undefined,
 
-        startDate: new Date(formData.startDate),
+        startDate: formData.startDate ? new Date(formData.startDate) : new Date(),
+        jiujitsuStartDate: formData.jiujitsuStartDate ? new Date(formData.jiujitsuStartDate) : undefined,
         category: formData.category,
         currentBelt: formData.currentBelt,
         currentStripes: formData.currentStripes,
@@ -348,6 +350,17 @@ export default function StudentRegistrationPage() {
         statusNote: formData.statusNote.trim() || undefined,
         tuitionValue: parseFloat(formData.tuitionValue) || 150,
         tuitionDay: parseInt(formData.tuitionDay) || 10,
+        weight: formData.weight ? parseFloat(formData.weight) : undefined,
+
+        // Convert belt history
+        beltHistory: formData.beltHistory.length > 0
+          ? formData.beltHistory.map(entry => ({
+              belt: entry.belt,
+              stripes: entry.stripes,
+              date: new Date(entry.date),
+              notes: entry.notes || undefined,
+            }))
+          : undefined,
 
         bloodType: formData.bloodType || undefined,
         healthNotes: formData.healthNotes.trim() || undefined,
@@ -413,9 +426,6 @@ export default function StudentRegistrationPage() {
                 value={formData.birthDate}
                 onChange={(e) => handleChange('birthDate', e.target.value)}
                 fullWidth
-                required
-                error={!!errors.birthDate}
-                helperText={errors.birthDate}
                 slotProps={{ inputLabel: { shrink: true } }}
               />
             </Grid>
@@ -443,9 +453,6 @@ export default function StudentRegistrationPage() {
                 value={formData.phone}
                 onChange={(e) => handlePhoneChange('phone', e.target.value)}
                 fullWidth
-                required
-                error={!!errors.phone}
-                helperText={errors.phone}
                 placeholder="(00) 00000-0000"
               />
             </Grid>
@@ -548,8 +555,8 @@ export default function StudentRegistrationPage() {
         return (
           <Grid container spacing={3}>
             {/* Category Selection */}
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl fullWidth required>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <FormControl fullWidth>
                 <InputLabel>Categoria</InputLabel>
                 <Select
                   value={formData.category}
@@ -567,8 +574,8 @@ export default function StudentRegistrationPage() {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <FormControl fullWidth required>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <FormControl fullWidth>
                 <InputLabel>Faixa Atual</InputLabel>
                 <Select
                   value={formData.currentBelt}
@@ -581,7 +588,7 @@ export default function StudentRegistrationPage() {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
+            <Grid size={{ xs: 12, md: 3 }}>
               <FormControl fullWidth>
                 <InputLabel>Graus</InputLabel>
                 <Select
@@ -595,18 +602,42 @@ export default function StudentRegistrationPage() {
                 </Select>
               </FormControl>
             </Grid>
+            <Grid size={{ xs: 12, md: 3 }}>
+              <TextField
+                label="Peso (kg)"
+                type="number"
+                value={formData.weight}
+                onChange={(e) => handleChange('weight', e.target.value)}
+                fullWidth
+                placeholder="Ex: 75"
+                slotProps={{
+                  input: {
+                    endAdornment: <InputAdornment position="end">kg</InputAdornment>
+                  }
+                }}
+              />
+            </Grid>
 
             <Grid size={{ xs: 12, md: 4 }}>
               <TextField
-                label="Data de Inicio"
+                label="Inicio na Academia"
                 type="date"
                 value={formData.startDate}
                 onChange={(e) => handleChange('startDate', e.target.value)}
                 fullWidth
-                required
-                error={!!errors.startDate}
-                helperText={errors.startDate}
                 slotProps={{ inputLabel: { shrink: true } }}
+                helperText="Quando comecou nesta academia"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 4 }}>
+              <TextField
+                label="Inicio no Jiu-Jitsu"
+                type="date"
+                value={formData.jiujitsuStartDate}
+                onChange={(e) => handleChange('jiujitsuStartDate', e.target.value)}
+                fullWidth
+                slotProps={{ inputLabel: { shrink: true } }}
+                helperText="Quando comecou a treinar (qualquer academia)"
               />
             </Grid>
             <Grid size={{ xs: 12, md: 4 }}>
@@ -623,14 +654,128 @@ export default function StudentRegistrationPage() {
                 </Select>
               </FormControl>
             </Grid>
-            <Grid size={{ xs: 12, md: 4 }}>
-              <TextField
-                label="Observacao de Status"
-                value={formData.statusNote}
-                onChange={(e) => handleChange('statusNote', e.target.value)}
-                fullWidth
-                placeholder="Ex: Lesao no joelho"
-              />
+
+            {formData.status !== 'active' && (
+              <Grid size={12}>
+                <TextField
+                  label="Observacao de Status"
+                  value={formData.statusNote}
+                  onChange={(e) => handleChange('statusNote', e.target.value)}
+                  fullWidth
+                  placeholder="Ex: Lesao no joelho, viagem, etc"
+                />
+              </Grid>
+            )}
+
+            {/* Belt History */}
+            <Grid size={12}>
+              <Divider sx={{ my: 2 }}>
+                <Typography variant="body2" color="text.secondary">Historico de Graduacoes</Typography>
+              </Divider>
+            </Grid>
+
+            <Grid size={12}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Adicione as graduacoes anteriores para preencher a linha do tempo do aluno
+              </Typography>
+
+              {formData.beltHistory.map((entry, index) => (
+                <Paper key={index} variant="outlined" sx={{ p: 2, mb: 2 }}>
+                  <Grid container spacing={2} alignItems="center">
+                    <Grid size={{ xs: 12, md: 3 }}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Faixa</InputLabel>
+                        <Select
+                          value={entry.belt}
+                          onChange={(e) => {
+                            const newHistory = [...formData.beltHistory];
+                            newHistory[index].belt = e.target.value as BeltColor | KidsBeltColor;
+                            handleChange('beltHistory', newHistory);
+                          }}
+                          label="Faixa"
+                        >
+                          {(formData.category === 'kids' ? kidsBeltOptions : adultBeltOptions).map(opt => (
+                            <MenuItem key={opt.value} value={opt.value}>{opt.label}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid size={{ xs: 6, md: 2 }}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Graus</InputLabel>
+                        <Select
+                          value={entry.stripes}
+                          onChange={(e) => {
+                            const newHistory = [...formData.beltHistory];
+                            newHistory[index].stripes = e.target.value as Stripes;
+                            handleChange('beltHistory', newHistory);
+                          }}
+                          label="Graus"
+                        >
+                          {[0, 1, 2, 3, 4].map(s => (
+                            <MenuItem key={s} value={s}>{s}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid size={{ xs: 6, md: 3 }}>
+                      <TextField
+                        label="Data"
+                        type="date"
+                        size="small"
+                        value={entry.date}
+                        onChange={(e) => {
+                          const newHistory = [...formData.beltHistory];
+                          newHistory[index].date = e.target.value;
+                          handleChange('beltHistory', newHistory);
+                        }}
+                        fullWidth
+                        slotProps={{ inputLabel: { shrink: true } }}
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 10, md: 3 }}>
+                      <TextField
+                        label="Observacao"
+                        size="small"
+                        value={entry.notes}
+                        onChange={(e) => {
+                          const newHistory = [...formData.beltHistory];
+                          newHistory[index].notes = e.target.value;
+                          handleChange('beltHistory', newHistory);
+                        }}
+                        fullWidth
+                        placeholder="Ex: Promovido por Mestre X"
+                      />
+                    </Grid>
+                    <Grid size={{ xs: 2, md: 1 }}>
+                      <IconButton
+                        onClick={() => {
+                          const newHistory = formData.beltHistory.filter((_, i) => i !== index);
+                          handleChange('beltHistory', newHistory);
+                        }}
+                        color="error"
+                        size="small"
+                      >
+                        <X size={18} />
+                      </IconButton>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              ))}
+
+              <Button
+                startIcon={<Plus size={18} />}
+                onClick={() => {
+                  handleChange('beltHistory', [
+                    ...formData.beltHistory,
+                    { belt: 'white', stripes: 0, date: '', notes: '' }
+                  ]);
+                }}
+                variant="outlined"
+                size="small"
+              >
+                Adicionar Graduacao
+              </Button>
             </Grid>
 
             {/* Financial */}
@@ -647,9 +792,6 @@ export default function StudentRegistrationPage() {
                 value={formData.tuitionValue}
                 onChange={(e) => handleChange('tuitionValue', e.target.value)}
                 fullWidth
-                required
-                error={!!errors.tuitionValue}
-                helperText={errors.tuitionValue}
                 slotProps={{
                   input: {
                     startAdornment: <InputAdornment position="start">R$</InputAdornment>
@@ -677,7 +819,7 @@ export default function StudentRegistrationPage() {
               <>
                 <Grid size={12}>
                   <Divider sx={{ my: 2 }}>
-                    <Typography variant="body2" color="text.secondary">Responsavel</Typography>
+                    <Typography variant="body2" color="text.secondary">Responsavel (recomendado)</Typography>
                   </Divider>
                 </Grid>
 
@@ -687,9 +829,6 @@ export default function StudentRegistrationPage() {
                     value={formData.guardianName}
                     onChange={(e) => handleChange('guardianName', e.target.value)}
                     fullWidth
-                    required
-                    error={!!errors.guardianName}
-                    helperText={errors.guardianName}
                   />
                 </Grid>
                 <Grid size={{ xs: 12, md: 6 }}>
@@ -698,9 +837,6 @@ export default function StudentRegistrationPage() {
                     value={formData.guardianPhone}
                     onChange={(e) => handlePhoneChange('guardianPhone', e.target.value)}
                     fullWidth
-                    required
-                    error={!!errors.guardianPhone}
-                    helperText={errors.guardianPhone}
                     placeholder="(00) 00000-0000"
                   />
                 </Grid>

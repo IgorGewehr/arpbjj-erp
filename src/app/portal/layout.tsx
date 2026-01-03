@@ -46,11 +46,12 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Início', icon: LayoutDashboard, path: '/portal', showInBottomNav: true },
+  { label: 'Meu Perfil', icon: User, path: '/portal/meu-perfil' },
+  { label: 'Histórico', icon: History, path: '/portal/linha-do-tempo' },
   { label: 'Presenças', icon: ClipboardCheck, path: '/portal/presenca', showInBottomNav: true },
   { label: 'Horários', icon: Calendar, path: '/portal/horarios', showInBottomNav: true },
   { label: 'Competições', icon: Trophy, path: '/portal/competicoes', showInBottomNav: true },
   { label: 'Mais', icon: MoreHorizontal, path: '/portal/meu-perfil', showInBottomNav: true },
-  { label: 'Histórico', icon: History, path: '/portal/linha-do-tempo' },
   { label: 'Financeiro', icon: DollarSign, path: '/portal/financeiro', requiresPlan: true },
 ];
 
@@ -177,9 +178,6 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body2" fontWeight={600} noWrap>
               {displayName}
-            </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {student?.email || user?.email}
             </Typography>
           </Box>
           <IconButton

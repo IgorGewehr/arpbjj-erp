@@ -37,6 +37,8 @@ export default function StudentProfilePage() {
   const { success, error: showError } = useFeedback();
   const { linkedStudentIds } = usePermissions();
 
+  const studentId = linkedStudentIds[0] || user?.studentId;
+
   const [student, setStudent] = useState<Student | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -70,13 +72,13 @@ export default function StudentProfilePage() {
 
   useEffect(() => {
     const loadData = async () => {
-      if (!user?.studentId) {
+      if (!studentId) {
         setLoading(false);
         return;
       }
 
       try {
-        const data = await studentService.getById(user.studentId);
+        const data = await studentService.getById(studentId);
         if (data) {
           setStudent(data);
           setForm({
@@ -103,7 +105,7 @@ export default function StudentProfilePage() {
             isProfilePublic: data.isProfilePublic ?? false,
           });
 
-          const count = await attendanceService.getStudentAttendanceCount(user.studentId);
+          const count = await attendanceService.getStudentAttendanceCount(studentId);
           setAttendanceCount(count);
         }
       } catch {
@@ -114,18 +116,18 @@ export default function StudentProfilePage() {
     };
 
     loadData();
-  }, [user?.studentId, showError]);
+  }, [studentId, showError]);
 
   const handleChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
   };
 
   const handleSave = useCallback(async () => {
-    if (!student || !user?.studentId) return;
+    if (!student || !studentId) return;
 
     setSaving(true);
     try {
-      await studentService.update(user.studentId, {
+      await studentService.update(studentId, {
         nickname: form.nickname.trim() || undefined,
         phone: form.phone.trim() || undefined,
         email: form.email.trim() || undefined,
@@ -158,7 +160,7 @@ export default function StudentProfilePage() {
     } finally {
       setSaving(false);
     }
-  }, [student, user?.studentId, form, success, showError]);
+  }, [student, studentId, form, success, showError]);
 
   if (loading) {
     return (

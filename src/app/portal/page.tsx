@@ -1,148 +1,64 @@
 'use client';
 
 import { useMemo } from 'react';
-import {
-  Box,
-  Typography,
-  Paper,
-  Grid,
-  Card,
-  CardContent,
-  Avatar,
-  Chip,
-  LinearProgress,
-  Skeleton,
-  Button,
-} from '@mui/material';
-import {
-  Award,
-  Calendar,
-  Clock,
-  TrendingUp,
-  CheckCircle,
-  AlertCircle,
-  Target,
-  Trophy,
-  ClipboardCheck,
-  User,
-} from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { Box, Typography, Skeleton, Button, LinearProgress } from '@mui/material';
+import { ArrowRight, AlertTriangle } from 'lucide-react';
 import { useAuth, usePermissions } from '@/components/providers';
 import { useQuery } from '@tanstack/react-query';
 import { studentService } from '@/services';
 import { attendanceService } from '@/services/attendanceService';
 import { financialService } from '@/services';
-import { BeltColor, KidsBeltColor } from '@/types';
+import { BeltDisplay } from '@/components/shared/BeltDisplay';
 
-// ============================================
-// Belt Colors
-// ============================================
-const BELT_INFO: Record<BeltColor | KidsBeltColor, { bg: string; text: string; label: string }> = {
-  white: { bg: '#f5f5f5', text: '#333', label: 'Branca' },
-  blue: { bg: '#1E40AF', text: '#fff', label: 'Azul' },
-  purple: { bg: '#7C3AED', text: '#fff', label: 'Roxa' },
-  brown: { bg: '#78350F', text: '#fff', label: 'Marrom' },
-  black: { bg: '#171717', text: '#fff', label: 'Preta' },
-  grey: { bg: '#6B7280', text: '#fff', label: 'Cinza' },
-  yellow: { bg: '#EAB308', text: '#333', label: 'Amarela' },
-  orange: { bg: '#EA580C', text: '#fff', label: 'Laranja' },
-  green: { bg: '#16A34A', text: '#fff', label: 'Verde' },
+const BELT_LABELS: Record<string, string> = {
+  white: 'Branca',
+  blue: 'Azul',
+  purple: 'Roxa',
+  brown: 'Marrom',
+  black: 'Preta',
+  grey: 'Cinza',
+  yellow: 'Amarela',
+  orange: 'Laranja',
+  green: 'Verde',
 };
 
-// ============================================
-// Stat Card Component
-// ============================================
-interface StatCardProps {
-  icon: React.ElementType;
-  label: string;
-  value: string | number;
-  color: string;
-  loading?: boolean;
-}
-
-function StatCard({ icon: Icon, label, value, color, loading }: StatCardProps) {
-  return (
-    <Card sx={{ height: '100%' }}>
-      <CardContent>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Box
-            sx={{
-              p: 1.5,
-              borderRadius: 2,
-              bgcolor: `${color}15`,
-            }}
-          >
-            <Icon size={24} color={color} />
-          </Box>
-          <Box>
-            {loading ? (
-              <Skeleton variant="text" width={60} height={32} />
-            ) : (
-              <Typography variant="h5" fontWeight={700}>
-                {value}
-              </Typography>
-            )}
-            <Typography variant="body2" color="text.secondary">
-              {label}
-            </Typography>
-          </Box>
-        </Box>
-      </CardContent>
-    </Card>
-  );
-}
-
-// ============================================
-// Main Component
-// ============================================
 export default function PortalHomePage() {
+  const router = useRouter();
   const { user } = useAuth();
   const { linkedStudentIds } = usePermissions();
 
-  const studentId = linkedStudentIds[0]; // For student role, there's only one
+  const studentId = linkedStudentIds[0];
 
-  // Fetch student data
   const { data: student, isLoading: loadingStudent } = useQuery({
     queryKey: ['student', studentId],
     queryFn: () => studentService.getById(studentId),
     enabled: !!studentId,
   });
 
-  // Fetch attendance count
-  const { data: attendanceCount = 0, isLoading: loadingAttendance } = useQuery({
+  const { data: attendanceCount = 0 } = useQuery({
     queryKey: ['studentAttendance', studentId],
     queryFn: () => attendanceService.getStudentAttendanceCount(studentId),
     enabled: !!studentId,
   });
 
-  // Fetch pending payments
-  const { data: pendingPayments = [], isLoading: loadingPayments } = useQuery({
+  const hasPlan = !!student?.planId;
+
+  const { data: pendingPayments = [] } = useQuery({
     queryKey: ['studentPayments', studentId],
     queryFn: async () => {
       const payments = await financialService.getByStudent(studentId);
       return payments.filter((p) => p.status === 'pending' || p.status === 'overdue');
     },
-    enabled: !!studentId,
+    enabled: !!studentId && hasPlan,
   });
 
-  // Calculate time training
-  const trainingInfo = useMemo(() => {
-    if (!student) return null;
-
-    const startDate = new Date(student.startDate);
+  const trainingMonths = useMemo(() => {
+    if (!student) return 0;
+    const start = new Date(student.startDate);
     const now = new Date();
-    const months = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24 * 30));
-    const years = Math.floor(months / 12);
-    const remainingMonths = months % 12;
-
-    return {
-      years,
-      months: remainingMonths,
-      startDate,
-      totalMonths: months,
-    };
+    return Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24 * 30));
   }, [student]);
-
-  const beltInfo = student ? BELT_INFO[student.currentBelt as BeltColor | KidsBeltColor] : null;
 
   const greeting = useMemo(() => {
     const hour = new Date().getHours();
@@ -151,274 +67,141 @@ export default function PortalHomePage() {
     return 'Boa noite';
   }, []);
 
-  const isLoading = loadingStudent || loadingAttendance || loadingPayments;
+  const displayName = student?.nickname || student?.fullName?.split(' ')[0] || user?.displayName || 'Aluno';
+
+  if (loadingStudent) {
+    return (
+      <Box>
+        <Skeleton variant="text" width={200} height={40} sx={{ mb: 1 }} />
+        <Skeleton variant="text" width={300} height={24} sx={{ mb: 4 }} />
+        <Skeleton variant="rounded" height={120} sx={{ mb: 3, borderRadius: 2 }} />
+        <Skeleton variant="rounded" height={200} sx={{ borderRadius: 2 }} />
+      </Box>
+    );
+  }
 
   return (
     <Box>
-      {/* Welcome Header */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, flexWrap: 'wrap' }}>
-          <Avatar
-            src={student?.photoUrl || user?.photoUrl}
-            sx={{
-              width: 80,
-              height: 80,
-              fontSize: '2rem',
-              bgcolor: 'primary.main',
-            }}
+      {/* Header */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="h5" fontWeight={600} color="text.primary">
+          {greeting}, {displayName}
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          {student?.fullName}
+        </Typography>
+      </Box>
+
+      {/* Pending Payment Alert */}
+      {hasPlan && pendingPayments.length > 0 && (
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            p: 2,
+            mb: 3,
+            bgcolor: '#FEF3C7',
+            borderRadius: 2,
+            border: '1px solid #FCD34D',
+          }}
+        >
+          <AlertTriangle size={20} color="#D97706" />
+          <Typography variant="body2" sx={{ flex: 1, color: '#92400E' }}>
+            Você tem {pendingPayments.length} pagamento{pendingPayments.length > 1 ? 's' : ''} pendente{pendingPayments.length > 1 ? 's' : ''}.
+          </Typography>
+          <Button
+            size="small"
+            onClick={() => router.push('/portal/financeiro')}
+            sx={{ color: '#D97706', fontWeight: 600, textTransform: 'none' }}
           >
-            {student?.fullName?.[0] || user?.displayName?.[0] || 'A'}
-          </Avatar>
-          <Box sx={{ flex: 1, minWidth: 200 }}>
-            <Typography variant="h5" fontWeight={700}>
-              {greeting}, {student?.nickname || student?.fullName?.split(' ')[0] || 'Aluno'}!
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              {student?.fullName}
-            </Typography>
-            {beltInfo && (
-              <Box
-                sx={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 1,
-                  mt: 1,
-                  px: 2,
-                  py: 0.5,
-                  borderRadius: 2,
-                  bgcolor: beltInfo.bg,
-                  color: beltInfo.text,
-                  border: student?.currentBelt === 'white' ? '2px solid #e5e5e5' : 'none',
-                }}
-              >
-                <Award size={16} />
-                <Typography variant="body2" fontWeight={600}>
-                  Faixa {beltInfo.label}
-                  {(student?.currentStripes ?? 0) > 0 && ` - ${student?.currentStripes}º Grau`}
-                </Typography>
-              </Box>
-            )}
-          </Box>
-          {trainingInfo && (
-            <Box sx={{ textAlign: 'right' }}>
-              <Typography variant="body2" color="text.secondary">
-                Tempo de treino
-              </Typography>
-              <Typography variant="h6" fontWeight={600}>
-                {trainingInfo.years > 0
-                  ? `${trainingInfo.years} ano${trainingInfo.years > 1 ? 's' : ''} e ${trainingInfo.months} mes${trainingInfo.months !== 1 ? 'es' : ''}`
-                  : `${trainingInfo.totalMonths} mes${trainingInfo.totalMonths !== 1 ? 'es' : ''}`}
-              </Typography>
-            </Box>
-          )}
+            Ver detalhes
+          </Button>
         </Box>
-      </Paper>
+      )}
 
-      {/* Stats Grid */}
-      <Grid container spacing={3} sx={{ mb: 3 }}>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            icon={CheckCircle}
-            label="Total de Presencas"
-            value={attendanceCount}
-            color="#16A34A"
-            loading={loadingAttendance}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            icon={Award}
-            label="Graus na Faixa"
-            value={student?.currentStripes || 0}
-            color="#7C3AED"
-            loading={loadingStudent}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            icon={Calendar}
-            label="Meses Treinando"
-            value={trainingInfo?.totalMonths || 0}
-            color="#2563EB"
-            loading={loadingStudent}
-          />
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-          <StatCard
-            icon={pendingPayments.length > 0 ? AlertCircle : CheckCircle}
-            label="Pagamentos Pendentes"
-            value={pendingPayments.length}
-            color={pendingPayments.length > 0 ? '#DC2626' : '#16A34A'}
-            loading={loadingPayments}
-          />
-        </Grid>
-      </Grid>
+      {/* Belt & Stats */}
+      <Box
+        sx={{
+          display: 'flex',
+          gap: 3,
+          mb: 4,
+          pb: 4,
+          borderBottom: '1px solid',
+          borderColor: 'grey.200',
+          flexWrap: 'wrap',
+        }}
+      >
+        {/* Belt */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <BeltDisplay belt={student?.currentBelt || 'white'} stripes={student?.currentStripes || 0} size="large" />
+          <Box>
+            <Typography variant="body2" color="text.secondary">
+              Graduação atual
+            </Typography>
+            <Typography variant="body1" fontWeight={600}>
+              Faixa {BELT_LABELS[student?.currentBelt || 'white']}
+              {(student?.currentStripes || 0) > 0 && ` • ${student?.currentStripes} grau${(student?.currentStripes || 0) > 1 ? 's' : ''}`}
+            </Typography>
+          </Box>
+        </Box>
 
-      {/* Content Grid */}
-      <Grid container spacing={3}>
-        {/* Pending Payments Alert */}
-        {pendingPayments.length > 0 && (
-          <Grid size={{ xs: 12 }}>
-            <Paper
+        {/* Stats */}
+        <Box sx={{ display: 'flex', gap: 4, ml: { sm: 'auto' } }}>
+          <Box>
+            <Typography variant="h4" fontWeight={600} color="text.primary">
+              {attendanceCount}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              presenças
+            </Typography>
+          </Box>
+          <Box>
+            <Typography variant="h4" fontWeight={600} color="text.primary">
+              {trainingMonths}
+            </Typography>
+            <Typography variant="caption" color="text.secondary">
+              meses
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+
+      {/* Quick Links */}
+      <Box>
+        <Typography variant="body2" fontWeight={600} color="text.primary" sx={{ mb: 2 }}>
+          Acesso rápido
+        </Typography>
+
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {[
+            { label: 'Minhas presenças', path: '/portal/presenca' },
+            { label: 'Histórico de graduações', path: '/portal/linha-do-tempo' },
+            { label: 'Competições', path: '/portal/competicoes' },
+            { label: 'Horários das aulas', path: '/portal/horarios' },
+          ].map((item) => (
+            <Box
+              key={item.path}
+              onClick={() => router.push(item.path)}
               sx={{
-                p: 3,
-                borderRadius: 2,
-                bgcolor: 'error.50',
-                border: '1px solid',
-                borderColor: 'error.200',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                p: 1.5,
+                borderRadius: 1.5,
+                cursor: 'pointer',
+                transition: 'background-color 0.15s',
+                '&:hover': { bgcolor: 'grey.50' },
               }}
             >
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <AlertCircle size={24} color="#DC2626" />
-                <Box sx={{ flex: 1 }}>
-                  <Typography variant="subtitle1" fontWeight={600} color="error.main">
-                    Voce tem {pendingPayments.length} pagamento{pendingPayments.length > 1 ? 's' : ''} pendente{pendingPayments.length > 1 ? 's' : ''}
-                  </Typography>
-                  <Typography variant="body2" color="error.dark">
-                    Regularize sua situacao para continuar treinando sem interrupcoes.
-                  </Typography>
-                </Box>
-                <Button variant="contained" color="error" href="/portal/financeiro">
-                  Ver Detalhes
-                </Button>
-              </Box>
-            </Paper>
-          </Grid>
-        )}
-
-        {/* Next Goals */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ p: 3, borderRadius: 2, height: '100%' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-              <Target size={20} />
-              <Typography variant="h6" fontWeight={600}>
-                Proximos Objetivos
+              <Typography variant="body2" color="text.primary">
+                {item.label}
               </Typography>
+              <ArrowRight size={16} color="#999" />
             </Box>
-
-            <Box sx={{ mb: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">
-                  Proximo grau ({(student?.currentStripes || 0) + 1}º)
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {Math.min(attendanceCount, 50)}/50 presencas
-                </Typography>
-              </Box>
-              <LinearProgress
-                variant="determinate"
-                value={Math.min((attendanceCount / 50) * 100, 100)}
-                sx={{ height: 8, borderRadius: 1 }}
-              />
-            </Box>
-
-            <Box>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">Proxima faixa</Typography>
-                <Typography variant="body2" color="text.secondary">
-                  {Math.min(attendanceCount, 200)}/200 presencas
-                </Typography>
-              </Box>
-              <LinearProgress
-                variant="determinate"
-                value={Math.min((attendanceCount / 200) * 100, 100)}
-                sx={{
-                  height: 8,
-                  borderRadius: 1,
-                  '& .MuiLinearProgress-bar': { bgcolor: 'secondary.main' },
-                }}
-              />
-            </Box>
-
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-              * Valores aproximados. A graduacao depende de avaliacao do professor.
-            </Typography>
-          </Paper>
-        </Grid>
-
-        {/* Quick Actions */}
-        <Grid size={{ xs: 12, md: 6 }}>
-          <Paper sx={{ p: 3, borderRadius: 2, height: '100%' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-              <TrendingUp size={20} />
-              <Typography variant="h6" fontWeight={600}>
-                Acoes Rapidas
-              </Typography>
-            </Box>
-
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 6 }}>
-                <Card
-                  sx={{
-                    p: 2,
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    '&:hover': { bgcolor: 'action.hover', transform: 'translateY(-2px)' },
-                  }}
-                  onClick={() => window.location.href = '/portal/presenca'}
-                >
-                  <ClipboardCheck size={32} color="#2563EB" />
-                  <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>
-                    Ver Presencas
-                  </Typography>
-                </Card>
-              </Grid>
-              <Grid size={{ xs: 6 }}>
-                <Card
-                  sx={{
-                    p: 2,
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    '&:hover': { bgcolor: 'action.hover', transform: 'translateY(-2px)' },
-                  }}
-                  onClick={() => window.location.href = '/portal/horarios'}
-                >
-                  <Calendar size={32} color="#16A34A" />
-                  <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>
-                    Ver Horarios
-                  </Typography>
-                </Card>
-              </Grid>
-              <Grid size={{ xs: 6 }}>
-                <Card
-                  sx={{
-                    p: 2,
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    '&:hover': { bgcolor: 'action.hover', transform: 'translateY(-2px)' },
-                  }}
-                  onClick={() => window.location.href = '/portal/graduacao'}
-                >
-                  <Trophy size={32} color="#EAB308" />
-                  <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>
-                    Historico
-                  </Typography>
-                </Card>
-              </Grid>
-              <Grid size={{ xs: 6 }}>
-                <Card
-                  sx={{
-                    p: 2,
-                    textAlign: 'center',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    '&:hover': { bgcolor: 'action.hover', transform: 'translateY(-2px)' },
-                  }}
-                  onClick={() => window.location.href = '/portal/perfil'}
-                >
-                  <User size={32} color="#7C3AED" />
-                  <Typography variant="body2" fontWeight={600} sx={{ mt: 1 }}>
-                    Meu Perfil
-                  </Typography>
-                </Card>
-              </Grid>
-            </Grid>
-          </Paper>
-        </Grid>
-      </Grid>
+          ))}
+        </Box>
+      </Box>
     </Box>
   );
 }

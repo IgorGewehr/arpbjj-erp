@@ -101,6 +101,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
           photoUrl: data.photoUrl || firebaseUser.photoURL || undefined,
           role: data.role || 'student',
           phone: data.phone,
+          // Role-specific links (critical for student/guardian portal access)
+          studentId: data.studentId,
+          linkedStudentIds: data.linkedStudentIds,
+          instructorId: data.instructorId,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
         };

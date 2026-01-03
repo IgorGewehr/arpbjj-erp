@@ -189,11 +189,30 @@ export const planService = {
       }
     }
 
-    return this.update(planId, {
+    // Update the plan
+    const updatedPlan = await this.update(planId, {
       studentIds: isEnrolled
         ? plan.studentIds.filter((id) => id !== studentId)
         : [...plan.studentIds, studentId],
     });
+
+    // Sync student's planId field
+    const studentDocRef = doc(db, 'students', studentId);
+    if (isEnrolled) {
+      // Removing from plan - clear planId
+      await updateDoc(studentDocRef, {
+        planId: null,
+        updatedAt: Timestamp.fromDate(new Date()),
+      });
+    } else {
+      // Adding to plan - set planId
+      await updateDoc(studentDocRef, {
+        planId: planId,
+        updatedAt: Timestamp.fromDate(new Date()),
+      });
+    }
+
+    return updatedPlan;
   },
 
   // ============================================

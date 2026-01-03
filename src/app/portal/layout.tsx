@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useState, useCallback } from 'react';
+import { ReactNode, useState, useCallback, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Box,
@@ -26,35 +26,37 @@ import {
   LayoutDashboard,
   ClipboardCheck,
   DollarSign,
-  Award,
   Calendar,
   User,
   LogOut,
-  ChevronRight,
   Trophy,
   History,
+  X,
 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth, usePermissions } from '@/components/providers';
 import { StudentPortalGuard } from '@/components/common';
+import { studentService } from '@/services';
 
-// ============================================
-// Constants
-// ============================================
-const DRAWER_WIDTH = 260;
+const DRAWER_WIDTH = 220;
 
-const navItems = [
+interface NavItem {
+  label: string;
+  icon: React.ElementType;
+  path: string;
+  requiresPlan?: boolean;
+}
+
+const NAV_ITEMS: NavItem[] = [
   { label: 'Início', icon: LayoutDashboard, path: '/portal' },
-  { label: 'Meu Perfil', icon: User, path: '/portal/meu-perfil' },
-  { label: 'Minhas Presenças', icon: ClipboardCheck, path: '/portal/presenca' },
+  { label: 'Perfil', icon: User, path: '/portal/meu-perfil' },
+  { label: 'Presenças', icon: ClipboardCheck, path: '/portal/presenca' },
   { label: 'Competições', icon: Trophy, path: '/portal/competicoes' },
-  { label: 'Linha do Tempo', icon: History, path: '/portal/linha-do-tempo' },
-  { label: 'Financeiro', icon: DollarSign, path: '/portal/financeiro' },
+  { label: 'Histórico', icon: History, path: '/portal/linha-do-tempo' },
+  { label: 'Financeiro', icon: DollarSign, path: '/portal/financeiro', requiresPlan: true },
   { label: 'Horários', icon: Calendar, path: '/portal/horarios' },
 ];
 
-// ============================================
-// Portal Layout
-// ============================================
 interface PortalLayoutProps {
   children: ReactNode;
 }
@@ -69,7 +71,22 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const { user, signOut } = useAuth();
-  const { roleLabel } = usePermissions();
+  const { linkedStudentIds } = usePermissions();
+
+  const studentId = linkedStudentIds[0];
+
+  const { data: student } = useQuery({
+    queryKey: ['student', studentId],
+    queryFn: () => studentService.getById(studentId),
+    enabled: !!studentId,
+  });
+
+  const navItems = useMemo(() => {
+    return NAV_ITEMS.filter((item) => {
+      if (item.requiresPlan && !student?.planId) return false;
+      return true;
+    });
+  }, [student?.planId]);
 
   const handleDrawerToggle = useCallback(() => {
     setMobileOpen((prev) => !prev);
@@ -78,9 +95,7 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
   const handleNavigate = useCallback(
     (path: string) => {
       router.push(path);
-      if (isMobile) {
-        setMobileOpen(false);
-      }
+      if (isMobile) setMobileOpen(false);
     },
     [router, isMobile]
   );
@@ -99,112 +114,87 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
     router.push('/login');
   }, [signOut, router, handleMenuClose]);
 
-  const isActive = (path: string) => pathname === path;
+  const isActive = (path: string) => {
+    if (path === '/portal') return pathname === '/portal';
+    return pathname.startsWith(path);
+  };
 
-  // Drawer content
+  const displayName = student?.nickname || student?.fullName?.split(' ')[0] || user?.displayName || 'Aluno';
+
   const drawerContent = (
-    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-      {/* Logo */}
-      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-        <Box
-          sx={{
-            width: 40,
-            height: 40,
-            borderRadius: 2,
-            bgcolor: 'primary.main',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        >
-          <Award size={24} color="white" />
-        </Box>
-        <Box>
-          <Typography variant="h6" fontWeight={700}>
-            Portal do Aluno
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            MarcusJJ Academia
-          </Typography>
-        </Box>
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', bgcolor: '#fff' }}>
+      {/* Header */}
+      <Box sx={{ p: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Typography variant="body2" fontWeight={600} color="text.secondary" letterSpacing={0.5}>
+          PORTAL
+        </Typography>
+        {isMobile && (
+          <IconButton size="small" onClick={handleDrawerToggle} sx={{ color: 'text.secondary' }}>
+            <X size={18} />
+          </IconButton>
+        )}
       </Box>
 
-      <Divider />
-
       {/* Navigation */}
-      <Box sx={{ flex: 1, py: 1, overflowY: 'auto' }}>
-        <List disablePadding>
-          {navItems.map((item) => (
-            <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
+      <List sx={{ flex: 1, px: 1 }}>
+        {navItems.map((item) => {
+          const Icon = item.icon;
+          const active = isActive(item.path);
+
+          return (
+            <ListItem key={item.path} disablePadding sx={{ mb: 0.25 }}>
               <ListItemButton
                 onClick={() => handleNavigate(item.path)}
-                selected={isActive(item.path)}
                 sx={{
-                  borderRadius: 2,
-                  '&.Mui-selected': {
-                    bgcolor: 'primary.main',
-                    color: 'primary.contrastText',
-                    '&:hover': { bgcolor: 'primary.dark' },
-                    '& .MuiListItemIcon-root': { color: 'inherit' },
-                  },
+                  borderRadius: 1,
+                  py: 1,
+                  px: 1.5,
+                  bgcolor: active ? 'grey.100' : 'transparent',
+                  '&:hover': { bgcolor: 'grey.50' },
                 }}
               >
-                <ListItemIcon
-                  sx={{
-                    minWidth: 40,
-                    color: isActive(item.path) ? 'inherit' : 'text.secondary',
-                  }}
-                >
-                  <item.icon size={20} />
+                <ListItemIcon sx={{ minWidth: 32 }}>
+                  <Icon size={18} color={active ? '#111' : '#666'} strokeWidth={active ? 2.5 : 2} />
                 </ListItemIcon>
                 <ListItemText
                   primary={item.label}
                   primaryTypographyProps={{
-                    fontWeight: isActive(item.path) ? 600 : 500,
-                    fontSize: '0.9rem',
+                    fontSize: '0.875rem',
+                    fontWeight: active ? 600 : 400,
+                    color: active ? 'text.primary' : 'text.secondary',
                   }}
                 />
-                {isActive(item.path) && <ChevronRight size={16} />}
               </ListItemButton>
             </ListItem>
-          ))}
-        </List>
-      </Box>
+          );
+        })}
+      </List>
 
-      <Divider />
-
-      {/* User */}
-      <Box sx={{ p: 1.5 }}>
+      {/* User Section */}
+      <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'grey.100' }}>
         <Box
           sx={{
             display: 'flex',
             alignItems: 'center',
             gap: 1.5,
-            p: 1,
-            borderRadius: 2,
-            bgcolor: 'action.hover',
+            cursor: 'pointer',
+            '&:hover': { opacity: 0.8 },
           }}
+          onClick={() => handleNavigate('/portal/meu-perfil')}
         >
           <Avatar
-            src={user?.photoUrl}
-            sx={{ width: 36, height: 36, bgcolor: 'primary.main' }}
+            src={student?.photoUrl}
+            sx={{ width: 32, height: 32, bgcolor: '#111', fontSize: '0.75rem', fontWeight: 600 }}
           >
-            {user?.displayName?.[0] || 'A'}
+            {displayName.charAt(0).toUpperCase()}
           </Avatar>
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography
-              variant="body2"
-              fontWeight={600}
-              sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
-            >
-              {user?.displayName || 'Aluno'}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              {roleLabel}
+            <Typography variant="body2" fontWeight={500} noWrap>
+              {displayName}
             </Typography>
           </Box>
-          <IconButton size="small" onClick={handleSignOut}>
-            <LogOut size={18} />
+          <IconButton size="small" onClick={(e) => { e.stopPropagation(); handleSignOut(); }} sx={{ color: 'text.secondary' }}>
+            <LogOut size={16} />
           </IconButton>
         </Box>
       </Box>
@@ -212,37 +202,31 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh' }}>
-      {/* AppBar (Mobile) */}
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#fafafa' }}>
+      {/* Mobile AppBar */}
       {isMobile && (
         <AppBar
           position="fixed"
-          sx={{
-            bgcolor: 'background.paper',
-            color: 'text.primary',
-            boxShadow: 1,
-          }}
+          elevation={0}
+          sx={{ bgcolor: '#fff', borderBottom: '1px solid', borderColor: 'grey.200' }}
         >
-          <Toolbar>
-            <IconButton edge="start" onClick={handleDrawerToggle} sx={{ mr: 2 }}>
-              <MenuIcon />
+          <Toolbar sx={{ minHeight: 56 }}>
+            <IconButton edge="start" onClick={handleDrawerToggle} sx={{ mr: 1, color: 'text.primary' }}>
+              <MenuIcon size={20} />
             </IconButton>
-            <Typography variant="h6" fontWeight={600} sx={{ flex: 1 }}>
-              Portal do Aluno
+            <Typography variant="body1" fontWeight={600} sx={{ flex: 1, color: 'text.primary' }}>
+              {displayName}
             </Typography>
-            <IconButton onClick={handleMenuOpen}>
-              <Avatar
-                src={user?.photoUrl}
-                sx={{ width: 32, height: 32, bgcolor: 'primary.main' }}
-              >
-                {user?.displayName?.[0] || 'A'}
+            <IconButton onClick={handleMenuOpen} sx={{ p: 0.5 }}>
+              <Avatar src={student?.photoUrl} sx={{ width: 28, height: 28, bgcolor: '#111', fontSize: '0.7rem' }}>
+                {displayName.charAt(0).toUpperCase()}
               </Avatar>
             </IconButton>
           </Toolbar>
         </AppBar>
       )}
 
-      {/* Drawer */}
+      {/* Sidebar */}
       <Box component="nav" sx={{ width: { md: DRAWER_WIDTH }, flexShrink: { md: 0 } }}>
         {isMobile ? (
           <Drawer
@@ -250,9 +234,7 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
             open={mobileOpen}
             onClose={handleDrawerToggle}
             ModalProps={{ keepMounted: true }}
-            sx={{
-              '& .MuiDrawer-paper': { width: DRAWER_WIDTH },
-            }}
+            sx={{ '& .MuiDrawer-paper': { width: DRAWER_WIDTH, border: 'none' } }}
           >
             {drawerContent}
           </Drawer>
@@ -262,8 +244,9 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
             sx={{
               '& .MuiDrawer-paper': {
                 width: DRAWER_WIDTH,
+                border: 'none',
                 borderRight: '1px solid',
-                borderColor: 'divider',
+                borderColor: 'grey.200',
               },
             }}
             open
@@ -278,31 +261,32 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
         component="main"
         sx={{
           flex: 1,
-          p: 3,
-          mt: { xs: 8, md: 0 },
-          bgcolor: 'background.default',
           minHeight: '100vh',
+          mt: { xs: 7, md: 0 },
         }}
       >
-        {children}
+        <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1000, mx: 'auto' }}>
+          {children}
+        </Box>
       </Box>
 
-      {/* User Menu (Mobile) */}
+      {/* Mobile Menu */}
       <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleMenuClose}
         transformOrigin={{ horizontal: 'right', vertical: 'top' }}
         anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
+        PaperProps={{ sx: { mt: 1, minWidth: 160, boxShadow: '0 4px 20px rgba(0,0,0,0.08)' } }}
       >
-        <MenuItem onClick={() => { handleMenuClose(); router.push('/portal/perfil'); }}>
-          <ListItemIcon><User size={18} /></ListItemIcon>
-          Meu Perfil
+        <MenuItem onClick={() => { handleMenuClose(); router.push('/portal/meu-perfil'); }}>
+          <ListItemIcon><User size={16} /></ListItemIcon>
+          <Typography variant="body2">Perfil</Typography>
         </MenuItem>
-        <Divider />
+        <Divider sx={{ my: 0.5 }} />
         <MenuItem onClick={handleSignOut}>
-          <ListItemIcon><LogOut size={18} /></ListItemIcon>
-          Sair
+          <ListItemIcon><LogOut size={16} /></ListItemIcon>
+          <Typography variant="body2">Sair</Typography>
         </MenuItem>
       </Menu>
     </Box>

@@ -1,0 +1,208 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ============================================
+    // Helper Functions
+    // ============================================
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get user document
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check if user is admin
+    function isAdmin() {
+      return isAuthenticated() && getUserData().role == 'admin';
+    }
+
+    // Check if user is instructor
+    function isInstructor() {
+      return isAuthenticated() && getUserData().role == 'instructor';
+    }
+
+    // Check if user is staff (admin or instructor)
+    function isStaff() {
+      return isAdmin() || isInstructor();
+    }
+
+    // Check if user is student and owns this student record
+    function isOwnStudent(studentId) {
+      return isAuthenticated() && getUserData().studentId == studentId;
+    }
+
+    // ============================================
+    // Users Collection
+    // ============================================
+    match /users/{userId} {
+      // Users can read their own document
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+
+      // Users can create their own document (during registration)
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+
+      // Users can update their own non-role fields
+      allow update: if isAuthenticated() && request.auth.uid == userId
+                    && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']);
+
+      // Admin can read/write all users
+      allow read, write: if isAdmin();
+    }
+
+    // ============================================
+    // Students Collection
+    // ============================================
+    match /students/{studentId} {
+      // Staff can read all students
+      allow read: if isStaff();
+
+      // Students can read their own record
+      allow read: if isOwnStudent(studentId);
+
+      // Staff can create/delete students
+      allow create, delete: if isStaff();
+
+      // Staff can update all fields
+      allow update: if isStaff();
+
+      // Students can update personal info (not jiu-jitsu related fields)
+      // Allowed: nickname, phone, email, cpf, rg, weight, address, bloodType, allergies, healthNotes, emergencyContact, isProfilePublic, birthDate
+      // Blocked: currentBelt, currentStripes, status, startDate, tuitionValue, tuitionDay, planId, category, beltHistory, initialAttendanceCount
+      allow update: if isOwnStudent(studentId)
+                    && !request.resource.data.diff(resource.data).affectedKeys()
+                        .hasAny(['currentBelt', 'currentStripes', 'status', 'startDate', 'tuitionValue', 'tuitionDay', 'planId', 'category', 'beltHistory', 'initialAttendanceCount', 'fullName', 'jiujitsuStartDate', 'createdAt', 'createdBy']);
+
+      // Allow update of linkedUserId during account linking (by the user being linked)
+      allow update: if isAuthenticated()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['linkedUserId', 'updatedAt'])
+                    && request.resource.data.linkedUserId == request.auth.uid;
+    }
+
+    // ============================================
+    // Link Codes Collection
+    // ============================================
+    match /linkCodes/{codeId} {
+      // Staff can read/write all codes
+      allow read, write: if isStaff();
+
+      // Any authenticated user can read codes (for validation)
+      allow read: if isAuthenticated();
+
+      // Allow update when marking as used (user is marking their own usage)
+      allow update: if isAuthenticated()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedAt', 'usedBy'])
+                    && request.resource.data.usedBy == request.auth.uid;
+    }
+
+    // ============================================
+    // Classes Collection
+    // ============================================
+    match /classes/{classId} {
+      // Anyone authenticated can read classes
+      allow read: if isAuthenticated();
+
+      // Staff can write
+      allow write: if isStaff();
+    }
+
+    // ============================================
+    // Attendance Collection
+    // ============================================
+    match /attendance/{attendanceId} {
+      // Staff can read/write all attendance
+      allow read, write: if isStaff();
+
+      // Students can read their own attendance
+      allow read: if isAuthenticated() && resource.data.studentId == getUserData().studentId;
+    }
+
+    // ============================================
+    // Plans Collection
+    // ============================================
+    match /plans/{planId} {
+      // Anyone authenticated can read plans
+      allow read: if isAuthenticated();
+
+      // Only admin can write plans
+      allow write: if isAdmin();
+    }
+
+    // ============================================
+    // Financial Collection
+    // ============================================
+    match /financials/{financialId} {
+      // Staff can read/write all financial records
+      allow read, write: if isStaff();
+
+      // Students can read their own financial records
+      allow read: if isAuthenticated() && resource.data.studentId == getUserData().studentId;
+    }
+
+    // ============================================
+    // Competitions Collection
+    // ============================================
+    match /competitions/{competitionId} {
+      // Anyone authenticated can read competitions
+      allow read: if isAuthenticated();
+
+      // Staff can create/delete competitions
+      allow create, delete: if isStaff();
+
+      // Staff can update all fields
+      allow update: if isStaff();
+
+      // Students can update only enrolledStudentIds (to enroll/unenroll themselves)
+      allow update: if isAuthenticated()
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['enrolledStudentIds', 'updatedAt']);
+    }
+
+    // ============================================
+    // Competition Results Collection
+    // ============================================
+    match /competitionResults/{resultId} {
+      // Anyone authenticated can read results
+      allow read: if isAuthenticated();
+
+      // Staff can write results
+      allow write: if isStaff();
+    }
+
+    // ============================================
+    // Achievements Collection
+    // ============================================
+    match /achievements/{achievementId} {
+      // Staff can read/write all achievements
+      allow read, write: if isStaff();
+
+      // Students can read their own achievements
+      allow read: if isAuthenticated() && resource.data.studentId == getUserData().studentId;
+    }
+
+    // ============================================
+    // Belt Progressions Collection
+    // ============================================
+    match /beltProgressions/{progressionId} {
+      // Staff can read/write
+      allow read, write: if isStaff();
+
+      // Students can read their own progressions
+      allow read: if isAuthenticated() && resource.data.studentId == getUserData().studentId;
+    }
+
+    // ============================================
+    // Assessments Collection (Kids)
+    // ============================================
+    match /assessments/{assessmentId} {
+      // Staff can read/write
+      allow read, write: if isStaff();
+
+      // Students/guardians can read their own assessments
+      allow read: if isAuthenticated() && resource.data.studentId == getUserData().studentId;
+    }
+  }
+}

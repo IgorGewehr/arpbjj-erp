@@ -15,7 +15,7 @@ import {
 } from '@mui/material';
 import { Eye, EyeOff, Key, User, Mail, Lock, CheckCircle, ArrowLeft } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { linkCodeService } from '@/services/linkCodeService';
 import { LinkCode } from '@/types';
@@ -103,16 +103,16 @@ export default function CreateAccountPage() {
       setLoading(true);
       setError('');
 
-      // Create Firebase Auth user
+      // Step 1: Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
 
-      // Update profile with student name
+      // Step 2: Update profile with student name
       await updateProfile(user, {
         displayName: linkCode.studentName,
       });
 
-      // Create user document in Firestore
+      // Step 3: Create user document in Firestore (CRITICAL - must succeed)
       await setDoc(doc(db, 'users', user.uid), {
         email: email.trim(),
         displayName: linkCode.studentName,
@@ -123,21 +123,44 @@ export default function CreateAccountPage() {
         approvedAt: serverTimestamp(),
       });
 
-      // Mark code as used
-      await linkCodeService.markAsUsed(linkCode.id, user.uid);
+      // Step 4-5: Secondary operations (can fail without breaking the flow)
+      // These update the linkCode and student record
+      try {
+        // Mark code as used
+        await linkCodeService.markAsUsed(linkCode.code, user.uid);
+      } catch (linkErr) {
+        console.warn('Failed to mark code as used (non-critical):', linkErr);
+      }
 
-      // Success
+      try {
+        // Update student record with linked user ID
+        await updateDoc(doc(db, 'students', linkCode.studentId), {
+          linkedUserId: user.uid,
+          updatedAt: serverTimestamp(),
+        });
+      } catch (studentErr) {
+        console.warn('Failed to update student linkedUserId (non-critical):', studentErr);
+      }
+
+      // Success - account is created and functional
       setStep('success');
     } catch (err: unknown) {
+      console.error('Account creation error:', err);
       if (err instanceof Error) {
-        if (err.message.includes('email-already-in-use')) {
+        const errorMessage = err.message.toLowerCase();
+        if (errorMessage.includes('email-already-in-use')) {
           setError('Este email já está sendo utilizado');
-        } else if (err.message.includes('invalid-email')) {
+        } else if (errorMessage.includes('invalid-email')) {
           setError('Email inválido');
-        } else if (err.message.includes('weak-password')) {
+        } else if (errorMessage.includes('weak-password')) {
           setError('Senha muito fraca');
+        } else if (errorMessage.includes('permission-denied') || errorMessage.includes('permission denied')) {
+          setError('Erro de permissão ao criar documento. Verifique as regras do Firestore.');
+        } else if (errorMessage.includes('network')) {
+          setError('Erro de conexão. Verifique sua internet.');
         } else {
-          setError('Erro ao criar conta. Tente novamente.');
+          // Show actual error for debugging
+          setError(`Erro ao criar conta: ${err.message}`);
         }
       } else {
         setError('Erro ao criar conta. Tente novamente.');

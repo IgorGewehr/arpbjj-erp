@@ -18,7 +18,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import { Mail, Lock, Eye, EyeOff, GraduationCap, User, Shield, ArrowLeft } from 'lucide-react';
-import { useAuth } from '@/components/providers';
+import { useAuth, usePermissions } from '@/components/providers';
 import { useAcademySettings } from '@/hooks';
 
 type LoginMode = 'student' | 'teacher';
@@ -27,7 +27,8 @@ export default function LoginPage() {
   const router = useRouter();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const { signIn, signUp, isAuthenticated, loading, error, clearError } = useAuth();
+  const { signIn, signUp, isAuthenticated, loading, error, clearError, user } = useAuth();
+  const { defaultRoute } = usePermissions();
   const { academyName } = useAcademySettings();
 
   const [mode, setMode] = useState<LoginMode>('student');
@@ -40,12 +41,16 @@ export default function LoginPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
-  // Redirect if already authenticated
+  // Redirect if already authenticated (to appropriate route based on role)
   useEffect(() => {
-    if (isAuthenticated) {
-      router.push('/dashboard');
+    if (isAuthenticated && user) {
+      // Use role-based default route
+      const redirectTo = user.role === 'student' ? '/portal'
+                       : user.role === 'guardian' ? '/responsavel'
+                       : '/dashboard';
+      router.push(redirectTo);
     }
-  }, [isAuthenticated, router]);
+  }, [isAuthenticated, user, router]);
 
   // Clear error when switching modes
   useEffect(() => {
@@ -75,14 +80,15 @@ export default function LoginPage() {
         } else {
           await signIn(formData.email, formData.password);
         }
-        router.push('/dashboard');
+        // Don't redirect here - let the useEffect handle role-based routing
+        // The useEffect will redirect once user data is loaded
       } catch {
         // Error is handled by AuthProvider
       } finally {
         setSubmitting(false);
       }
     },
-    [isSignUp, formData, signIn, signUp, router]
+    [isSignUp, formData, signIn, signUp]
   );
 
   const toggleMode = useCallback(() => {

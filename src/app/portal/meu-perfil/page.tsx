@@ -3,68 +3,29 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
-  Paper,
   Typography,
-  Avatar,
-  Chip,
-  Switch,
-  FormControlLabel,
   TextField,
   Button,
-  Divider,
   Skeleton,
-  Card,
-  CardContent,
-  Alert,
+  Switch,
   CircularProgress,
+  Avatar,
 } from '@mui/material';
-import Grid from '@mui/material/Grid';
-import {
-  User,
-  Calendar,
-  Phone,
-  Mail,
-  Award,
-  Clock,
-  Shield,
-  Heart,
-  AlertCircle,
-  Save,
-  CheckCircle,
-  Lock,
-  Unlock,
-  Trophy,
-  Target,
-} from 'lucide-react';
-import { format, differenceInMonths, differenceInYears } from 'date-fns';
+import { Save, Check } from 'lucide-react';
+import { format, differenceInMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
 import { studentService } from '@/services/studentService';
 import { attendanceService } from '@/services/attendanceService';
-import { competitionService } from '@/services/competitionService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
-import { getBeltChipColor } from '@/lib/theme';
 import { Student } from '@/types';
 
-// ============================================
-// Belt Labels
-// ============================================
-const beltLabels: Record<string, string> = {
-  white: 'Branca',
-  blue: 'Azul',
-  purple: 'Roxa',
-  brown: 'Marrom',
-  black: 'Preta',
-  grey: 'Cinza',
-  yellow: 'Amarela',
-  orange: 'Laranja',
-  green: 'Verde',
+const BELT_LABELS: Record<string, string> = {
+  white: 'Branca', blue: 'Azul', purple: 'Roxa', brown: 'Marrom', black: 'Preta',
+  grey: 'Cinza', yellow: 'Amarela', orange: 'Laranja', green: 'Verde',
 };
 
-// ============================================
-// Main Component
-// ============================================
 export default function StudentProfilePage() {
   const { user } = useAuth();
   const { success, error: showError } = useFeedback();
@@ -72,19 +33,33 @@ export default function StudentProfilePage() {
   const [student, setStudent] = useState<Student | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  // Editable fields
-  const [cpf, setCpf] = useState('');
-  const [bloodType, setBloodType] = useState('');
-  const [allergies, setAllergies] = useState('');
-  const [emergencyContact, setEmergencyContact] = useState('');
-  const [isProfilePublic, setIsProfilePublic] = useState(false);
-
-  // Stats
   const [attendanceCount, setAttendanceCount] = useState(0);
-  const [medalCount, setMedalCount] = useState({ gold: 0, silver: 0, bronze: 0 });
 
-  // Load student data
+  // Form fields
+  const [form, setForm] = useState({
+    nickname: '',
+    phone: '',
+    email: '',
+    cpf: '',
+    rg: '',
+    weight: '',
+    birthDate: '',
+    zipCode: '',
+    street: '',
+    addressNumber: '',
+    complement: '',
+    neighborhood: '',
+    city: '',
+    state: '',
+    bloodType: '',
+    allergies: '',
+    healthNotes: '',
+    emergencyName: '',
+    emergencyPhone: '',
+    emergencyRelationship: '',
+    isProfilePublic: false,
+  });
+
   useEffect(() => {
     const loadData = async () => {
       if (!user?.studentId) {
@@ -93,29 +68,38 @@ export default function StudentProfilePage() {
       }
 
       try {
-        const studentData = await studentService.getById(user.studentId);
-        if (studentData) {
-          setStudent(studentData);
-          setCpf(studentData.cpf || '');
-          setBloodType(studentData.bloodType || '');
-          setAllergies(studentData.allergies?.join(', ') || '');
-          // Format emergency contact as string for display
-          if (studentData.emergencyContact) {
-            const ec = studentData.emergencyContact;
-            setEmergencyContact(`${ec.name} - ${ec.phone}${ec.relationship ? ` (${ec.relationship})` : ''}`);
-          }
-          setIsProfilePublic(studentData.isProfilePublic ?? false);
+        const data = await studentService.getById(user.studentId);
+        if (data) {
+          setStudent(data);
+          setForm({
+            nickname: data.nickname || '',
+            phone: data.phone || '',
+            email: data.email || '',
+            cpf: data.cpf || '',
+            rg: data.rg || '',
+            weight: data.weight?.toString() || '',
+            birthDate: data.birthDate ? format(new Date(data.birthDate), 'yyyy-MM-dd') : '',
+            zipCode: data.address?.zipCode || '',
+            street: data.address?.street || '',
+            addressNumber: data.address?.number || '',
+            complement: data.address?.complement || '',
+            neighborhood: data.address?.neighborhood || '',
+            city: data.address?.city || '',
+            state: data.address?.state || '',
+            bloodType: data.bloodType || '',
+            allergies: data.allergies?.join(', ') || '',
+            healthNotes: data.healthNotes || '',
+            emergencyName: data.emergencyContact?.name || '',
+            emergencyPhone: data.emergencyContact?.phone || '',
+            emergencyRelationship: data.emergencyContact?.relationship || '',
+            isProfilePublic: data.isProfilePublic ?? false,
+          });
 
-          // Load attendance count
           const count = await attendanceService.getStudentAttendanceCount(user.studentId);
           setAttendanceCount(count);
-
-          // Load medal count
-          const medals = await competitionService.getMedalCount(user.studentId);
-          setMedalCount(medals);
         }
-      } catch (err) {
-        showError('Erro ao carregar dados do perfil');
+      } catch {
+        showError('Erro ao carregar perfil');
       } finally {
         setLoading(false);
       }
@@ -124,484 +108,259 @@ export default function StudentProfilePage() {
     loadData();
   }, [user?.studentId, showError]);
 
-  // Calculate stats
-  const trainingTime = student ? (() => {
-    const months = differenceInMonths(new Date(), student.startDate);
-    const years = Math.floor(months / 12);
-    const remainingMonths = months % 12;
-    if (years > 0) {
-      return `${years} ano${years > 1 ? 's' : ''} e ${remainingMonths} mês${remainingMonths !== 1 ? 'es' : ''}`;
-    }
-    return `${months} mês${months !== 1 ? 'es' : ''}`;
-  })() : '';
+  const handleChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  };
 
-  const age = student && student.birthDate ? differenceInYears(new Date(), student.birthDate) : null;
-
-  // Handle save
   const handleSave = useCallback(async () => {
     if (!student || !user?.studentId) return;
 
     setSaving(true);
     try {
       await studentService.update(user.studentId, {
-        cpf: cpf.trim() || undefined,
-        bloodType: bloodType.trim() || undefined,
-        allergies: allergies.trim() ? allergies.split(',').map(a => a.trim()) : undefined,
-        isProfilePublic,
+        nickname: form.nickname.trim() || undefined,
+        phone: form.phone.trim() || undefined,
+        email: form.email.trim() || undefined,
+        cpf: form.cpf.trim() || undefined,
+        rg: form.rg.trim() || undefined,
+        weight: form.weight ? parseFloat(form.weight) : undefined,
+        birthDate: form.birthDate ? new Date(form.birthDate) : undefined,
+        address: form.street.trim() || form.city.trim() ? {
+          street: form.street.trim(),
+          number: form.addressNumber.trim(),
+          complement: form.complement.trim() || undefined,
+          neighborhood: form.neighborhood.trim(),
+          city: form.city.trim(),
+          state: form.state.trim(),
+          zipCode: form.zipCode.trim(),
+        } : undefined,
+        bloodType: form.bloodType.trim() || undefined,
+        allergies: form.allergies.trim() ? form.allergies.split(',').map((a) => a.trim()) : undefined,
+        healthNotes: form.healthNotes.trim() || undefined,
+        emergencyContact: form.emergencyName.trim() || form.emergencyPhone.trim() ? {
+          name: form.emergencyName.trim(),
+          phone: form.emergencyPhone.trim(),
+          relationship: form.emergencyRelationship.trim(),
+        } : undefined,
+        isProfilePublic: form.isProfilePublic,
       });
-      success('Perfil atualizado com sucesso!');
-    } catch (err) {
-      showError('Erro ao salvar alterações');
+      success('Perfil atualizado');
+    } catch {
+      showError('Erro ao salvar');
     } finally {
       setSaving(false);
     }
-  }, [student, user?.studentId, cpf, bloodType, allergies, isProfilePublic, success, showError]);
+  }, [student, user?.studentId, form, success, showError]);
 
   if (loading) {
     return (
       <Box>
-        <Skeleton variant="rounded" height={200} sx={{ mb: 3, borderRadius: 3 }} />
-        <Grid container spacing={3}>
-          <Grid size={{ xs: 12, md: 8 }}>
-            <Skeleton variant="rounded" height={400} sx={{ borderRadius: 3 }} />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <Skeleton variant="rounded" height={400} sx={{ borderRadius: 3 }} />
-          </Grid>
-        </Grid>
+        <Skeleton variant="text" width={150} height={32} sx={{ mb: 3 }} />
+        <Skeleton variant="rounded" height={100} sx={{ mb: 3, borderRadius: 2 }} />
+        <Skeleton variant="rounded" height={300} sx={{ borderRadius: 2 }} />
       </Box>
     );
   }
 
   if (!student) {
     return (
-      <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
-        <User size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
-        <Typography variant="h6" gutterBottom>
-          Perfil não encontrado
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          Não foi possível carregar seus dados. Entre em contato com a academia.
-        </Typography>
-      </Paper>
+      <Box sx={{ textAlign: 'center', py: 8 }}>
+        <Typography color="text.secondary">Perfil não encontrado</Typography>
+      </Box>
     );
   }
 
-  const beltColor = getBeltChipColor(student.currentBelt);
+  const trainingMonths = Math.floor(
+    (new Date().getTime() - new Date(student.startDate).getTime()) / (1000 * 60 * 60 * 24 * 30)
+  );
 
   return (
     <Box>
-      {/* Hero Header */}
-      <Paper
+      {/* Header */}
+      <Typography variant="h5" fontWeight={600} sx={{ mb: 3 }}>
+        Meu Perfil
+      </Typography>
+
+      {/* Profile Summary */}
+      <Box
         sx={{
-          p: 4,
-          mb: 3,
-          borderRadius: 3,
-          background: `linear-gradient(135deg, ${beltColor.bg} 0%, ${beltColor.bg}88 100%)`,
-          position: 'relative',
-          overflow: 'hidden',
+          display: 'flex',
+          gap: 3,
+          p: 3,
+          mb: 4,
+          bgcolor: '#fff',
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'grey.200',
+          flexWrap: 'wrap',
         }}
       >
-        <Box
-          sx={{
-            position: 'absolute',
-            right: -50,
-            top: -50,
-            width: 200,
-            height: 200,
-            borderRadius: '50%',
-            bgcolor: 'rgba(255,255,255,0.1)',
-          }}
-        />
-        <Box
-          sx={{
-            position: 'absolute',
-            right: 50,
-            bottom: -80,
-            width: 150,
-            height: 150,
-            borderRadius: '50%',
-            bgcolor: 'rgba(255,255,255,0.05)',
-          }}
-        />
+        <Avatar
+          src={student.photoUrl}
+          sx={{ width: 64, height: 64, bgcolor: '#111', fontSize: '1.5rem', fontWeight: 600 }}
+        >
+          {student.fullName.charAt(0)}
+        </Avatar>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3, position: 'relative', zIndex: 1 }}>
-          <Avatar
-            src={student.photoUrl}
-            sx={{
-              width: 120,
-              height: 120,
-              bgcolor: beltColor.text,
-              color: beltColor.bg,
-              fontSize: '2.5rem',
-              fontWeight: 700,
-              border: '4px solid white',
-              boxShadow: 3,
-            }}
-          >
-            {student.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-          </Avatar>
-
-          <Box sx={{ flex: 1 }}>
-            <Typography variant="h4" fontWeight={700} color={beltColor.text}>
-              {student.nickname || student.fullName.split(' ')[0]}
+        <Box sx={{ flex: 1, minWidth: 200 }}>
+          <Typography variant="h6" fontWeight={600}>
+            {student.fullName}
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 1 }}>
+            <BeltDisplay belt={student.currentBelt} stripes={student.currentStripes} size="small" />
+            <Typography variant="body2" color="text.secondary">
+              {BELT_LABELS[student.currentBelt]} • {student.currentStripes} graus
             </Typography>
-            <Typography variant="body1" color={beltColor.text} sx={{ opacity: 0.8, mb: 2 }}>
-              {student.fullName}
-            </Typography>
-
-            <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <BeltDisplay belt={student.currentBelt} stripes={student.currentStripes} size="medium" />
-                <Typography variant="body2" fontWeight={600} color={beltColor.text}>
-                  Faixa {beltLabels[student.currentBelt]} - {student.currentStripes} grau{student.currentStripes !== 1 ? 's' : ''}
-                </Typography>
-              </Box>
-            </Box>
-          </Box>
-
-          {/* Stats Badges */}
-          <Box sx={{ display: { xs: 'none', md: 'flex' }, flexDirection: 'column', gap: 1 }}>
-            <Chip
-              icon={<Clock size={16} />}
-              label={trainingTime}
-              sx={{ bgcolor: 'rgba(255,255,255,0.9)', fontWeight: 600 }}
-            />
-            <Chip
-              icon={<Target size={16} />}
-              label={`${attendanceCount} presenças`}
-              sx={{ bgcolor: 'rgba(255,255,255,0.9)', fontWeight: 600 }}
-            />
           </Box>
         </Box>
-      </Paper>
 
-      <Grid container spacing={3}>
-        {/* Main Content */}
-        <Grid size={{ xs: 12, md: 8 }}>
-          {/* Stats Cards */}
-          <Grid container spacing={2} sx={{ mb: 3 }}>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Card sx={{ textAlign: 'center', borderRadius: 2 }}>
-                <CardContent sx={{ py: 2 }}>
-                  <Typography variant="h4" fontWeight={700} color="primary">
-                    {attendanceCount}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Presenças
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Card sx={{ textAlign: 'center', borderRadius: 2 }}>
-                <CardContent sx={{ py: 2 }}>
-                  <Typography variant="h4" fontWeight={700} sx={{ color: '#FFD700' }}>
-                    {medalCount.gold}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Ouros
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Card sx={{ textAlign: 'center', borderRadius: 2 }}>
-                <CardContent sx={{ py: 2 }}>
-                  <Typography variant="h4" fontWeight={700} sx={{ color: '#C0C0C0' }}>
-                    {medalCount.silver}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Pratas
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-            <Grid size={{ xs: 6, sm: 3 }}>
-              <Card sx={{ textAlign: 'center', borderRadius: 2 }}>
-                <CardContent sx={{ py: 2 }}>
-                  <Typography variant="h4" fontWeight={700} sx={{ color: '#CD7F32' }}>
-                    {medalCount.bronze}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Bronzes
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grid>
-          </Grid>
+        <Box sx={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h5" fontWeight={600}>{attendanceCount}</Typography>
+            <Typography variant="caption" color="text.secondary">presenças</Typography>
+          </Box>
+          <Box sx={{ textAlign: 'center' }}>
+            <Typography variant="h5" fontWeight={600}>{trainingMonths}</Typography>
+            <Typography variant="caption" color="text.secondary">meses</Typography>
+          </Box>
+        </Box>
+      </Box>
 
-          {/* Personal Information */}
-          <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-            <Typography variant="h6" fontWeight={600} sx={{ mb: 3 }}>
-              Informações Pessoais
+      {/* Read-only Info */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="body2" fontWeight={600} sx={{ mb: 2 }}>
+          Informações gerenciadas pela academia
+        </Typography>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' },
+            gap: 2,
+            p: 2,
+            bgcolor: 'grey.50',
+            borderRadius: 2,
+          }}
+        >
+          <Box>
+            <Typography variant="caption" color="text.secondary">Início do treino</Typography>
+            <Typography variant="body2">
+              {format(student.startDate, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}
             </Typography>
-
-            <Grid container spacing={2}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'action.hover' }}>
-                    <Calendar size={20} />
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Data de Nascimento
-                    </Typography>
-                    <Typography variant="body2" fontWeight={500}>
-                      {student.birthDate
-                        ? `${format(student.birthDate, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}${age !== null ? ` (${age} anos)` : ''}`
-                        : 'Não informada'}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
-
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'action.hover' }}>
-                    <Phone size={20} />
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Telefone
-                    </Typography>
-                    <Typography variant="body2" fontWeight={500}>
-                      {student.phone || 'Não informado'}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
-
-              {student.email && (
-                <Grid size={{ xs: 12, sm: 6 }}>
-                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                    <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'action.hover' }}>
-                      <Mail size={20} />
-                    </Box>
-                    <Box>
-                      <Typography variant="caption" color="text.secondary">
-                        Email
-                      </Typography>
-                      <Typography variant="body2" fontWeight={500}>
-                        {student.email}
-                      </Typography>
-                    </Box>
-                  </Box>
-                </Grid>
-              )}
-
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Box sx={{ p: 1, borderRadius: 2, bgcolor: 'action.hover' }}>
-                    <Award size={20} />
-                  </Box>
-                  <Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Início do Treino
-                    </Typography>
-                    <Typography variant="body2" fontWeight={500}>
-                      {format(student.startDate, "d 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
-            </Grid>
-          </Paper>
-
-          {/* Editable Information */}
-          <Paper sx={{ p: 3, borderRadius: 3 }}>
-            <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>
-              Informações Editáveis
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">Status</Typography>
+            <Typography variant="body2">
+              {student.status === 'active' ? 'Ativo' : student.status === 'injured' ? 'Lesionado' : 'Inativo'}
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              Você pode editar estas informações diretamente
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">Plano</Typography>
+            <Typography variant="body2">
+              {student.planId ? `R$ ${student.tuitionValue?.toLocaleString('pt-BR')}/mês` : 'Projeto Social'}
             </Typography>
+          </Box>
+        </Box>
+      </Box>
 
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="CPF"
-                  value={cpf}
-                  onChange={(e) => setCpf(e.target.value)}
-                  fullWidth
-                  placeholder="000.000.000-00"
-                />
-              </Grid>
+      {/* Editable Form */}
+      <Box sx={{ bgcolor: '#fff', borderRadius: 2, border: '1px solid', borderColor: 'grey.200', p: 3 }}>
+        {/* Basic Info */}
+        <Typography variant="body2" fontWeight={600} sx={{ mb: 2 }}>
+          Dados pessoais
+        </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, mb: 4 }}>
+          <TextField label="Apelido" value={form.nickname} onChange={handleChange('nickname')} size="small" fullWidth />
+          <TextField
+            label="Data de nascimento"
+            value={form.birthDate}
+            onChange={handleChange('birthDate')}
+            size="small"
+            fullWidth
+            type="date"
+            InputLabelProps={{ shrink: true }}
+          />
+          <TextField label="Telefone" value={form.phone} onChange={handleChange('phone')} size="small" fullWidth />
+          <TextField label="Email" value={form.email} onChange={handleChange('email')} size="small" fullWidth />
+          <TextField label="CPF" value={form.cpf} onChange={handleChange('cpf')} size="small" fullWidth />
+          <TextField label="RG" value={form.rg} onChange={handleChange('rg')} size="small" fullWidth />
+          <TextField label="Peso (kg)" value={form.weight} onChange={handleChange('weight')} size="small" fullWidth type="number" />
+        </Box>
 
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Tipo Sanguíneo"
-                  value={bloodType}
-                  onChange={(e) => setBloodType(e.target.value)}
-                  fullWidth
-                  placeholder="Ex: A+, B-, O+"
-                />
-              </Grid>
+        {/* Address */}
+        <Typography variant="body2" fontWeight={600} sx={{ mb: 2 }}>
+          Endereço
+        </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2, mb: 4 }}>
+          <TextField label="CEP" value={form.zipCode} onChange={handleChange('zipCode')} size="small" fullWidth />
+          <TextField label="Rua" value={form.street} onChange={handleChange('street')} size="small" fullWidth sx={{ gridColumn: { sm: 'span 2' } }} />
+          <TextField label="Número" value={form.addressNumber} onChange={handleChange('addressNumber')} size="small" fullWidth />
+          <TextField label="Complemento" value={form.complement} onChange={handleChange('complement')} size="small" fullWidth />
+          <TextField label="Bairro" value={form.neighborhood} onChange={handleChange('neighborhood')} size="small" fullWidth />
+          <TextField label="Cidade" value={form.city} onChange={handleChange('city')} size="small" fullWidth />
+          <TextField label="Estado" value={form.state} onChange={handleChange('state')} size="small" fullWidth />
+        </Box>
 
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Alergias"
-                  value={allergies}
-                  onChange={(e) => setAllergies(e.target.value)}
-                  fullWidth
-                  placeholder="Separe por vírgula"
-                  helperText="Ex: Dipirona, Amendoim"
-                />
-              </Grid>
+        {/* Health */}
+        <Typography variant="body2" fontWeight={600} sx={{ mb: 2 }}>
+          Saúde
+        </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 2, mb: 4 }}>
+          <TextField label="Tipo sanguíneo" value={form.bloodType} onChange={handleChange('bloodType')} size="small" fullWidth placeholder="Ex: A+, O-" />
+          <TextField label="Alergias" value={form.allergies} onChange={handleChange('allergies')} size="small" fullWidth placeholder="Separar por vírgula" />
+          <TextField
+            label="Observações de saúde"
+            value={form.healthNotes}
+            onChange={handleChange('healthNotes')}
+            size="small"
+            fullWidth
+            multiline
+            rows={2}
+            sx={{ gridColumn: { sm: 'span 2' } }}
+          />
+        </Box>
 
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Contato de Emergência"
-                  value={emergencyContact}
-                  fullWidth
-                  disabled
-                  helperText="Entre em contato com a academia para alterar"
-                />
-              </Grid>
+        {/* Emergency */}
+        <Typography variant="body2" fontWeight={600} sx={{ mb: 2 }}>
+          Contato de emergência
+        </Typography>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 2, mb: 4 }}>
+          <TextField label="Nome" value={form.emergencyName} onChange={handleChange('emergencyName')} size="small" fullWidth />
+          <TextField label="Telefone" value={form.emergencyPhone} onChange={handleChange('emergencyPhone')} size="small" fullWidth />
+          <TextField label="Parentesco" value={form.emergencyRelationship} onChange={handleChange('emergencyRelationship')} size="small" fullWidth />
+        </Box>
 
-              <Grid size={12}>
-                <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
-                  <Button
-                    variant="contained"
-                    startIcon={saving ? <CircularProgress size={18} /> : <Save size={18} />}
-                    onClick={handleSave}
-                    disabled={saving}
-                  >
-                    {saving ? 'Salvando...' : 'Salvar Alterações'}
-                  </Button>
-                </Box>
-              </Grid>
-            </Grid>
-          </Paper>
-        </Grid>
-
-        {/* Sidebar */}
-        <Grid size={{ xs: 12, md: 4 }}>
-          {/* Privacy Toggle */}
-          <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <Box sx={{ p: 1, borderRadius: 2, bgcolor: isProfilePublic ? 'success.light' : 'grey.200' }}>
-                {isProfilePublic ? <Unlock size={20} color="#16A34A" /> : <Lock size={20} color="#666" />}
-              </Box>
-              <Box sx={{ flex: 1 }}>
-                <Typography variant="subtitle1" fontWeight={600}>
-                  Privacidade do Perfil
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Controle quem pode ver seu perfil
-                </Typography>
-              </Box>
-            </Box>
-
-            <Divider sx={{ my: 2 }} />
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={isProfilePublic}
-                  onChange={(e) => setIsProfilePublic(e.target.checked)}
-                  color="success"
-                />
-              }
-              label={
-                <Box>
-                  <Typography variant="body2" fontWeight={500}>
-                    {isProfilePublic ? 'Perfil Público' : 'Perfil Privado'}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {isProfilePublic
-                      ? 'Outros alunos podem ver seu perfil'
-                      : 'Apenas você e o mestre podem ver seu perfil'}
-                  </Typography>
-                </Box>
-              }
-              sx={{ m: 0, width: '100%' }}
-            />
-
-            {!isProfilePublic && (
-              <Alert severity="info" sx={{ mt: 2 }} icon={<Shield size={18} />}>
-                Seu perfil está oculto para outros alunos
-              </Alert>
-            )}
-          </Paper>
-
-          {/* Status Card */}
-          <Paper sx={{ p: 3, borderRadius: 3, mb: 3 }}>
-            <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
-              Status
+        {/* Privacy */}
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4, p: 2, bgcolor: 'grey.50', borderRadius: 1.5 }}>
+          <Box>
+            <Typography variant="body2" fontWeight={500}>Perfil público</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Outros alunos poderão ver seu perfil
             </Typography>
+          </Box>
+          <Switch
+            checked={form.isProfilePublic}
+            onChange={(e) => setForm((prev) => ({ ...prev, isProfilePublic: e.target.checked }))}
+          />
+        </Box>
 
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Box
-                sx={{
-                  p: 1.5,
-                  borderRadius: 2,
-                  bgcolor: student.status === 'active' ? 'success.light' : 'warning.light',
-                }}
-              >
-                {student.status === 'active' ? (
-                  <CheckCircle size={24} color="#16A34A" />
-                ) : (
-                  <AlertCircle size={24} color="#CA8A04" />
-                )}
-              </Box>
-              <Box>
-                <Typography variant="body1" fontWeight={600}>
-                  {student.status === 'active' ? 'Ativo' : student.status === 'injured' ? 'Lesionado' : 'Inativo'}
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Mensalidade: R$ {student.tuitionValue?.toLocaleString('pt-BR') || '0'}
-                </Typography>
-              </Box>
-            </Box>
-          </Paper>
-
-          {/* Health Info */}
-          {(bloodType || allergies || student.healthNotes) && (
-            <Paper sx={{ p: 3, borderRadius: 3 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-                <Heart size={20} color="#DC2626" />
-                <Typography variant="subtitle1" fontWeight={600}>
-                  Informações de Saúde
-                </Typography>
-              </Box>
-
-              {bloodType && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Tipo Sanguíneo
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {bloodType}
-                  </Typography>
-                </Box>
-              )}
-
-              {allergies && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="caption" color="text.secondary">
-                    Alergias
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {allergies}
-                  </Typography>
-                </Box>
-              )}
-
-              {student.healthNotes && (
-                <Box>
-                  <Typography variant="caption" color="text.secondary">
-                    Observações
-                  </Typography>
-                  <Typography variant="body2" fontWeight={500}>
-                    {student.healthNotes}
-                  </Typography>
-                </Box>
-              )}
-            </Paper>
-          )}
-        </Grid>
-      </Grid>
+        {/* Save */}
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="contained"
+            onClick={handleSave}
+            disabled={saving}
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={16} />}
+            sx={{
+              bgcolor: '#111',
+              '&:hover': { bgcolor: '#333' },
+              textTransform: 'none',
+              fontWeight: 600,
+            }}
+          >
+            {saving ? 'Salvando...' : 'Salvar alterações'}
+          </Button>
+        </Box>
+      </Box>
     </Box>
   );
 }

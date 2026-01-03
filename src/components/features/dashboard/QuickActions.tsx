@@ -137,7 +137,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
           title="Iniciar Chamada"
           description="Registrar presenca da turma"
           icon={CheckCircle}
-          gradient="linear-gradient(135deg, #22C55E 0%, #16A34A 100%)"
+          gradient="linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)"
           onClick={() => onAction('attendance')}
           compact={isMobile}
         />
@@ -145,7 +145,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
           title="Novo Aluno"
           description="Cadastro rapido"
           icon={UserPlus}
-          gradient="linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)"
+          gradient="linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)"
           onClick={() => onAction('newStudent')}
           compact={isMobile}
         />
@@ -153,7 +153,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
           title="Registrar Pagamento"
           description="Baixa de mensalidade"
           icon={DollarSign}
-          gradient="linear-gradient(135deg, #F59E0B 0%, #D97706 100%)"
+          gradient="linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)"
           onClick={() => onAction('financial')}
           compact={isMobile}
         />
@@ -161,7 +161,7 @@ export function QuickActions({ onAction }: QuickActionsProps) {
           title="Gerenciar Planos"
           description="Planos e mensalidades"
           icon={CreditCard}
-          gradient="linear-gradient(135deg, #8B5CF6 0%, #7C3AED 100%)"
+          gradient="linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)"
           onClick={() => onAction('financial')}
           compact={isMobile}
         />

@@ -156,7 +156,7 @@ export function AttendanceChart({ data = [] }: AttendanceChartProps) {
             <Tooltip content={<CustomTooltip />} />
             <Bar
               dataKey="count"
-              fill="#2563eb"
+              fill="#1a1a1a"
               radius={[4, 4, 0, 0]}
             />
           </BarChart>

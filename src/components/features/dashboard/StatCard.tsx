@@ -67,7 +67,7 @@ export function StatCard({
             variant="h4"
             fontWeight={700}
             sx={{
-              color,
+              color: '#1a1a1a',
               mb: 0.5,
               fontSize: { xs: '1.25rem', sm: '1.5rem', md: '2rem' },
               lineHeight: 1.2,

@@ -8,12 +8,11 @@ import {
   CheckCircle,
   DollarSign,
   AlertTriangle,
-  Award,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/components/providers';
-import { useStudents, useFinancial, useBeltProgression } from '@/hooks';
+import { useStudents, useFinancial } from '@/hooks';
 import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
 import { AttendanceChart } from './AttendanceChart';
@@ -29,7 +28,6 @@ export function DashboardView() {
   const { user } = useAuth();
   const { students, stats: studentStats, isLoading: loadingStudents, refresh: refreshStudents } = useStudents();
   const { pendingPayments, overduePayments, monthlySummary, isLoading: loadingFinancial } = useFinancial();
-  const { eligibleStudents, isLoadingEligible } = useBeltProgression();
 
   // Quick student dialog state
   const [quickStudentOpen, setQuickStudentOpen] = useState(false);
@@ -78,7 +76,7 @@ export function DashboardView() {
   // ============================================
   // Loading state
   // ============================================
-  const isLoading = loadingStudents || loadingFinancial || isLoadingEligible;
+  const isLoading = loadingStudents || loadingFinancial;
 
   return (
     <Box>
@@ -103,7 +101,7 @@ export function DashboardView() {
 
       {/* Stats Grid */}
       <Grid container spacing={{ xs: 1.5, sm: 2, md: 3 }} sx={{ mb: { xs: 2, sm: 4 } }}>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
           {isLoading ? (
             <Skeleton variant="rounded" height={140} sx={{ borderRadius: 3 }} />
           ) : (
@@ -112,26 +110,12 @@ export function DashboardView() {
               value={studentStats.byStatus.active}
               subtitle={`de ${studentStats.total} total`}
               icon={Users}
-              color="#2563eb"
-              bgColor="#dbeafe"
+              color="#1a1a1a"
+              bgColor="#f5f5f5"
             />
           )}
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
-          {isLoading ? (
-            <Skeleton variant="rounded" height={140} sx={{ borderRadius: 3 }} />
-          ) : (
-            <StatCard
-              title="Elegiveis para Grau"
-              value={eligibleStudents.length}
-              subtitle="prontos para graduar"
-              icon={Award}
-              color="#7c3aed"
-              bgColor="#ede9fe"
-            />
-          )}
-        </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
           {isLoading ? (
             <Skeleton variant="rounded" height={140} sx={{ borderRadius: 3 }} />
           ) : (
@@ -140,12 +124,12 @@ export function DashboardView() {
               value={`R$ ${(monthlySummary?.paidAmount || 0).toLocaleString('pt-BR')}`}
               subtitle={`${monthlySummary?.paid || 0} pagamentos`}
               icon={DollarSign}
-              color="#16a34a"
-              bgColor="#dcfce7"
+              color="#1a1a1a"
+              bgColor="#f5f5f5"
             />
           )}
         </Grid>
-        <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
+        <Grid size={{ xs: 12, sm: 6, lg: 4 }}>
           {isLoading ? (
             <Skeleton variant="rounded" height={140} sx={{ borderRadius: 3 }} />
           ) : (
@@ -154,8 +138,8 @@ export function DashboardView() {
               value={pendingPayments.length + overduePayments.length}
               subtitle={`${overduePayments.length} vencidas`}
               icon={AlertTriangle}
-              color={overduePayments.length > 0 ? '#dc2626' : '#ca8a04'}
-              bgColor={overduePayments.length > 0 ? '#fee2e2' : '#fef9c3'}
+              color="#1a1a1a"
+              bgColor="#f5f5f5"
             />
           )}
         </Grid>
@@ -188,9 +172,7 @@ export function DashboardView() {
         <Grid size={{ xs: 12, lg: 4 }}>
           <AlertsPanel
             overduePayments={overduePayments}
-            eligibleStudents={eligibleStudents}
             onViewOverdue={() => router.push('/financeiro')}
-            onViewEligible={() => router.push('/alunos')}
           />
         </Grid>
       </Grid>

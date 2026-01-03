@@ -151,11 +151,11 @@ export function RevenueOverview({
         sx={{
           p: { xs: 2, sm: 3 },
           borderRadius: 3,
-          background: 'linear-gradient(135deg, #22C55E 0%, #16A34A 100%)',
+          background: 'linear-gradient(135deg, #1a1a1a 0%, #2d2d2d 100%)',
           color: 'white',
           textAlign: 'center',
           mb: { xs: 2, sm: 3 },
-          boxShadow: '0 4px 12px -2px rgba(22, 163, 74, 0.4)',
+          boxShadow: '0 4px 12px -2px rgba(0, 0, 0, 0.25)',
         }}
       >
         <Typography
@@ -204,8 +204,8 @@ export function RevenueOverview({
           amount={paidAmount}
           count={paidCount}
           icon={DollarSign}
-          color="#16a34a"
-          bgColor="#dcfce7"
+          color="#1a1a1a"
+          bgColor="#f5f5f5"
           compact={isMobile}
         />
         <RevenueItem
@@ -213,8 +213,8 @@ export function RevenueOverview({
           amount={pendingAmount}
           count={pendingCount}
           icon={Clock}
-          color="#ca8a04"
-          bgColor="#fef9c3"
+          color="#525252"
+          bgColor="#f5f5f5"
           compact={isMobile}
         />
         <RevenueItem
@@ -222,8 +222,8 @@ export function RevenueOverview({
           amount={overdueAmount}
           count={overdueCount}
           icon={AlertTriangle}
-          color="#dc2626"
-          bgColor="#fee2e2"
+          color="#525252"
+          bgColor="#f5f5f5"
           compact={isMobile}
         />
       </Box>

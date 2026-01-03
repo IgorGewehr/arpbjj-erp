@@ -319,15 +319,17 @@ export function AttendanceCard({
             icon={<AlertCircle size={12} />}
             label="Lesao"
             size="small"
-            color="warning"
             sx={{
               position: 'absolute',
               top: 4,
               left: 4,
               fontSize: '0.6rem',
               height: 18,
+              bgcolor: '#1a1a1a',
+              color: '#fff',
               '& .MuiChip-icon': {
                 ml: 0.5,
+                color: '#fff',
               },
             }}
           />

@@ -1,21 +1,15 @@
 'use client';
 
 import { Box, Typography, Paper, Button, Chip, useTheme, useMediaQuery } from '@mui/material';
-import { AlertTriangle, Award, ArrowRight, DollarSign } from 'lucide-react';
-import { Financial, Student, BeltColor, Stripes } from '@/types';
+import { AlertTriangle, ArrowRight, CheckCircle } from 'lucide-react';
+import { Financial } from '@/types';
 
 // ============================================
 // Props Interface
 // ============================================
 interface AlertsPanelProps {
   overduePayments: Financial[];
-  eligibleStudents: Array<{
-    student: Student;
-    nextPromotion: { belt: BeltColor; stripes: Stripes };
-    totalClasses: number;
-  }>;
   onViewOverdue: () => void;
-  onViewEligible: () => void;
 }
 
 // ============================================
@@ -117,9 +111,7 @@ function AlertCard({
 // ============================================
 export function AlertsPanel({
   overduePayments,
-  eligibleStudents,
   onViewOverdue,
-  onViewEligible,
 }: AlertsPanelProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -154,31 +146,16 @@ export function AlertsPanel({
             count={overduePayments.length}
             description={`Total: ${formatCurrency(overdueTotal)}`}
             icon={AlertTriangle}
-            color="#dc2626"
-            borderColor="error.main"
-            bgColor="#fee2e2"
+            color="#1a1a1a"
+            borderColor="#1a1a1a"
+            bgColor="#f5f5f5"
             onClick={onViewOverdue}
             compact={isMobile}
           />
         )}
 
-        {/* Eligible Students Alert */}
-        {eligibleStudents.length > 0 && (
-          <AlertCard
-            title="Prontos para Graduacao"
-            count={eligibleStudents.length}
-            description="Alunos completaram requisitos"
-            icon={Award}
-            color="#16a34a"
-            borderColor="success.main"
-            bgColor="#dcfce7"
-            onClick={onViewEligible}
-            compact={isMobile}
-          />
-        )}
-
         {/* No Alerts */}
-        {overduePayments.length === 0 && eligibleStudents.length === 0 && (
+        {overduePayments.length === 0 && (
           <Box
             sx={{
               p: { xs: 3, sm: 4 },
@@ -192,8 +169,8 @@ export function AlertsPanel({
                 width: { xs: 40, sm: 48 },
                 height: { xs: 40, sm: 48 },
                 borderRadius: '50%',
-                bgcolor: '#dcfce7',
-                color: '#16a34a',
+                bgcolor: '#f5f5f5',
+                color: '#1a1a1a',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -201,7 +178,7 @@ export function AlertsPanel({
                 mb: 2,
               }}
             >
-              <Award size={isMobile ? 20 : 24} />
+              <CheckCircle size={isMobile ? 20 : 24} />
             </Box>
             <Typography
               variant="body2"
@@ -231,39 +208,20 @@ export function AlertsPanel({
           >
             Resumo do Dia
           </Typography>
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 1, sm: 1.5 } }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
-              >
-                Pagamentos pendentes
-              </Typography>
-              <Chip
-                label={overduePayments.length}
-                size="small"
-                color={overduePayments.length > 0 ? 'error' : 'default'}
-                variant="outlined"
-                sx={{ fontWeight: 600, height: isMobile ? 22 : 24, fontSize: isMobile ? '0.7rem' : '0.75rem' }}
-              />
-            </Box>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <Typography
-                variant="body2"
-                color="text.secondary"
-                sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
-              >
-                Alunos para graduar
-              </Typography>
-              <Chip
-                label={eligibleStudents.length}
-                size="small"
-                color={eligibleStudents.length > 0 ? 'success' : 'default'}
-                variant="outlined"
-                sx={{ fontWeight: 600, height: isMobile ? 22 : 24, fontSize: isMobile ? '0.7rem' : '0.75rem' }}
-              />
-            </Box>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{ fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
+            >
+              Pagamentos pendentes
+            </Typography>
+            <Chip
+              label={overduePayments.length}
+              size="small"
+              variant="outlined"
+              sx={{ fontWeight: 600, height: isMobile ? 22 : 24, fontSize: isMobile ? '0.7rem' : '0.75rem', borderColor: '#1a1a1a', color: '#1a1a1a' }}
+            />
           </Box>
         </Box>
       </Box>

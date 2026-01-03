@@ -95,13 +95,12 @@ function StatCard({
   icon: Icon,
   label,
   value,
-  color,
   compact,
 }: {
   icon: React.ElementType;
   label: string;
   value: number | string;
-  color: string;
+  color?: string;
   compact?: boolean;
 }) {
   return (
@@ -120,21 +119,20 @@ function StatCard({
           width: compact ? 36 : 48,
           height: compact ? 36 : 48,
           borderRadius: 2,
-          bgcolor: `${color}.light`,
+          bgcolor: '#f5f5f5',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
         }}
       >
-        <Icon size={compact ? 18 : 24} style={{ color: `var(--mui-palette-${color}-main)` }} />
+        <Icon size={compact ? 18 : 24} style={{ color: '#1a1a1a' }} />
       </Box>
       <Box sx={{ minWidth: 0 }}>
         <Typography
           variant="h5"
           fontWeight={700}
-          color={`${color}.main`}
-          sx={{ fontSize: compact ? '1.1rem' : '1.5rem', lineHeight: 1.2 }}
+          sx={{ fontSize: compact ? '1.1rem' : '1.5rem', lineHeight: 1.2, color: '#1a1a1a' }}
         >
           {value}
         </Typography>
@@ -612,9 +610,8 @@ export function AttendanceGrid({
                 icon={<History size={isMobile ? 12 : 14} />}
                 label="Historico"
                 size="small"
-                color="warning"
                 variant="outlined"
-                sx={{ height: isMobile ? 22 : 24, fontSize: isMobile ? '0.65rem' : '0.75rem' }}
+                sx={{ height: isMobile ? 22 : 24, fontSize: isMobile ? '0.65rem' : '0.75rem', borderColor: '#525252', color: '#525252' }}
               />
             )}
             {isSelectedDateToday && (
@@ -930,18 +927,16 @@ export function AttendanceGrid({
                   <Button
                     onClick={handleMarkAllPresent}
                     startIcon={!isMobile && <CheckCheck size={16} />}
-                    color="success"
                     disabled={isMutating}
-                    sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' }, px: { xs: 1, sm: 2 } }}
+                    sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' }, px: { xs: 1, sm: 2 }, borderColor: '#1a1a1a', color: '#1a1a1a', '&:hover': { borderColor: '#1a1a1a', bgcolor: '#f5f5f5' } }}
                   >
                     {isMobile ? <CheckCheck size={16} /> : 'Todos'}
                   </Button>
                   <Button
                     onClick={handleUnmarkAllPresent}
                     startIcon={!isMobile && <X size={16} />}
-                    color="error"
                     disabled={isMutating || stats.presentCount === 0}
-                    sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' }, px: { xs: 1, sm: 2 } }}
+                    sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' }, px: { xs: 1, sm: 2 }, borderColor: '#525252', color: '#525252', '&:hover': { borderColor: '#525252', bgcolor: '#f5f5f5' } }}
                   >
                     {isMobile ? <X size={16} /> : 'Limpar'}
                   </Button>

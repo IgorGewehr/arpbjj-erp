@@ -1,8 +1,8 @@
 'use client';
 
 import { useMemo } from 'react';
-import { Box, Typography, Skeleton } from '@mui/material';
-import { Clock } from 'lucide-react';
+import { Box, Typography, Skeleton, useTheme, useMediaQuery } from '@mui/material';
+import { Clock, Calendar } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { classService } from '@/services';
 import { Class } from '@/types';
@@ -17,6 +17,9 @@ const WEEK_DAYS = [
 ];
 
 export default function PortalHorariosPage() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   const { data: weeklySchedule, isLoading } = useQuery({
     queryKey: ['weeklySchedule'],
     queryFn: () => classService.getWeeklySchedule(),
@@ -71,189 +74,335 @@ export default function PortalHorariosPage() {
   if (isLoading) {
     return (
       <Box>
-        <Skeleton variant="text" width={200} height={32} sx={{ mb: 1 }} />
-        <Skeleton variant="text" width={280} height={20} sx={{ mb: 4 }} />
-        <Skeleton variant="rounded" height={400} sx={{ borderRadius: 2 }} />
+        <Skeleton variant="text" width="60%" height={28} sx={{ mb: 0.5 }} />
+        <Skeleton variant="text" width="40%" height={18} sx={{ mb: 3 }} />
+        {isMobile ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {[1, 2, 3].map((i) => (
+              <Skeleton key={i} variant="rounded" height={100} sx={{ borderRadius: 2 }} />
+            ))}
+          </Box>
+        ) : (
+          <Skeleton variant="rounded" height={300} sx={{ borderRadius: 2 }} />
+        )}
       </Box>
     );
   }
 
+  // Mobile Card View
+  const renderMobileView = () => (
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      {classRows.length === 0 ? (
+        <Box
+          sx={{
+            p: 4,
+            textAlign: 'center',
+            bgcolor: '#fff',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'grey.200',
+          }}
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.8rem' }}>
+            Nenhuma aula cadastrada
+          </Typography>
+        </Box>
+      ) : (
+        classRows.map(({ classData, scheduleByDay }) => {
+          const daysWithClass = WEEK_DAYS.filter((day) => scheduleByDay.has(day.value));
+          const hasClassNow = daysWithClass.some((day) => {
+            const schedule = scheduleByDay.get(day.value);
+            return schedule && isClassNow(schedule.startTime, schedule.endTime, day.value);
+          });
+
+          return (
+            <Box
+              key={classData.id}
+              sx={{
+                p: 2,
+                bgcolor: hasClassNow ? '#111' : '#fff',
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: hasClassNow ? '#111' : 'grey.200',
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1.5 }}>
+                <Box>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    sx={{ color: hasClassNow ? '#fff' : 'text.primary', fontSize: '0.9rem' }}
+                  >
+                    {classData.name}
+                  </Typography>
+                  {classData.instructorName && (
+                    <Typography
+                      variant="caption"
+                      sx={{ color: hasClassNow ? 'rgba(255,255,255,0.7)' : 'text.secondary', fontSize: '0.75rem' }}
+                    >
+                      {classData.instructorName}
+                    </Typography>
+                  )}
+                </Box>
+                {hasClassNow && (
+                  <Box
+                    sx={{
+                      px: 1,
+                      py: 0.25,
+                      bgcolor: 'rgba(255,255,255,0.2)',
+                      borderRadius: 1,
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ color: '#fff', fontSize: '0.65rem', fontWeight: 600 }}>
+                      AGORA
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {daysWithClass.map((day) => {
+                  const schedule = scheduleByDay.get(day.value);
+                  const isToday = day.value === today;
+                  const isNow = schedule && isClassNow(schedule.startTime, schedule.endTime, day.value);
+
+                  return (
+                    <Box
+                      key={day.value}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        bgcolor: hasClassNow
+                          ? isNow
+                            ? 'rgba(255,255,255,0.25)'
+                            : 'rgba(255,255,255,0.1)'
+                          : isToday
+                            ? '#111'
+                            : 'grey.100',
+                      }}
+                    >
+                      <Typography
+                        variant="caption"
+                        fontWeight={600}
+                        sx={{
+                          color: hasClassNow ? '#fff' : isToday ? '#fff' : 'text.secondary',
+                          fontSize: '0.7rem',
+                        }}
+                      >
+                        {day.short}
+                      </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: hasClassNow ? '#fff' : isToday ? '#fff' : 'text.primary',
+                          fontSize: '0.75rem',
+                        }}
+                      >
+                        {schedule?.startTime}
+                      </Typography>
+                    </Box>
+                  );
+                })}
+              </Box>
+            </Box>
+          );
+        })
+      )}
+    </Box>
+  );
+
+  // Desktop Table View
+  const renderDesktopView = () => (
+    <Box
+      sx={{
+        bgcolor: '#fff',
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: 'grey.200',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Header Row - Days */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: '180px repeat(6, 1fr)',
+          borderBottom: '1px solid',
+          borderColor: 'grey.200',
+          bgcolor: 'grey.50',
+        }}
+      >
+        <Box sx={{ p: 1.5, borderRight: '1px solid', borderColor: 'grey.200' }}>
+          <Typography variant="caption" fontWeight={600} color="text.secondary">
+            TURMA
+          </Typography>
+        </Box>
+        {WEEK_DAYS.map((day) => {
+          const isToday = day.value === today;
+          return (
+            <Box
+              key={day.value}
+              sx={{
+                p: 1.5,
+                textAlign: 'center',
+                borderRight: '1px solid',
+                borderColor: 'grey.200',
+                bgcolor: isToday ? '#111' : 'transparent',
+                '&:last-child': { borderRight: 'none' },
+              }}
+            >
+              <Typography variant="caption" fontWeight={600} sx={{ color: isToday ? '#fff' : 'text.secondary' }}>
+                {day.label.toUpperCase()}
+              </Typography>
+            </Box>
+          );
+        })}
+      </Box>
+
+      {/* Class Rows */}
+      {classRows.length === 0 ? (
+        <Box sx={{ p: 4, textAlign: 'center' }}>
+          <Typography variant="body2" color="text.secondary">
+            Nenhuma aula cadastrada
+          </Typography>
+        </Box>
+      ) : (
+        classRows.map(({ classData, scheduleByDay }, index) => (
+          <Box
+            key={classData.id}
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: '180px repeat(6, 1fr)',
+              borderBottom: index < classRows.length - 1 ? '1px solid' : 'none',
+              borderColor: 'grey.100',
+              '&:hover': { bgcolor: 'grey.50' },
+              transition: 'background-color 0.15s',
+            }}
+          >
+            {/* Class Name */}
+            <Box
+              sx={{
+                p: 1.5,
+                borderRight: '1px solid',
+                borderColor: 'grey.100',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'center',
+              }}
+            >
+              <Typography variant="body2" fontWeight={600} noWrap>
+                {classData.name}
+              </Typography>
+              {classData.instructorName && (
+                <Typography variant="caption" color="text.secondary" noWrap>
+                  {classData.instructorName}
+                </Typography>
+              )}
+            </Box>
+
+            {/* Schedule Cells */}
+            {WEEK_DAYS.map((day) => {
+              const schedule = scheduleByDay.get(day.value);
+              const isToday = day.value === today;
+              const isNow = schedule && isClassNow(schedule.startTime, schedule.endTime, day.value);
+
+              return (
+                <Box
+                  key={day.value}
+                  sx={{
+                    p: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRight: '1px solid',
+                    borderColor: 'grey.100',
+                    bgcolor: isNow ? '#111' : isToday ? 'grey.50' : 'transparent',
+                    '&:last-child': { borderRight: 'none' },
+                  }}
+                >
+                  {schedule ? (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 0.5,
+                        px: 1,
+                        py: 0.5,
+                        borderRadius: 1,
+                        bgcolor: isNow ? 'transparent' : 'grey.100',
+                      }}
+                    >
+                      <Clock size={12} color={isNow ? '#fff' : '#666'} />
+                      <Typography
+                        variant="caption"
+                        fontWeight={500}
+                        sx={{ color: isNow ? '#fff' : 'text.primary', whiteSpace: 'nowrap' }}
+                      >
+                        {schedule.startTime}
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <Typography variant="caption" color="text.disabled">
+                      —
+                    </Typography>
+                  )}
+                </Box>
+              );
+            })}
+          </Box>
+        ))
+      )}
+    </Box>
+  );
+
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" fontWeight={600} color="text.primary">
+      <Box sx={{ mb: 3 }}>
+        <Typography
+          variant="h6"
+          fontWeight={600}
+          color="text.primary"
+          sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
+        >
           Horários das Aulas
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
+        >
           Grade semanal de treinos
         </Typography>
       </Box>
 
-      {/* Schedule Table */}
-      <Box
-        sx={{
-          bgcolor: '#fff',
-          borderRadius: 2,
-          border: '1px solid',
-          borderColor: 'grey.200',
-          overflow: 'hidden',
-        }}
-      >
-        {/* Header Row - Days */}
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: { xs: '120px repeat(6, 1fr)', md: '180px repeat(6, 1fr)' },
-            borderBottom: '1px solid',
-            borderColor: 'grey.200',
-            bgcolor: 'grey.50',
-          }}
-        >
-          <Box sx={{ p: 1.5, borderRight: '1px solid', borderColor: 'grey.200' }}>
-            <Typography variant="caption" fontWeight={600} color="text.secondary">
-              TURMA
-            </Typography>
-          </Box>
-          {WEEK_DAYS.map((day) => {
-            const isToday = day.value === today;
-            return (
-              <Box
-                key={day.value}
-                sx={{
-                  p: 1.5,
-                  textAlign: 'center',
-                  borderRight: '1px solid',
-                  borderColor: 'grey.200',
-                  bgcolor: isToday ? '#111' : 'transparent',
-                  '&:last-child': { borderRight: 'none' },
-                }}
-              >
-                <Typography
-                  variant="caption"
-                  fontWeight={600}
-                  sx={{ color: isToday ? '#fff' : 'text.secondary', display: { xs: 'none', sm: 'block' } }}
-                >
-                  {day.label.toUpperCase()}
-                </Typography>
-                <Typography
-                  variant="caption"
-                  fontWeight={600}
-                  sx={{ color: isToday ? '#fff' : 'text.secondary', display: { xs: 'block', sm: 'none' } }}
-                >
-                  {day.short.toUpperCase()}
-                </Typography>
-              </Box>
-            );
-          })}
-        </Box>
-
-        {/* Class Rows */}
-        {classRows.length === 0 ? (
-          <Box sx={{ p: 4, textAlign: 'center' }}>
-            <Typography variant="body2" color="text.secondary">
-              Nenhuma aula cadastrada
-            </Typography>
-          </Box>
-        ) : (
-          classRows.map(({ classData, scheduleByDay }, index) => (
-            <Box
-              key={classData.id}
-              sx={{
-                display: 'grid',
-                gridTemplateColumns: { xs: '120px repeat(6, 1fr)', md: '180px repeat(6, 1fr)' },
-                borderBottom: index < classRows.length - 1 ? '1px solid' : 'none',
-                borderColor: 'grey.100',
-                '&:hover': { bgcolor: 'grey.50' },
-                transition: 'background-color 0.15s',
-              }}
-            >
-              {/* Class Name */}
-              <Box
-                sx={{
-                  p: 1.5,
-                  borderRight: '1px solid',
-                  borderColor: 'grey.100',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  justifyContent: 'center',
-                }}
-              >
-                <Typography variant="body2" fontWeight={600} noWrap>
-                  {classData.name}
-                </Typography>
-                {classData.instructorName && (
-                  <Typography variant="caption" color="text.secondary" noWrap>
-                    {classData.instructorName}
-                  </Typography>
-                )}
-              </Box>
-
-              {/* Schedule Cells */}
-              {WEEK_DAYS.map((day) => {
-                const schedule = scheduleByDay.get(day.value);
-                const isToday = day.value === today;
-                const isNow = schedule && isClassNow(schedule.startTime, schedule.endTime, day.value);
-
-                return (
-                  <Box
-                    key={day.value}
-                    sx={{
-                      p: 1,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      borderRight: '1px solid',
-                      borderColor: 'grey.100',
-                      bgcolor: isNow ? '#111' : isToday ? 'grey.50' : 'transparent',
-                      '&:last-child': { borderRight: 'none' },
-                    }}
-                  >
-                    {schedule ? (
-                      <Box
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 0.5,
-                          px: 1,
-                          py: 0.5,
-                          borderRadius: 1,
-                          bgcolor: isNow ? 'transparent' : 'grey.100',
-                        }}
-                      >
-                        <Clock size={12} color={isNow ? '#fff' : '#666'} />
-                        <Typography
-                          variant="caption"
-                          fontWeight={500}
-                          sx={{ color: isNow ? '#fff' : 'text.primary', whiteSpace: 'nowrap' }}
-                        >
-                          {schedule.startTime}
-                        </Typography>
-                      </Box>
-                    ) : (
-                      <Typography variant="caption" color="text.disabled">
-                        —
-                      </Typography>
-                    )}
-                  </Box>
-                );
-              })}
-            </Box>
-          ))
-        )}
-      </Box>
+      {/* Schedule View */}
+      {isMobile ? renderMobileView() : renderDesktopView()}
 
       {/* Legend */}
-      <Box sx={{ mt: 3, display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+      <Box sx={{ mt: 3, display: 'flex', gap: { xs: 2, sm: 3 }, flexWrap: 'wrap' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ width: 16, height: 16, borderRadius: 0.5, bgcolor: '#111' }} />
-          <Typography variant="caption" color="text.secondary">
-            Aula acontecendo agora
+          <Box sx={{ width: 14, height: 14, borderRadius: 0.5, bgcolor: '#111' }} />
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
+            {isMobile ? 'Agora' : 'Aula acontecendo agora'}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Box sx={{ width: 16, height: 16, borderRadius: 0.5, bgcolor: 'grey.50', border: '1px solid', borderColor: 'grey.200' }} />
-          <Typography variant="caption" color="text.secondary">
+          <Box
+            sx={{
+              width: 14,
+              height: 14,
+              borderRadius: 0.5,
+              bgcolor: isMobile ? '#111' : 'grey.50',
+              border: isMobile ? 'none' : '1px solid',
+              borderColor: 'grey.200',
+            }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
             Hoje
           </Typography>
         </Box>

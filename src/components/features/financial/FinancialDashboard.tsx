@@ -296,7 +296,7 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
               size="small"
               onClick={() => onDelete(plan)}
               disabled={isDeleting}
-              color="error"
+              sx={{ color: '#525252' }}
             >
               <Trash2 size={16} />
             </IconButton>
@@ -305,8 +305,8 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
 
         {/* Plan Info */}
         <Box sx={{ display: 'flex', gap: 2, mb: 2, flexWrap: 'wrap' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'primary.50', px: 1.5, py: 0.75, borderRadius: 1 }}>
-            <DollarSign size={16} color="#2563eb" />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#f5f5f5', px: 1.5, py: 0.75, borderRadius: 1 }}>
+            <DollarSign size={16} color="#1a1a1a" />
             <Typography variant="body2" fontWeight={600} color="primary.main">
               R$ {plan.monthlyValue.toLocaleString('pt-BR')}
             </Typography>
@@ -441,7 +441,7 @@ function ManagePlanStudentsDialog({
           </Box>
           <Chip
             label={`R$ ${(plan.monthlyValue * enrolledCount).toLocaleString('pt-BR')}/mes`}
-            color="success"
+            sx={{ bgcolor: '#1a1a1a', color: '#fff' }}
           />
         </Box>
       </DialogTitle>
@@ -1016,8 +1016,8 @@ export function FinancialDashboard() {
             value={formatCurrency(monthlySummary?.paidAmount || 0)}
             subtitle={`${monthlySummary?.paid || 0} pag.`}
             icon={<DollarSign size={isMobile ? 18 : 24} />}
-            color="#16a34a"
-            bgColor="#dcfce7"
+            color="#1a1a1a"
+            bgColor="#f5f5f5"
             compact={isMobile}
           />
         </Grid>
@@ -1027,8 +1027,8 @@ export function FinancialDashboard() {
             value={formatCurrency(monthlySummary?.pendingAmount || 0)}
             subtitle={`${monthlySummary?.pending || 0} pend.`}
             icon={<Clock size={isMobile ? 18 : 24} />}
-            color="#ca8a04"
-            bgColor="#fef9c3"
+            color="#1a1a1a"
+            bgColor="#f5f5f5"
             compact={isMobile}
           />
         </Grid>
@@ -1038,8 +1038,8 @@ export function FinancialDashboard() {
             value={formatCurrency(monthlySummary?.overdueAmount || 0)}
             subtitle={`${monthlySummary?.overdue || 0} atras.`}
             icon={<AlertTriangle size={isMobile ? 18 : 24} />}
-            color="#dc2626"
-            bgColor="#fee2e2"
+            color="#1a1a1a"
+            bgColor="#f5f5f5"
             compact={isMobile}
           />
         </Grid>
@@ -1053,8 +1053,8 @@ export function FinancialDashboard() {
             }
             subtitle={`${monthlySummary?.paid || 0} de ${monthlySummary?.total || 0}`}
             icon={<TrendingUp size={isMobile ? 18 : 24} />}
-            color="#2563eb"
-            bgColor="#dbeafe"
+            color="#1a1a1a"
+            bgColor="#f5f5f5"
             compact={isMobile}
           />
         </Grid>
@@ -1087,8 +1087,7 @@ export function FinancialDashboard() {
                     <Chip
                       label={filteredPendingPayments.length}
                       size="small"
-                      color="warning"
-                      sx={{ height: isMobile ? 18 : 20, fontSize: isMobile ? '0.6rem' : '0.75rem' }}
+                      sx={{ height: isMobile ? 18 : 20, fontSize: isMobile ? '0.6rem' : '0.75rem', bgcolor: '#f5f5f5', color: '#1a1a1a' }}
                     />
                   )}
                 </Box>
@@ -1102,8 +1101,7 @@ export function FinancialDashboard() {
                     <Chip
                       label={filteredOverduePayments.length}
                       size="small"
-                      color="error"
-                      sx={{ height: isMobile ? 18 : 20, fontSize: isMobile ? '0.6rem' : '0.75rem' }}
+                      sx={{ height: isMobile ? 18 : 20, fontSize: isMobile ? '0.6rem' : '0.75rem', bgcolor: '#1a1a1a', color: '#fff' }}
                     />
                   )}
                 </Box>
@@ -1222,8 +1220,8 @@ export function FinancialDashboard() {
                   onClick={() => { setStatusFilter(''); setClassFilter(''); }}
                   onDelete={() => { setStatusFilter(''); setClassFilter(''); }}
                   size="small"
-                  color="primary"
                   variant="outlined"
+                  sx={{ borderColor: '#1a1a1a', color: '#1a1a1a' }}
                 />
               )}
             </Box>

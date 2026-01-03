@@ -158,7 +158,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
             title={isMobile ? "Recebido" : "Total Recebido (6 meses)"}
             value={formatCurrency(data.totalRevenue)}
             icon={<DollarSign size={isMobile ? 18 : 24} />}
-            color="#16a34a"
+            color="#1a1a1a"
           />
         </Grid>
         <Grid size={{ xs: 4, md: 4 }}>
@@ -166,7 +166,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
             title={isMobile ? "Esperado" : "Total Esperado"}
             value={formatCurrency(data.expectedRevenue)}
             icon={<TrendingUp size={isMobile ? 18 : 24} />}
-            color="#2563eb"
+            color="#525252"
           />
         </Grid>
         <Grid size={{ xs: 4, md: 4 }}>
@@ -174,7 +174,7 @@ export function RevenueChart({ data }: RevenueChartProps) {
             title={isMobile ? "Taxa" : "Taxa de Recebimento"}
             value={`${data.collectionRate.toFixed(1)}%`}
             icon={<Percent size={isMobile ? 18 : 24} />}
-            color="#ca8a04"
+            color="#525252"
           />
         </Grid>
       </Grid>
@@ -226,13 +226,13 @@ export function RevenueChart({ data }: RevenueChartProps) {
               <Bar
                 dataKey="expected"
                 name="expected"
-                fill="#93c5fd"
+                fill="#d4d4d4"
                 radius={[4, 4, 0, 0]}
               />
               <Bar
                 dataKey="paid"
                 name="paid"
-                fill="#16a34a"
+                fill="#1a1a1a"
                 radius={[4, 4, 0, 0]}
               />
             </BarChart>

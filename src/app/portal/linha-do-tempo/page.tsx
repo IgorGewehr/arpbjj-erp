@@ -7,6 +7,8 @@ import {
   Typography,
   Skeleton,
   Chip,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Award,
@@ -64,9 +66,10 @@ const positionLabels: Record<string, string> = {
 interface TimelineItemProps {
   achievement: Achievement;
   isLast: boolean;
+  isMobile: boolean;
 }
 
-function TimelineItem({ achievement, isLast }: TimelineItemProps) {
+function TimelineItem({ achievement, isLast, isMobile }: TimelineItemProps) {
   const config = achievementConfig[achievement.type] || achievementConfig.milestone;
   const Icon = config.icon;
 
@@ -88,29 +91,30 @@ function TimelineItem({ achievement, isLast }: TimelineItemProps) {
   }
 
   return (
-    <Box sx={{ display: 'flex', gap: 3 }}>
+    <Box sx={{ display: 'flex', gap: { xs: 1.5, sm: 3 } }}>
       {/* Timeline Line */}
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
         <Box
           sx={{
-            width: 48,
-            height: 48,
+            width: { xs: 36, sm: 48 },
+            height: { xs: 36, sm: 48 },
             borderRadius: '50%',
             bgcolor: config.bgColor,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            border: '3px solid',
+            border: '2px solid',
             borderColor: config.color,
             zIndex: 1,
+            flexShrink: 0,
           }}
         >
-          <Icon size={24} color={config.color} />
+          <Icon size={isMobile ? 18 : 24} color={config.color} />
         </Box>
         {!isLast && (
           <Box
             sx={{
-              width: 3,
+              width: 2,
               flex: 1,
               bgcolor: 'grey.200',
               mt: 1,
@@ -120,22 +124,22 @@ function TimelineItem({ achievement, isLast }: TimelineItemProps) {
       </Box>
 
       {/* Content */}
-      <Box sx={{ flex: 1, pb: isLast ? 0 : 4 }}>
-        <Paper
+      <Box sx={{ flex: 1, pb: isLast ? 0 : 3, minWidth: 0 }}>
+        <Box
           sx={{
-            p: 2.5,
+            p: { xs: 1.5, sm: 2.5 },
             borderRadius: 2,
+            bgcolor: '#fff',
             border: '1px solid',
-            borderColor: 'divider',
-            transition: 'all 0.2s',
-            '&:hover': {
-              boxShadow: 2,
-              borderColor: config.color,
-            },
+            borderColor: 'grey.200',
           }}
         >
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
-            <Typography variant="subtitle1" fontWeight={600}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 1, mb: 0.75 }}>
+            <Typography
+              variant="body1"
+              fontWeight={600}
+              sx={{ fontSize: { xs: '0.85rem', sm: '0.95rem' }, flex: 1, minWidth: 0 }}
+            >
               {achievement.title}
             </Typography>
             <Chip
@@ -153,26 +157,32 @@ function TimelineItem({ achievement, isLast }: TimelineItemProps) {
                 bgcolor: config.bgColor,
                 color: config.color,
                 fontWeight: 600,
-                fontSize: '0.7rem',
+                fontSize: { xs: '0.6rem', sm: '0.7rem' },
+                height: { xs: 20, sm: 24 },
+                flexShrink: 0,
               }}
             />
           </Box>
 
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ mb: 1, fontSize: { xs: '0.75rem', sm: '0.875rem' } }}
+          >
             {description}
           </Typography>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Calendar size={14} color="#999" />
-            <Typography variant="caption" color="text.secondary">
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+            <Calendar size={12} color="#999" />
+            <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
               {format(new Date(achievement.date), "d 'de' MMMM 'de' yyyy", { locale: ptBR })}
             </Typography>
           </Box>
 
           {/* Extra info for competition */}
           {achievement.type === 'competition' && achievement.position && (
-            <Box sx={{ mt: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="h5">
+            <Box sx={{ mt: 1.5, display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Typography sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' }, lineHeight: 1 }}>
                 {achievement.position === 'gold'
                   ? '🥇'
                   : achievement.position === 'silver'
@@ -181,12 +191,12 @@ function TimelineItem({ achievement, isLast }: TimelineItemProps) {
                   ? '🥉'
                   : '🎖️'}
               </Typography>
-              <Typography variant="body2" fontWeight={600}>
+              <Typography variant="body2" fontWeight={600} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
                 {positionLabels[achievement.position]}
               </Typography>
             </Box>
           )}
-        </Paper>
+        </Box>
       </Box>
     </Box>
   );
@@ -196,6 +206,8 @@ function TimelineItem({ achievement, isLast }: TimelineItemProps) {
 // Main Component
 // ============================================
 export default function TimelinePage() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user } = useAuth();
   const { error: showError } = useFeedback();
 
@@ -245,14 +257,13 @@ export default function TimelinePage() {
   if (loading) {
     return (
       <Box>
-        <Box sx={{ mb: 4 }}>
-          <Skeleton variant="text" width={200} height={40} />
-          <Skeleton variant="text" width={300} height={24} />
-        </Box>
+        <Skeleton variant="text" width="50%" height={28} sx={{ mb: 0.5 }} />
+        <Skeleton variant="text" width="60%" height={18} sx={{ mb: 3 }} />
+        <Skeleton variant="rounded" height={80} sx={{ mb: 3, borderRadius: 2 }} />
         {[1, 2, 3].map((i) => (
-          <Box key={i} sx={{ display: 'flex', gap: 3, mb: 3 }}>
-            <Skeleton variant="circular" width={48} height={48} />
-            <Skeleton variant="rounded" sx={{ flex: 1 }} height={120} />
+          <Box key={i} sx={{ display: 'flex', gap: { xs: 1.5, sm: 3 }, mb: 2 }}>
+            <Skeleton variant="circular" width={isMobile ? 36 : 48} height={isMobile ? 36 : 48} />
+            <Skeleton variant="rounded" sx={{ flex: 1 }} height={isMobile ? 80 : 100} />
           </Box>
         ))}
       </Box>
@@ -262,142 +273,192 @@ export default function TimelinePage() {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight={700} gutterBottom>
+      <Box sx={{ mb: 3 }}>
+        <Typography
+          variant="h6"
+          fontWeight={600}
+          color="text.primary"
+          sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
+        >
           Linha do Tempo
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
+        >
           Sua jornada no jiu-jitsu
         </Typography>
       </Box>
 
       {/* Stats Summary */}
-      <Paper sx={{ p: 3, mb: 4, borderRadius: 3 }}>
-        <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+      <Box
+        sx={{
+          p: { xs: 2, sm: 2.5 },
+          mb: 3,
+          bgcolor: '#fff',
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'grey.200',
+        }}
+      >
+        <Typography
+          variant="body2"
+          fontWeight={600}
+          color="text.secondary"
+          sx={{
+            mb: 2,
+            fontSize: { xs: '0.75rem', sm: '0.8rem' },
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+          }}
+        >
           Resumo das Conquistas
         </Typography>
-        <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: { xs: 1, sm: 2 } }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'center', sm: 'center' }, gap: { xs: 0.5, sm: 1 } }}>
             <Box
               sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 2,
+                width: { xs: 28, sm: 36 },
+                height: { xs: 28, sm: 36 },
+                borderRadius: 1.5,
                 bgcolor: achievementConfig.graduation.bgColor,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <Award size={20} color={achievementConfig.graduation.color} />
+              <Award size={isMobile ? 14 : 20} color={achievementConfig.graduation.color} />
             </Box>
-            <Box>
-              <Typography variant="h6" fontWeight={700}>
+            <Box sx={{ textAlign: { xs: 'center', sm: 'left' } }}>
+              <Typography variant="body1" fontWeight={700} sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, lineHeight: 1.2 }}>
                 {achievements.filter((a) => a.type === 'graduation').length}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
                 Graduações
               </Typography>
             </Box>
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'center', sm: 'center' }, gap: { xs: 0.5, sm: 1 } }}>
             <Box
               sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 2,
+                width: { xs: 28, sm: 36 },
+                height: { xs: 28, sm: 36 },
+                borderRadius: 1.5,
                 bgcolor: achievementConfig.stripe.bgColor,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <Star size={20} color={achievementConfig.stripe.color} />
+              <Star size={isMobile ? 14 : 20} color={achievementConfig.stripe.color} />
             </Box>
-            <Box>
-              <Typography variant="h6" fontWeight={700}>
+            <Box sx={{ textAlign: { xs: 'center', sm: 'left' } }}>
+              <Typography variant="body1" fontWeight={700} sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, lineHeight: 1.2 }}>
                 {achievements.filter((a) => a.type === 'stripe').length}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
                 Graus
               </Typography>
             </Box>
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'center', sm: 'center' }, gap: { xs: 0.5, sm: 1 } }}>
             <Box
               sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 2,
+                width: { xs: 28, sm: 36 },
+                height: { xs: 28, sm: 36 },
+                borderRadius: 1.5,
                 bgcolor: achievementConfig.competition.bgColor,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <Trophy size={20} color={achievementConfig.competition.color} />
+              <Trophy size={isMobile ? 14 : 20} color={achievementConfig.competition.color} />
             </Box>
-            <Box>
-              <Typography variant="h6" fontWeight={700}>
+            <Box sx={{ textAlign: { xs: 'center', sm: 'left' } }}>
+              <Typography variant="body1" fontWeight={700} sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, lineHeight: 1.2 }}>
                 {achievements.filter((a) => a.type === 'competition').length}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
                 Competições
               </Typography>
             </Box>
           </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'center', sm: 'center' }, gap: { xs: 0.5, sm: 1 } }}>
             <Box
               sx={{
-                width: 36,
-                height: 36,
-                borderRadius: 2,
+                width: { xs: 28, sm: 36 },
+                height: { xs: 28, sm: 36 },
+                borderRadius: 1.5,
                 bgcolor: achievementConfig.milestone.bgColor,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
+                flexShrink: 0,
               }}
             >
-              <Target size={20} color={achievementConfig.milestone.color} />
+              <Target size={isMobile ? 14 : 20} color={achievementConfig.milestone.color} />
             </Box>
-            <Box>
-              <Typography variant="h6" fontWeight={700}>
+            <Box sx={{ textAlign: { xs: 'center', sm: 'left' } }}>
+              <Typography variant="body1" fontWeight={700} sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, lineHeight: 1.2 }}>
                 {achievements.filter((a) => a.type === 'milestone').length}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.6rem', sm: '0.75rem' } }}>
                 Marcos
               </Typography>
             </Box>
           </Box>
         </Box>
-      </Paper>
+      </Box>
 
       {/* Timeline */}
       {achievements.length === 0 ? (
-        <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
-          <History size={48} color="#ccc" />
-          <Typography variant="h6" color="text.secondary" sx={{ mt: 2 }}>
+        <Box
+          sx={{
+            p: { xs: 4, sm: 6 },
+            textAlign: 'center',
+            bgcolor: '#fff',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'grey.200',
+          }}
+        >
+          <History size={isMobile ? 36 : 48} color="#ccc" />
+          <Typography
+            variant="body1"
+            color="text.secondary"
+            sx={{ mt: 2, fontSize: { xs: '0.9rem', sm: '1rem' } }}
+          >
             Sua linha do tempo está vazia
           </Typography>
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            variant="body2"
+            color="text.secondary"
+            sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
+          >
             Suas conquistas aparecerão aqui conforme você progride
           </Typography>
-        </Paper>
+        </Box>
       ) : (
         years.map((year) => (
-          <Box key={year} sx={{ mb: 4 }}>
+          <Box key={year} sx={{ mb: 3 }}>
             <Typography
-              variant="h6"
+              variant="body1"
               fontWeight={700}
               sx={{
-                mb: 3,
-                pb: 1,
+                mb: 2,
+                pb: 0.75,
                 borderBottom: '2px solid',
-                borderColor: 'primary.main',
+                borderColor: '#111',
                 display: 'inline-block',
+                fontSize: { xs: '0.95rem', sm: '1.1rem' },
               }}
             >
               {year}
@@ -408,6 +469,7 @@ export default function TimelinePage() {
                 key={achievement.id}
                 achievement={achievement}
                 isLast={index === groupedByYear[year].length - 1}
+                isMobile={isMobile}
               />
             ))}
           </Box>

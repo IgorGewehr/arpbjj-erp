@@ -2,7 +2,7 @@
 
 import { useMemo } from 'react';
 import { Box, Typography, Skeleton } from '@mui/material';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Calendar } from 'lucide-react';
 import { usePermissions } from '@/components/providers';
 import { useQuery } from '@tanstack/react-query';
 import { attendanceService } from '@/services/attendanceService';
@@ -52,10 +52,14 @@ export default function PortalPresencaPage() {
   if (isLoading) {
     return (
       <Box>
-        <Skeleton variant="text" width={200} height={32} sx={{ mb: 1 }} />
-        <Skeleton variant="text" width={300} height={20} sx={{ mb: 4 }} />
-        <Skeleton variant="rounded" height={100} sx={{ mb: 3, borderRadius: 2 }} />
-        <Skeleton variant="rounded" height={300} sx={{ borderRadius: 2 }} />
+        <Skeleton variant="text" width="60%" height={28} sx={{ mb: 0.5 }} />
+        <Skeleton variant="text" width="40%" height={18} sx={{ mb: 3 }} />
+        <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+          <Skeleton variant="rounded" height={72} sx={{ flex: 1, borderRadius: 2 }} />
+          <Skeleton variant="rounded" height={72} sx={{ flex: 1, borderRadius: 2 }} />
+        </Box>
+        <Skeleton variant="rounded" height={280} sx={{ borderRadius: 2, mb: 3 }} />
+        <Skeleton variant="rounded" height={200} sx={{ borderRadius: 2 }} />
       </Box>
     );
   }
@@ -63,58 +67,116 @@ export default function PortalPresencaPage() {
   return (
     <Box>
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h5" fontWeight={600} color="text.primary">
+      <Box sx={{ mb: 3 }}>
+        <Typography
+          variant="h6"
+          fontWeight={600}
+          color="text.primary"
+          sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
+        >
           Minhas Presenças
         </Typography>
-        <Typography variant="body2" color="text.secondary">
+        <Typography
+          variant="body2"
+          color="text.secondary"
+          sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
+        >
           Acompanhe seu histórico de treinos
         </Typography>
       </Box>
 
-      {/* Stats */}
+      {/* Stats Cards */}
       <Box
         sx={{
-          display: 'flex',
-          gap: 4,
-          mb: 4,
-          pb: 4,
-          borderBottom: '1px solid',
-          borderColor: 'grey.200',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(2, 1fr)',
+          gap: { xs: 1.5, sm: 2 },
+          mb: 3,
         }}
       >
-        <Box>
-          <Typography variant="h4" fontWeight={600} color="text.primary">
+        <Box
+          sx={{
+            p: { xs: 2, sm: 2.5 },
+            bgcolor: '#fff',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'grey.200',
+          }}
+        >
+          <Typography
+            variant="h4"
+            fontWeight={700}
+            color="text.primary"
+            sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
+          >
             {stats.total}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+          >
             total de presenças
           </Typography>
         </Box>
-        <Box>
-          <Typography variant="h4" fontWeight={600} color="text.primary">
+        <Box
+          sx={{
+            p: { xs: 2, sm: 2.5 },
+            bgcolor: '#fff',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'grey.200',
+          }}
+        >
+          <Typography
+            variant="h4"
+            fontWeight={700}
+            color="text.primary"
+            sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
+          >
             {stats.thisMonth}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+          >
             este mês
           </Typography>
         </Box>
       </Box>
 
       {/* Calendar View */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="body2" fontWeight={600} color="text.primary" sx={{ mb: 2 }}>
-          {format(new Date(), 'MMMM yyyy', { locale: ptBR })}
-        </Typography>
+      <Box
+        sx={{
+          p: { xs: 2, sm: 2.5 },
+          mb: 3,
+          bgcolor: '#fff',
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'grey.200',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <Calendar size={16} color="#666" />
+          <Typography
+            variant="body2"
+            fontWeight={600}
+            color="text.primary"
+            sx={{ textTransform: 'capitalize', fontSize: { xs: '0.85rem', sm: '0.9rem' } }}
+          >
+            {format(new Date(), 'MMMM yyyy', { locale: ptBR })}
+          </Typography>
+        </Box>
 
         {/* Week days header */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5, mb: 1 }}>
-          {['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'].map((day) => (
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: { xs: 0.25, sm: 0.5 }, mb: 1 }}>
+          {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, idx) => (
             <Typography
-              key={day}
+              key={`${day}-${idx}`}
               variant="caption"
               color="text.secondary"
-              sx={{ textAlign: 'center', fontSize: '0.7rem' }}
+              sx={{ textAlign: 'center', fontSize: { xs: '0.65rem', sm: '0.7rem' }, fontWeight: 500 }}
             >
               {day}
             </Typography>
@@ -122,13 +184,14 @@ export default function PortalPresencaPage() {
         </Box>
 
         {/* Calendar grid */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 0.5 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: { xs: 0.25, sm: 0.5 } }}>
           {/* Empty cells for days before month starts */}
           {Array.from({ length: calendarDays[0]?.date.getDay() || 0 }).map((_, i) => (
-            <Box key={`empty-${i}`} />
+            <Box key={`empty-${i}`} sx={{ aspectRatio: '1' }} />
           ))}
           {calendarDays.map(({ date, hasAttendance }) => {
             const isToday = isSameDay(date, new Date());
+            const isFuture = date > new Date();
             return (
               <Box
                 key={date.toISOString()}
@@ -137,14 +200,18 @@ export default function PortalPresencaPage() {
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  borderRadius: 1,
+                  borderRadius: { xs: 0.75, sm: 1 },
                   bgcolor: hasAttendance ? '#111' : 'transparent',
-                  color: hasAttendance ? 'white' : 'text.primary',
-                  border: isToday && !hasAttendance ? '1px solid' : 'none',
-                  borderColor: 'grey.300',
+                  color: hasAttendance ? 'white' : isFuture ? 'text.disabled' : 'text.primary',
+                  border: isToday && !hasAttendance ? '2px solid' : 'none',
+                  borderColor: '#111',
                 }}
               >
-                <Typography variant="caption" fontWeight={hasAttendance ? 600 : 400}>
+                <Typography
+                  variant="caption"
+                  fontWeight={hasAttendance || isToday ? 600 : 400}
+                  sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                >
                   {format(date, 'd')}
                 </Typography>
               </Box>
@@ -155,40 +222,80 @@ export default function PortalPresencaPage() {
 
       {/* Recent Attendance List */}
       <Box>
-        <Typography variant="body2" fontWeight={600} color="text.primary" sx={{ mb: 2 }}>
+        <Typography
+          variant="body2"
+          fontWeight={600}
+          color="text.secondary"
+          sx={{
+            mb: 1.5,
+            fontSize: { xs: '0.75rem', sm: '0.8rem' },
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+          }}
+        >
           Histórico recente
         </Typography>
 
         {records.length === 0 ? (
-          <Box sx={{ py: 4, textAlign: 'center' }}>
-            <Typography variant="body2" color="text.secondary">
+          <Box
+            sx={{
+              py: 4,
+              textAlign: 'center',
+              bgcolor: '#fff',
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'grey.200',
+            }}
+          >
+            <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
               Nenhuma presença registrada ainda
             </Typography>
           </Box>
         ) : (
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-            {records.slice(0, 20).map((record) => (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            {records.slice(0, 15).map((record) => (
               <Box
                 key={record.id}
                 sx={{
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  p: 1.5,
-                  borderRadius: 1.5,
-                  bgcolor: 'grey.50',
+                  gap: { xs: 1.5, sm: 2 },
+                  p: { xs: 1.5, sm: 2 },
+                  borderRadius: 2,
+                  bgcolor: '#fff',
+                  border: '1px solid',
+                  borderColor: 'grey.200',
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: { xs: 32, sm: 36 },
+                    height: { xs: 32, sm: 36 },
+                    borderRadius: '50%',
+                    bgcolor: '#DCFCE7',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                  }}
+                >
                   <CheckCircle size={16} color="#16A34A" />
-                  <Box>
-                    <Typography variant="body2" fontWeight={500}>
-                      {format(new Date(record.date), "d 'de' MMMM", { locale: ptBR })}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {record.className || 'Treino'}
-                    </Typography>
-                  </Box>
+                </Box>
+                <Box sx={{ flex: 1, minWidth: 0 }}>
+                  <Typography
+                    variant="body2"
+                    fontWeight={500}
+                    sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' } }}
+                  >
+                    {format(new Date(record.date), "d 'de' MMMM", { locale: ptBR })}
+                  </Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                  >
+                    {record.className || 'Treino'}
+                  </Typography>
                 </Box>
               </Box>
             ))}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Drawer,
@@ -75,11 +75,23 @@ interface SidebarProps {
 
 export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pathname = usePathname();
   const router = useRouter();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user, signOut } = useAuth();
+
+  const handleScroll = useCallback(() => {
+    setIsScrolling(true);
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    scrollTimeoutRef.current = setTimeout(() => {
+      setIsScrolling(false);
+    }, 1000);
+  }, []);
 
   const handleNavigate = useCallback(
     (path: string) => {
@@ -101,6 +113,28 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   }, []);
 
   const isActive = (path: string) => pathname === path || pathname?.startsWith(path + '/');
+
+  // Modern minimal scrollbar styles
+  const scrollbarStyles = {
+    overflowY: 'auto' as const,
+    '&::-webkit-scrollbar': {
+      width: '6px',
+    },
+    '&::-webkit-scrollbar-track': {
+      background: 'transparent',
+    },
+    '&::-webkit-scrollbar-thumb': {
+      background: isScrolling ? 'rgba(0, 0, 0, 0.2)' : 'transparent',
+      borderRadius: '3px',
+      transition: 'background 0.3s ease',
+    },
+    '&::-webkit-scrollbar-thumb:hover': {
+      background: 'rgba(0, 0, 0, 0.3)',
+    },
+    // Firefox
+    scrollbarWidth: 'thin' as const,
+    scrollbarColor: isScrolling ? 'rgba(0, 0, 0, 0.2) transparent' : 'transparent transparent',
+  };
 
   // Drawer content
   const drawerContent = (
@@ -184,7 +218,10 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
       <Divider />
 
       {/* Main Navigation */}
-      <Box sx={{ flex: 1, py: 1, overflowY: 'auto' }}>
+      <Box
+        onScroll={handleScroll}
+        sx={{ flex: 1, py: 1, ...scrollbarStyles }}
+      >
         <List disablePadding>
           {mainNavItems.map((item) => (
             <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>

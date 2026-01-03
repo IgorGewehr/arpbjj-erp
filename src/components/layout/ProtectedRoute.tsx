@@ -11,12 +11,14 @@ import { useAuth } from '@/components/providers';
 interface ProtectedRouteProps {
   children: ReactNode;
   requiredRole?: 'admin' | 'instructor' | 'student' | 'guardian';
+  /** If true, allows both admin and instructor. Default behavior when no requiredRole is specified. */
+  allowStaff?: boolean;
 }
 
 // ============================================
 // ProtectedRoute Component
 // ============================================
-export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, requiredRole, allowStaff = true }: ProtectedRouteProps) {
   const { user, loading, isAuthenticated, isAdmin, isInstructor } = useAuth();
   const router = useRouter();
 
@@ -28,29 +30,62 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
 
   // Check role permission
   useEffect(() => {
-    if (!loading && isAuthenticated && requiredRole) {
+    if (!loading && isAuthenticated && user) {
       let hasPermission = false;
 
-      switch (requiredRole) {
-        case 'admin':
-          hasPermission = isAdmin;
-          break;
-        case 'instructor':
-          hasPermission = isInstructor;
-          break;
-        case 'student':
-        case 'guardian':
-          hasPermission = user?.role === requiredRole || isAdmin;
-          break;
-        default:
-          hasPermission = true;
+      if (requiredRole) {
+        // Explicit role requirement
+        switch (requiredRole) {
+          case 'admin':
+            hasPermission = isAdmin;
+            break;
+          case 'instructor':
+            hasPermission = isInstructor;
+            break;
+          case 'student':
+          case 'guardian':
+            hasPermission = user.role === requiredRole || isAdmin;
+            break;
+          default:
+            hasPermission = false;
+        }
+      } else {
+        // No explicit role - default to staff-only (admin/instructor)
+        hasPermission = isAdmin || isInstructor;
       }
 
       if (!hasPermission) {
-        router.push('/dashboard');
+        // Redirect to appropriate portal based on role
+        const redirectMap: Record<string, string> = {
+          student: '/portal',
+          guardian: '/responsavel',
+        };
+        const redirectTo = redirectMap[user.role] || '/login';
+        router.replace(redirectTo);
       }
     }
   }, [loading, isAuthenticated, requiredRole, isAdmin, isInstructor, user, router]);
+
+  // Check if user has permission (synchronous check for render blocking)
+  const hasPermission = (() => {
+    if (!user) return false;
+
+    if (requiredRole) {
+      switch (requiredRole) {
+        case 'admin':
+          return isAdmin;
+        case 'instructor':
+          return isInstructor;
+        case 'student':
+        case 'guardian':
+          return user.role === requiredRole || isAdmin;
+        default:
+          return false;
+      }
+    }
+    // No explicit role - default to staff-only
+    return isAdmin || isInstructor;
+  })();
 
   // Loading state
   if (loading) {
@@ -73,8 +108,8 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     );
   }
 
-  // Not authenticated
-  if (!isAuthenticated) {
+  // Not authenticated or no permission - don't render children
+  if (!isAuthenticated || !hasPermission) {
     return null;
   }
 

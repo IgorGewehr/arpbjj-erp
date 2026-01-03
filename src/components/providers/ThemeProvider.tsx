@@ -63,6 +63,14 @@ export function ThemeProvider({ children, defaultMode = 'light' }: ThemeProvider
   // Get the appropriate theme
   const theme = useMemo(() => (isDark ? darkTheme : lightTheme), [isDark]);
 
+  // Sincroniza o color-scheme do CSS com o tema atual
+  // Isso impede que extensões de dark mode (como Dark Reader) modifiquem as cores
+  useEffect(() => {
+    const colorScheme = isDark ? 'dark' : 'light';
+    document.documentElement.style.colorScheme = colorScheme;
+    document.documentElement.setAttribute('data-theme', colorScheme);
+  }, [isDark]);
+
   // Toggle between light and dark
   const toggleMode = () => {
     setMode((current) => (current === 'dark' ? 'light' : 'dark'));

@@ -231,6 +231,9 @@ export interface Plan {
   // Pricing
   monthlyValue: number;
 
+  // Default due day for tuition (1-31)
+  defaultDueDay: number;
+
   // Classes per week (0 = unlimited)
   classesPerWeek: number;
 

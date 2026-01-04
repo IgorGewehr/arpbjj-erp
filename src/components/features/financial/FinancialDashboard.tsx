@@ -510,6 +510,7 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [monthlyValue, setMonthlyValue] = useState('');
+  const [defaultDueDay, setDefaultDueDay] = useState('10');
   const [classesPerWeek, setClassesPerWeek] = useState('0');
   const [isActive, setIsActive] = useState(true);
 
@@ -520,12 +521,14 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
         setName(plan.name);
         setDescription(plan.description || '');
         setMonthlyValue(plan.monthlyValue.toString());
+        setDefaultDueDay((plan.defaultDueDay || 10).toString());
         setClassesPerWeek(plan.classesPerWeek.toString());
         setIsActive(plan.isActive);
       } else {
         setName('');
         setDescription('');
         setMonthlyValue('');
+        setDefaultDueDay('10');
         setClassesPerWeek('0');
         setIsActive(true);
       }
@@ -538,12 +541,14 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
       setName(plan.name);
       setDescription(plan.description || '');
       setMonthlyValue(plan.monthlyValue.toString());
+      setDefaultDueDay((plan.defaultDueDay || 10).toString());
       setClassesPerWeek(plan.classesPerWeek.toString());
       setIsActive(plan.isActive);
     } else {
       setName('');
       setDescription('');
       setMonthlyValue('');
+      setDefaultDueDay('10');
       setClassesPerWeek('0');
       setIsActive(true);
     }
@@ -556,6 +561,7 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
       name: name.trim(),
       description: description.trim() || undefined,
       monthlyValue: parseFloat(monthlyValue),
+      defaultDueDay: parseInt(defaultDueDay) || 10,
       classesPerWeek: parseInt(classesPerWeek),
       isActive,
     });
@@ -594,6 +600,20 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
               },
             }}
           />
+          <FormControl fullWidth>
+            <InputLabel>Dia de Vencimento</InputLabel>
+            <Select
+              value={defaultDueDay}
+              onChange={(e) => setDefaultDueDay(e.target.value)}
+              label="Dia de Vencimento"
+            >
+              {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+                <MenuItem key={day} value={day.toString()}>
+                  Dia {day}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <FormControl fullWidth>
             <InputLabel>Aulas por Semana</InputLabel>
             <Select

@@ -26,6 +26,7 @@ const docToPlan = (doc: DocumentSnapshot): Plan => {
     name: data.name,
     description: data.description,
     monthlyValue: data.monthlyValue,
+    defaultDueDay: data.defaultDueDay || 10,
     classesPerWeek: data.classesPerWeek,
     studentIds: data.studentIds || [],
     isActive: data.isActive,
@@ -81,6 +82,7 @@ export const planService = {
     const docData: Record<string, unknown> = {
       name: data.name,
       monthlyValue: data.monthlyValue,
+      defaultDueDay: data.defaultDueDay || 10,
       classesPerWeek: data.classesPerWeek,
       isActive: data.isActive,
       studentIds: [],
@@ -99,6 +101,7 @@ export const planService = {
       name: data.name,
       description: data.description,
       monthlyValue: data.monthlyValue,
+      defaultDueDay: data.defaultDueDay || 10,
       classesPerWeek: data.classesPerWeek,
       studentIds: [],
       isActive: data.isActive,
@@ -123,6 +126,7 @@ export const planService = {
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.monthlyValue !== undefined) updateData.monthlyValue = data.monthlyValue;
+    if (data.defaultDueDay !== undefined) updateData.defaultDueDay = data.defaultDueDay;
     if (data.classesPerWeek !== undefined) updateData.classesPerWeek = data.classesPerWeek;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;
     if (data.studentIds !== undefined) updateData.studentIds = data.studentIds;
@@ -196,7 +200,7 @@ export const planService = {
         : [...plan.studentIds, studentId],
     });
 
-    // Sync student's planId field
+    // Sync student's planId and tuitionDay fields
     const studentDocRef = doc(db, 'students', studentId);
     if (isEnrolled) {
       // Removing from plan - clear planId
@@ -205,9 +209,11 @@ export const planService = {
         updatedAt: Timestamp.fromDate(new Date()),
       });
     } else {
-      // Adding to plan - set planId
+      // Adding to plan - set planId and tuitionDay from plan's defaultDueDay
       await updateDoc(studentDocRef, {
         planId: planId,
+        tuitionDay: updatedPlan.defaultDueDay,
+        tuitionValue: updatedPlan.monthlyValue,
         updatedAt: Timestamp.fromDate(new Date()),
       });
     }

@@ -21,10 +21,10 @@ import {
   useTheme,
   useMediaQuery,
 } from '@mui/material';
-import { DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Copy } from 'lucide-react';
+import { DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Copy, Calendar } from 'lucide-react';
 import { usePermissions, useFeedback } from '@/components/providers';
 import { useQuery } from '@tanstack/react-query';
-import { financialService } from '@/services';
+import { financialService, studentService } from '@/services';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { PaymentStatus } from '@/types';
@@ -48,6 +48,13 @@ export default function PortalFinanceiroPage() {
   const { linkedStudentIds } = usePermissions();
   const { success } = useFeedback();
   const studentId = linkedStudentIds[0];
+
+  // Fetch student data
+  const { data: student } = useQuery({
+    queryKey: ['student', studentId],
+    queryFn: () => studentService.getById(studentId),
+    enabled: !!studentId,
+  });
 
   // Fetch payments
   const { data: payments = [], isLoading } = useQuery({
@@ -259,6 +266,25 @@ export default function PortalFinanceiroPage() {
         >
           Acompanhe suas mensalidades e pagamentos
         </Typography>
+        {student?.tuitionDay && (
+          <Box
+            sx={{
+              mt: 1.5,
+              px: 2,
+              py: 1,
+              bgcolor: 'primary.50',
+              borderRadius: 1,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 1,
+            }}
+          >
+            <Calendar size={14} color="#1976d2" />
+            <Typography variant="caption" color="primary.dark" fontWeight={600}>
+              Vencimento: Dia {student.tuitionDay} de cada mes
+            </Typography>
+          </Box>
+        )}
       </Box>
 
       {/* Alert for overdue */}

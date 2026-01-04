@@ -58,6 +58,7 @@ const docToStudent = (doc: DocumentSnapshot): Student => {
     weight: data.weight,
     beltHistory,
     initialAttendanceCount: data.initialAttendanceCount,
+    planId: data.planId,
     status: data.status,
     statusNote: data.statusNote,
     tuitionValue: data.tuitionValue,

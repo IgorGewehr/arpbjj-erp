@@ -24,7 +24,7 @@ import {
 import { DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Copy, Calendar } from 'lucide-react';
 import { usePermissions, useFeedback } from '@/components/providers';
 import { useQuery } from '@tanstack/react-query';
-import { financialService, studentService, settingsService } from '@/services';
+import { financialService, studentService, settingsService, planService } from '@/services';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { PaymentStatus } from '@/types';
@@ -56,17 +56,27 @@ export default function PortalFinanceiroPage() {
     enabled: !!studentId,
   });
 
+  // Validate if the plan actually exists
+  const { data: plan } = useQuery({
+    queryKey: ['plan', student?.planId],
+    queryFn: () => planService.getById(student!.planId!),
+    enabled: !!student?.planId,
+  });
+
+  // Only consider having a valid plan if the plan exists
+  const hasValidPlan = !!student?.planId && !!plan;
+
   // Fetch academy settings (for PIX key)
   const { data: academySettings } = useQuery({
     queryKey: ['academySettings'],
     queryFn: () => settingsService.getAcademySettings(),
   });
 
-  // Fetch payments
+  // Fetch payments - only if student has a valid plan
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ['studentPayments', studentId],
     queryFn: () => financialService.getByStudent(studentId),
-    enabled: !!studentId,
+    enabled: !!studentId && hasValidPlan,
   });
 
   const pixKey = academySettings?.pixKey || '';
@@ -102,6 +112,23 @@ export default function PortalFinanceiroPage() {
   };
 
   const hasDebts = stats.pendingCount > 0 || stats.overdueCount > 0;
+
+  // Get due day from plan (fallback to student's tuitionDay for backwards compatibility)
+  const dueDay = plan?.defaultDueDay || student?.tuitionDay;
+
+  // If no valid plan, show a message
+  if (!hasValidPlan && !isLoading) {
+    return (
+      <Box sx={{ textAlign: 'center', py: 8 }}>
+        <Typography variant="h6" color="text.secondary" gutterBottom>
+          Financeiro
+        </Typography>
+        <Typography color="text.secondary">
+          Voce nao possui um plano ativo no momento.
+        </Typography>
+      </Box>
+    );
+  }
 
   // Mobile payment list view
   const renderMobilePaymentList = () => (
@@ -276,7 +303,7 @@ export default function PortalFinanceiroPage() {
         >
           Acompanhe suas mensalidades e pagamentos
         </Typography>
-        {student?.tuitionDay && (
+        {dueDay && (
           <Box
             sx={{
               mt: 1.5,
@@ -291,7 +318,7 @@ export default function PortalFinanceiroPage() {
           >
             <Calendar size={14} color="#1976d2" />
             <Typography variant="caption" color="primary.dark" fontWeight={600}>
-              Vencimento: Dia {student.tuitionDay} de cada mes
+              Vencimento: Dia {dueDay} de cada mes
             </Typography>
           </Box>
         )}

@@ -21,8 +21,9 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback, usePermissions } from '@/components/providers';
 import { studentService } from '@/services/studentService';
 import { attendanceService } from '@/services/attendanceService';
+import { planService } from '@/services/planService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
-import { Student } from '@/types';
+import { Student, Plan } from '@/types';
 
 const BELT_LABELS: Record<string, string> = {
   white: 'Branca', blue: 'Azul', purple: 'Roxa', brown: 'Marrom', black: 'Preta',
@@ -40,10 +41,12 @@ export default function StudentProfilePage() {
   const studentId = linkedStudentIds[0] || user?.studentId;
 
   const [student, setStudent] = useState<Student | null>(null);
+  const [plan, setPlan] = useState<Plan | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [attendanceCount, setAttendanceCount] = useState(0);
-  const hasPlan = !!student?.planId;
+  // Only consider having a plan if the plan actually exists
+  const hasValidPlan = !!student?.planId && !!plan;
 
   // Form fields
   const [form, setForm] = useState({
@@ -104,6 +107,14 @@ export default function StudentProfilePage() {
             emergencyRelationship: data.emergencyContact?.relationship || '',
             isProfilePublic: data.isProfilePublic ?? false,
           });
+
+          // Validate if plan actually exists
+          if (data.planId) {
+            const planData = await planService.getById(data.planId);
+            setPlan(planData);
+          } else {
+            setPlan(null);
+          }
 
           const count = await attendanceService.getStudentAttendanceCount(studentId);
           setAttendanceCount(count);
@@ -187,7 +198,7 @@ export default function StudentProfilePage() {
   // Mobile navigation links (for "Mais" menu items not in bottom nav)
   const mobileNavLinks = [
     { label: 'Linha do Tempo', path: '/portal/linha-do-tempo', icon: History, show: true },
-    { label: 'Financeiro', path: '/portal/financeiro', icon: DollarSign, show: hasPlan },
+    { label: 'Financeiro', path: '/portal/financeiro', icon: DollarSign, show: hasValidPlan },
   ].filter(link => link.show);
 
   return (
@@ -308,7 +319,7 @@ export default function StudentProfilePage() {
           <Box sx={{ gridColumn: { xs: 'span 2', sm: 'span 1' } }}>
             <Typography variant="caption" color="text.secondary">Plano</Typography>
             <Typography variant="body2" fontWeight={500} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-              {student.planId ? `R$ ${student.tuitionValue?.toLocaleString('pt-BR')}/mês` : 'Projeto Social'}
+              {hasValidPlan && plan ? `R$ ${plan.monthlyValue?.toLocaleString('pt-BR')}/mês` : 'Projeto Social'}
             </Typography>
           </Box>
         </Box>

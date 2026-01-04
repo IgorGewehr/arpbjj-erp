@@ -33,7 +33,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, usePermissions } from '@/components/providers';
 import { StudentPortalGuard } from '@/components/common';
-import { studentService } from '@/services';
+import { studentService, planService } from '@/services';
 
 const DRAWER_WIDTH = 220;
 
@@ -79,13 +79,23 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
     enabled: !!studentId,
   });
 
+  // Validate if the plan actually exists (handles orphaned planIds)
+  const { data: plan } = useQuery({
+    queryKey: ['plan', student?.planId],
+    queryFn: () => planService.getById(student!.planId!),
+    enabled: !!student?.planId,
+  });
+
+  // Only consider student has a valid plan if the plan exists
+  const hasValidPlan = !!student?.planId && !!plan;
+
   const navItems = useMemo(() => {
     return NAV_ITEMS.filter((item) => {
-      if (item.requiresPlan && !student?.planId) return false;
+      if (item.requiresPlan && !hasValidPlan) return false;
       if (item.requiresKids && student?.category !== 'kids') return false;
       return true;
     });
-  }, [student?.planId, student?.category]);
+  }, [hasValidPlan, student?.category]);
 
   const bottomNavItems = useMemo(() => {
     return navItems.filter((item) => item.showInBottomNav);

@@ -52,11 +52,12 @@ import {
   Link,
   Copy,
   Trophy,
+  History,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
-import { useStudent, useStudents, useFinancial, usePlans } from '@/hooks';
+import { useStudent, useStudents, useFinancial, usePlans, useAssessment, useStudentAssessment } from '@/hooks';
 import { getBeltChipColor } from '@/lib/theme';
 import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -266,6 +267,10 @@ export default function StudentProfilePage() {
   const { markAsPaid, isMarkingPaid } = useFinancial({ autoLoad: false });
   const { plans } = usePlans();
 
+  // Assessment hooks
+  const { createAssessment, isCreating: isSavingAssessment } = useAssessment();
+  const { assessments: studentAssessments, isLoading: isLoadingAssessments, refresh: refreshAssessments, calculateOverallScore, getPerformanceLevel } = useStudentAssessment(studentId);
+
   // Check if student is enrolled in any active plan (has financial obligations)
   const studentHasPlan = useMemo(() => {
     if (!studentId) return false;
@@ -282,7 +287,6 @@ export default function StudentProfilePage() {
     esforco: 3,
   });
   const [assessmentNotes, setAssessmentNotes] = useState('');
-  const [savingAssessment, setSavingAssessment] = useState(false);
 
   // Attendance state
   const [attendanceRecords, setAttendanceRecords] = useState<Attendance[]>([]);
@@ -379,12 +383,35 @@ export default function StudentProfilePage() {
     return (respeito + disciplina + pontualidade + tecnica + esforco) / 5;
   }, [assessmentScores]);
 
-  // Save assessment (mock)
+  // Save assessment
   const handleSaveAssessment = useCallback(async () => {
-    setSavingAssessment(true);
-    await new Promise((r) => setTimeout(r, 1000));
-    setSavingAssessment(false);
-  }, []);
+    if (!student || !user) return;
+
+    try {
+      await createAssessment({
+        studentId: studentId,
+        studentName: student.fullName,
+        date: new Date(),
+        scores: assessmentScores,
+        notes: assessmentNotes || undefined,
+        evaluatedBy: user.id,
+        evaluatedByName: user.displayName || user.email || 'Professor',
+      });
+
+      // Reset form after successful save
+      setAssessmentScores({
+        respeito: 3,
+        disciplina: 3,
+        pontualidade: 3,
+        tecnica: 3,
+        esforco: 3,
+      });
+      setAssessmentNotes('');
+      refreshAssessments();
+    } catch {
+      // Error already handled by hook
+    }
+  }, [student, user, studentId, assessmentScores, assessmentNotes, createAssessment, refreshAssessments]);
 
   const beltColor = student ? getBeltChipColor(student.currentBelt) : { bg: '#F5F5F5', text: '#171717' };
 
@@ -1205,7 +1232,7 @@ export default function StudentProfilePage() {
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                         <Box>
                           <Typography variant="h6" fontWeight={600}>
-                            Avaliacao de Comportamento
+                            Nova Avaliacao de Comportamento
                           </Typography>
                           <Typography variant="body2" color="text.secondary">
                             Avalie o desempenho e comportamento do aluno
@@ -1318,12 +1345,101 @@ export default function StudentProfilePage() {
                       <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
                         <Button
                           variant="contained"
-                          startIcon={<Save size={18} />}
+                          startIcon={isSavingAssessment ? <CircularProgress size={18} color="inherit" /> : <Save size={18} />}
                           onClick={handleSaveAssessment}
-                          disabled={savingAssessment}
+                          disabled={isSavingAssessment}
                         >
-                          {savingAssessment ? 'Salvando...' : 'Salvar Avaliacao'}
+                          {isSavingAssessment ? 'Salvando...' : 'Salvar Avaliacao'}
                         </Button>
+                      </Box>
+
+                      {/* Assessment History */}
+                      <Divider sx={{ my: 4 }} />
+                      <Box>
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+                          <History size={20} />
+                          <Typography variant="h6" fontWeight={600}>
+                            Historico de Avaliacoes
+                          </Typography>
+                        </Box>
+
+                        {isLoadingAssessments ? (
+                          <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                            <CircularProgress />
+                          </Box>
+                        ) : studentAssessments.length === 0 ? (
+                          <Box sx={{ textAlign: 'center', py: 4, bgcolor: 'action.hover', borderRadius: 2 }}>
+                            <Star size={40} style={{ color: '#9ca3af', marginBottom: 8 }} />
+                            <Typography variant="body2" color="text.secondary">
+                              Nenhuma avaliacao registrada ainda
+                            </Typography>
+                          </Box>
+                        ) : (
+                          <List disablePadding>
+                            {studentAssessments.map((assessment) => {
+                              const avgScore = calculateOverallScore(assessment.scores);
+                              const performance = getPerformanceLevel(avgScore);
+                              return (
+                                <ListItem
+                                  key={assessment.id}
+                                  sx={{
+                                    px: 2,
+                                    py: 2,
+                                    mb: 1,
+                                    bgcolor: 'action.hover',
+                                    borderRadius: 2,
+                                    border: '1px solid',
+                                    borderColor: 'divider',
+                                  }}
+                                >
+                                  <Box sx={{ width: '100%' }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                        <Calendar size={14} color="#666" />
+                                        <Typography variant="body2" fontWeight={600}>
+                                          {format(new Date(assessment.date), "d 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                                        </Typography>
+                                      </Box>
+                                      <Chip
+                                        label={performance.label}
+                                        size="small"
+                                        sx={{
+                                          bgcolor: performance.color,
+                                          color: 'white',
+                                          fontWeight: 600,
+                                          fontSize: '0.7rem',
+                                        }}
+                                      />
+                                    </Box>
+                                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', mb: 1 }}>
+                                      {assessmentCategories.map((cat) => (
+                                        <Box key={cat.key} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                                          <Typography variant="caption" color="text.secondary">
+                                            {cat.label}:
+                                          </Typography>
+                                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+                                            <Star size={12} fill="#EAB308" color="#EAB308" />
+                                            <Typography variant="caption" fontWeight={600}>
+                                              {assessment.scores[cat.key]}
+                                            </Typography>
+                                          </Box>
+                                        </Box>
+                                      ))}
+                                    </Box>
+                                    {assessment.notes && (
+                                      <Typography variant="caption" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                        &quot;{assessment.notes}&quot;
+                                      </Typography>
+                                    )}
+                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                                      Avaliado por: {assessment.evaluatedByName || 'Professor'}
+                                    </Typography>
+                                  </Box>
+                                </ListItem>
+                              );
+                            })}
+                          </List>
+                        )}
                       </Box>
                     </Box>
                   </TabPanel>

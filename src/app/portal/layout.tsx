@@ -28,6 +28,7 @@ import {
   Trophy,
   History,
   MoreHorizontal,
+  Star,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, usePermissions } from '@/components/providers';
@@ -41,6 +42,7 @@ interface NavItem {
   icon: React.ElementType;
   path: string;
   requiresPlan?: boolean;
+  requiresKids?: boolean;
   showInBottomNav?: boolean;
 }
 
@@ -49,6 +51,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Meu Perfil', icon: User, path: '/portal/meu-perfil' },
   { label: 'Histórico', icon: History, path: '/portal/linha-do-tempo' },
   { label: 'Presenças', icon: ClipboardCheck, path: '/portal/presenca', showInBottomNav: true },
+  { label: 'Comportamento', icon: Star, path: '/portal/comportamento', requiresKids: true },
   { label: 'Horários', icon: Calendar, path: '/portal/horarios', showInBottomNav: true },
   { label: 'Competições', icon: Trophy, path: '/portal/competicoes', showInBottomNav: true },
   { label: 'Mais', icon: MoreHorizontal, path: '/portal/meu-perfil', showInBottomNav: true },
@@ -79,9 +82,10 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
   const navItems = useMemo(() => {
     return NAV_ITEMS.filter((item) => {
       if (item.requiresPlan && !student?.planId) return false;
+      if (item.requiresKids && student?.category !== 'kids') return false;
       return true;
     });
-  }, [student?.planId]);
+  }, [student?.planId, student?.category]);
 
   const bottomNavItems = useMemo(() => {
     return navItems.filter((item) => item.showInBottomNav);

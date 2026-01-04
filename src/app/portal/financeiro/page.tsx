@@ -24,7 +24,7 @@ import {
 import { DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Copy, Calendar } from 'lucide-react';
 import { usePermissions, useFeedback } from '@/components/providers';
 import { useQuery } from '@tanstack/react-query';
-import { financialService, studentService } from '@/services';
+import { financialService, studentService, settingsService } from '@/services';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { PaymentStatus } from '@/types';
@@ -56,12 +56,20 @@ export default function PortalFinanceiroPage() {
     enabled: !!studentId,
   });
 
+  // Fetch academy settings (for PIX key)
+  const { data: academySettings } = useQuery({
+    queryKey: ['academySettings'],
+    queryFn: () => settingsService.getAcademySettings(),
+  });
+
   // Fetch payments
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ['studentPayments', studentId],
     queryFn: () => financialService.getByStudent(studentId),
     enabled: !!studentId,
   });
+
+  const pixKey = academySettings?.pixKey || '';
 
   // Calculate stats
   const stats = useMemo(() => {
@@ -87,8 +95,10 @@ export default function PortalFinanceiroPage() {
   };
 
   const handleCopyPix = () => {
-    navigator.clipboard.writeText('contato@marcusjj.com.br');
-    success('Chave PIX copiada!');
+    if (pixKey) {
+      navigator.clipboard.writeText(pixKey);
+      success('Chave PIX copiada!');
+    }
   };
 
   const hasDebts = stats.pendingCount > 0 || stats.overdueCount > 0;
@@ -305,21 +315,23 @@ export default function PortalFinanceiroPage() {
           <Box sx={{ flex: 1 }}>
             <Typography
               variant="body2"
-              sx={{ color: '#991B1B', fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: 1 }}
+              sx={{ color: '#991B1B', fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: pixKey ? 1 : 0 }}
             >
               Voce tem {stats.overdueCount} pagamento{stats.overdueCount > 1 ? 's' : ''} em atraso
               totalizando {formatCurrency(stats.overdueAmount)}.
             </Typography>
-            <Button
-              size="small"
-              variant="outlined"
-              color="error"
-              startIcon={<Copy size={14} />}
-              onClick={handleCopyPix}
-              sx={{ fontSize: { xs: '0.75rem', sm: '0.8rem' } }}
-            >
-              Copiar PIX
-            </Button>
+            {pixKey && (
+              <Button
+                size="small"
+                variant="outlined"
+                color="error"
+                startIcon={<Copy size={14} />}
+                onClick={handleCopyPix}
+                sx={{ fontSize: { xs: '0.75rem', sm: '0.8rem' } }}
+              >
+                Copiar PIX
+              </Button>
+            )}
           </Box>
         </Box>
       )}
@@ -459,7 +471,7 @@ export default function PortalFinanceiroPage() {
       </Box>
 
       {/* Payment Info */}
-      {hasDebts && (
+      {hasDebts && pixKey && (
         <Box
           sx={{
             p: { xs: 2, sm: 2.5 },
@@ -481,10 +493,10 @@ export default function PortalFinanceiroPage() {
               <CreditCard size={18} color="#1D4ED8" />
               <Box>
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                  Chave PIX (Email)
+                  Chave PIX
                 </Typography>
                 <Typography variant="body2" fontWeight={600} sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' } }}>
-                  contato@marcusjj.com.br
+                  {pixKey}
                 </Typography>
               </Box>
               <Button

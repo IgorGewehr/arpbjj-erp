@@ -19,6 +19,8 @@ export interface AcademySettings {
   state?: string;
   zipCode?: string;
   logoUrl?: string;
+  pixKey?: string;
+  pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
   updatedAt?: Date;
 }
 
@@ -49,6 +51,8 @@ export const settingsService = {
           state: data.state,
           zipCode: data.zipCode,
           logoUrl: data.logoUrl,
+          pixKey: data.pixKey,
+          pixKeyType: data.pixKeyType,
           updatedAt: data.updatedAt?.toDate(),
         };
       }
@@ -84,6 +88,8 @@ export const settingsService = {
       if (settings.state) settingsData.state = settings.state;
       if (settings.zipCode) settingsData.zipCode = settings.zipCode;
       if (settings.logoUrl) settingsData.logoUrl = settings.logoUrl;
+      if (settings.pixKey !== undefined) settingsData.pixKey = settings.pixKey;
+      if (settings.pixKeyType !== undefined) settingsData.pixKeyType = settings.pixKeyType;
 
       await setDoc(docRef, settingsData, { merge: true });
     } catch (error) {

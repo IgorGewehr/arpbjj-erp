@@ -53,8 +53,8 @@ import {
 } from 'lucide-react';
 import { format, addMonths, subMonths, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { useFinancial, usePlans, useStudents, useClasses } from '@/hooks';
-import { useConfirmDialog } from '@/components/providers';
+import { useFinancial, usePlans, useStudents, useClasses, useAcademySettings } from '@/hooks';
+import { useConfirmDialog, useFeedback } from '@/components/providers';
 import { PaymentCard } from './PaymentCard';
 import { MarkPaidDialog } from './MarkPaidDialog';
 import { RevenueChart } from './RevenueChart';
@@ -697,8 +697,13 @@ export function FinancialDashboard() {
     refresh: refreshPlans,
   } = usePlans();
   const { confirm } = useConfirmDialog();
+  const { success: showSuccess } = useFeedback();
+  const { settings, updateSettings, isUpdating: isUpdatingSettings } = useAcademySettings();
 
   const [tabValue, setTabValue] = useState(0);
+  const [pixKey, setPixKey] = useState('');
+  const [pixKeyType, setPixKeyType] = useState<'cpf' | 'cnpj' | 'email' | 'phone' | 'random'>('email');
+  const [showPixSettings, setShowPixSettings] = useState(false);
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>('');
   const [classFilter, setClassFilter] = useState<string>('');
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
@@ -709,6 +714,27 @@ export function FinancialDashboard() {
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [managingPlan, setManagingPlan] = useState<Plan | null>(null);
+
+  // ============================================
+  // PIX Settings
+  // ============================================
+  // Initialize PIX values from settings
+  useMemo(() => {
+    if (settings) {
+      setPixKey(settings.pixKey || '');
+      setPixKeyType(settings.pixKeyType || 'email');
+    }
+  }, [settings]);
+
+  const handleSavePixSettings = useCallback(async () => {
+    await updateSettings({
+      ...settings,
+      pixKey,
+      pixKeyType,
+    });
+    showSuccess('Chave PIX salva com sucesso!');
+    setShowPixSettings(false);
+  }, [settings, pixKey, pixKeyType, updateSettings, showSuccess]);
 
   // ============================================
   // Current Month Navigation
@@ -1162,6 +1188,86 @@ export function FinancialDashboard() {
                 {isMobile ? 'Novo' : 'Novo Plano'}
               </Button>
             </Box>
+
+            {/* PIX Settings Card */}
+            <Card sx={{ mb: 3, border: '1px solid', borderColor: 'grey.200' }}>
+              <CardActionArea onClick={() => setShowPixSettings(!showPixSettings)}>
+                <CardContent sx={{ py: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                      <Box
+                        sx={{
+                          width: 40,
+                          height: 40,
+                          borderRadius: 2,
+                          bgcolor: '#E0F2FE',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                        }}
+                      >
+                        <CreditCard size={20} color="#0284C7" />
+                      </Box>
+                      <Box>
+                        <Typography variant="subtitle2" fontWeight={600}>
+                          Chave PIX para Pagamentos
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {settings?.pixKey || 'Nao configurada - clique para adicionar'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    {showPixSettings ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                  </Box>
+                </CardContent>
+              </CardActionArea>
+              <Collapse in={showPixSettings}>
+                <Divider />
+                <Box sx={{ p: 2 }}>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2 }}>
+                    Esta chave sera exibida para os alunos no portal quando houver pagamentos pendentes.
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
+                    <FormControl size="small" sx={{ minWidth: 140 }}>
+                      <InputLabel>Tipo de Chave</InputLabel>
+                      <Select
+                        value={pixKeyType}
+                        label="Tipo de Chave"
+                        onChange={(e) => setPixKeyType(e.target.value as typeof pixKeyType)}
+                      >
+                        <MenuItem value="email">Email</MenuItem>
+                        <MenuItem value="cpf">CPF</MenuItem>
+                        <MenuItem value="cnpj">CNPJ</MenuItem>
+                        <MenuItem value="phone">Telefone</MenuItem>
+                        <MenuItem value="random">Aleatoria</MenuItem>
+                      </Select>
+                    </FormControl>
+                    <TextField
+                      size="small"
+                      label="Chave PIX"
+                      value={pixKey}
+                      onChange={(e) => setPixKey(e.target.value)}
+                      placeholder={
+                        pixKeyType === 'email' ? 'exemplo@email.com' :
+                        pixKeyType === 'cpf' ? '000.000.000-00' :
+                        pixKeyType === 'cnpj' ? '00.000.000/0000-00' :
+                        pixKeyType === 'phone' ? '(00) 00000-0000' :
+                        'Chave aleatoria'
+                      }
+                      sx={{ flex: 1 }}
+                    />
+                    <Button
+                      variant="contained"
+                      onClick={handleSavePixSettings}
+                      disabled={isUpdatingSettings || !pixKey.trim()}
+                      startIcon={isUpdatingSettings ? <CircularProgress size={16} color="inherit" /> : <CheckCircle size={16} />}
+                    >
+                      Salvar
+                    </Button>
+                  </Box>
+                </Box>
+              </Collapse>
+            </Card>
 
             {/* Plans Grid */}
             <Grid container spacing={{ xs: 2, sm: 3 }}>

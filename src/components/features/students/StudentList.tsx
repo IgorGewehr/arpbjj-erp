@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   Box,
   Typography,
@@ -84,6 +84,15 @@ export function StudentList() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [classFilter, setClassFilter] = useState<string>('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+  const initialViewModeSet = useRef(false);
+
+  // Definir viewMode padrão como 'list' em telas pequenas (mobile)
+  useEffect(() => {
+    if (!initialViewModeSet.current) {
+      setViewMode(isMobile ? 'list' : 'grid');
+      initialViewModeSet.current = true;
+    }
+  }, [isMobile]);
 
   // Filter students by search term and class
   const filteredStudents = useMemo(() => {

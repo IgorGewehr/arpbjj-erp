@@ -6,12 +6,19 @@ import { CheckCircle, Calendar } from 'lucide-react';
 import { usePermissions } from '@/components/providers';
 import { useQuery } from '@tanstack/react-query';
 import { attendanceService } from '@/services/attendanceService';
+import { studentService } from '@/services/studentService';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export default function PortalPresencaPage() {
   const { linkedStudentIds } = usePermissions();
   const studentId = linkedStudentIds[0];
+
+  const { data: student } = useQuery({
+    queryKey: ['student', studentId],
+    queryFn: () => studentService.getById(studentId),
+    enabled: !!studentId,
+  });
 
   const { data: attendanceRecords, isLoading } = useQuery({
     queryKey: ['studentAttendanceRecords', studentId],
@@ -22,7 +29,7 @@ export default function PortalPresencaPage() {
   // Ensure attendanceRecords is always an array
   const records = Array.isArray(attendanceRecords) ? attendanceRecords : [];
 
-  // Calculate stats
+  // Calculate stats - include initialAttendanceCount (previous workouts from other gyms/periods)
   const stats = useMemo(() => {
     const now = new Date();
     const thisMonth = records.filter((a) => {
@@ -30,11 +37,13 @@ export default function PortalPresencaPage() {
       return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
     });
 
+    const initialCount = student?.initialAttendanceCount || 0;
+
     return {
-      total: records.length,
+      total: records.length + initialCount,
       thisMonth: thisMonth.length,
     };
-  }, [records]);
+  }, [records, student?.initialAttendanceCount]);
 
   // Calendar data for current month
   const calendarDays = useMemo(() => {

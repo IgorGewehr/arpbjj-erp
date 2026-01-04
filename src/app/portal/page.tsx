@@ -36,11 +36,14 @@ export default function PortalHomePage() {
     enabled: !!studentId,
   });
 
-  const { data: attendanceCount = 0 } = useQuery({
+  const { data: systemAttendanceCount = 0 } = useQuery({
     queryKey: ['studentAttendance', studentId],
     queryFn: () => attendanceService.getStudentAttendanceCount(studentId),
     enabled: !!studentId,
   });
+
+  // Total attendance = system count + initial count (previous workouts from other gyms/periods)
+  const attendanceCount = systemAttendanceCount + (student?.initialAttendanceCount || 0);
 
   const hasPlan = !!student?.planId;
 

@@ -146,6 +146,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       '/portal/horarios',
       '/portal/competicoes',
       '/portal/linha-do-tempo',
+      '/portal/comportamento',
     ],
     defaultRoute: '/portal',
   },

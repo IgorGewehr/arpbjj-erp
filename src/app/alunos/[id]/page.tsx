@@ -62,6 +62,7 @@ import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode } from '@/types';
 import { financialService, attendanceService } from '@/services';
+import { Attendance } from '@/types';
 import { linkCodeService } from '@/services/linkCodeService';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
@@ -283,6 +284,10 @@ export default function StudentProfilePage() {
   const [assessmentNotes, setAssessmentNotes] = useState('');
   const [savingAssessment, setSavingAssessment] = useState(false);
 
+  // Attendance state
+  const [attendanceRecords, setAttendanceRecords] = useState<Attendance[]>([]);
+  const [loadingAttendance, setLoadingAttendance] = useState(false);
+
   // Financial state
   const [studentFinancials, setStudentFinancials] = useState<Financial[]>([]);
   const [loadingFinancials, setLoadingFinancials] = useState(false);
@@ -318,6 +323,20 @@ export default function StudentProfilePage() {
     }
     return baseTabs;
   }, [isKidsStudent, studentHasPlan]);
+
+  // Load student attendance when tab changes to Presenca
+  useEffect(() => {
+    const presencaTabIndex = tabs.indexOf('Presenca');
+    if (activeTab === presencaTabIndex && presencaTabIndex !== -1 && studentId) {
+      setLoadingAttendance(true);
+      attendanceService.getByStudent(studentId, 100).then((data) => {
+        setAttendanceRecords(data);
+        setLoadingAttendance(false);
+      }).catch(() => {
+        setLoadingAttendance(false);
+      });
+    }
+  }, [activeTab, studentId, tabs]);
 
   // Load student financials when tab changes to Financeiro
   useEffect(() => {
@@ -871,14 +890,115 @@ export default function StudentProfilePage() {
 
                 {/* Tab: Presenca */}
                 <TabPanel value={activeTab} index={tabs.indexOf('Presenca')}>
-                  <Box sx={{ px: 3, textAlign: 'center', py: 4 }}>
-                    <ClipboardCheck size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
-                    <Typography variant="h6" gutterBottom>
-                      Historico de Presenca
-                    </Typography>
-                    <Typography variant="body2" color="text.secondary">
-                      O historico de presencas sera exibido aqui
-                    </Typography>
+                  <Box sx={{ px: 3 }}>
+                    {/* Stats */}
+                    <Grid container spacing={2} sx={{ mb: 3 }}>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Card sx={{ bgcolor: 'primary.50', borderRadius: 2 }}>
+                          <CardContent sx={{ py: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <ClipboardCheck size={18} color="#1976d2" />
+                              <Typography variant="body2" color="primary.dark">Total de Presenças</Typography>
+                            </Box>
+                            <Typography variant="h5" fontWeight={700} color="primary.dark">
+                              {totalAttendanceCount !== null ? totalAttendanceCount : '-'}
+                            </Typography>
+                            {student?.initialAttendanceCount ? (
+                              <Typography variant="caption" color="text.secondary">
+                                ({attendanceRecords.length} no sistema + {student.initialAttendanceCount} anteriores)
+                              </Typography>
+                            ) : (
+                              <Typography variant="caption" color="text.secondary">
+                                treinos registrados
+                              </Typography>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                      <Grid size={{ xs: 12, sm: 6 }}>
+                        <Card sx={{ bgcolor: 'success.50', borderRadius: 2 }}>
+                          <CardContent sx={{ py: 2 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                              <Calendar size={18} color="#16A34A" />
+                              <Typography variant="body2" color="success.dark">Este Mês</Typography>
+                            </Box>
+                            <Typography variant="h5" fontWeight={700} color="success.dark">
+                              {attendanceRecords.filter(a => {
+                                const date = new Date(a.date);
+                                const now = new Date();
+                                return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
+                              }).length}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary">
+                              presenças
+                            </Typography>
+                          </CardContent>
+                        </Card>
+                      </Grid>
+                    </Grid>
+
+                    <Divider sx={{ mb: 2 }} />
+
+                    {/* Attendance List */}
+                    {loadingAttendance ? (
+                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                        <CircularProgress />
+                      </Box>
+                    ) : attendanceRecords.length === 0 ? (
+                      <Box sx={{ textAlign: 'center', py: 4 }}>
+                        <ClipboardCheck size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
+                        <Typography variant="body2" color="text.secondary">
+                          Nenhuma presença registrada no sistema
+                        </Typography>
+                        {student?.initialAttendanceCount ? (
+                          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+                            (Possui {student.initialAttendanceCount} treinos anteriores cadastrados)
+                          </Typography>
+                        ) : null}
+                      </Box>
+                    ) : (
+                      <List disablePadding>
+                        {attendanceRecords.map((record) => (
+                          <ListItem
+                            key={record.id}
+                            sx={{
+                              px: 2,
+                              py: 1.5,
+                              borderRadius: 2,
+                              mb: 1,
+                              bgcolor: 'action.hover',
+                            }}
+                          >
+                            <Box
+                              sx={{
+                                width: 36,
+                                height: 36,
+                                borderRadius: '50%',
+                                bgcolor: 'success.100',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                mr: 2,
+                              }}
+                            >
+                              <CheckCircle size={18} color="#16A34A" />
+                            </Box>
+                            <ListItemText
+                              primary={
+                                <Typography variant="body2" fontWeight={600}>
+                                  {format(new Date(record.date), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                                </Typography>
+                              }
+                              secondary={
+                                <Typography variant="caption" color="text.secondary">
+                                  {record.className || 'Treino'}
+                                </Typography>
+                              }
+                            />
+                          </ListItem>
+                        ))}
+                      </List>
+                    )}
                   </Box>
                 </TabPanel>
 

@@ -21,7 +21,7 @@ import {
   Autocomplete,
   Checkbox,
 } from '@mui/material';
-import { User, Phone, X, GraduationCap, CreditCard, Award } from 'lucide-react';
+import { User, Phone, X, GraduationCap, CreditCard, Award, History } from 'lucide-react';
 import { useStudents, useClasses, usePlans } from '@/hooks';
 import { Class, Plan, BeltColor, KidsBeltColor, Stripes, StudentCategory } from '@/types';
 
@@ -71,6 +71,7 @@ export function QuickRegisterDialog({
     currentStripes: 0 as Stripes,
     selectedClasses: [] as string[],
     selectedPlanId: '',
+    initialAttendanceCount: '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -134,12 +135,14 @@ export function QuickRegisterDialog({
 
     try {
       const phoneDigits = formData.phone.replace(/\D/g, '');
+      const initialCount = formData.initialAttendanceCount ? parseInt(formData.initialAttendanceCount, 10) : undefined;
       const student = await quickCreateStudent({
         fullName: formData.fullName.trim(),
         phone: phoneDigits || undefined,
         category: formData.category,
         currentBelt: formData.currentBelt,
         currentStripes: formData.currentStripes,
+        initialAttendanceCount: initialCount && initialCount > 0 ? initialCount : undefined,
       });
 
       // Add student to selected classes
@@ -159,7 +162,7 @@ export function QuickRegisterDialog({
       }
 
       // Reset form
-      setFormData({ fullName: '', phone: '', category: 'adult', currentBelt: 'white', currentStripes: 0, selectedClasses: [], selectedPlanId: '' });
+      setFormData({ fullName: '', phone: '', category: 'adult', currentBelt: 'white', currentStripes: 0, selectedClasses: [], selectedPlanId: '', initialAttendanceCount: '' });
       setErrors({});
 
       // Close dialog
@@ -177,7 +180,7 @@ export function QuickRegisterDialog({
   // Handle close
   const handleClose = useCallback(() => {
     if (!isCreating) {
-      setFormData({ fullName: '', phone: '', category: 'adult', currentBelt: 'white', currentStripes: 0, selectedClasses: [], selectedPlanId: '' });
+      setFormData({ fullName: '', phone: '', category: 'adult', currentBelt: 'white', currentStripes: 0, selectedClasses: [], selectedPlanId: '', initialAttendanceCount: '' });
       setErrors({});
       onClose();
     }
@@ -267,6 +270,26 @@ export function QuickRegisterDialog({
                     <Phone size={20} />
                   </InputAdornment>
                 ),
+              }}
+            />
+
+            <TextField
+              name="initialAttendanceCount"
+              label="Treinos anteriores (opcional)"
+              placeholder="Ex: 150"
+              value={formData.initialAttendanceCount}
+              onChange={handleChange}
+              disabled={isCreating}
+              fullWidth
+              type="number"
+              helperText="Treinos realizados em outras academias"
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <History size={20} />
+                  </InputAdornment>
+                ),
+                inputProps: { min: 0 }
               }}
             />
 

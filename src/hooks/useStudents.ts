@@ -99,10 +99,11 @@ export function useStudents(options: UseStudentsOptions = {}) {
     category?: StudentCategory;
     currentBelt?: BeltColor | KidsBeltColor;
     currentStripes?: Stripes;
+    initialAttendanceCount?: number;
   }
 
   const quickCreateMutation = useMutation({
-    mutationFn: async ({ fullName, phone, category = 'adult', currentBelt = 'white', currentStripes = 0 }: QuickCreateParams) => {
+    mutationFn: async ({ fullName, phone, category = 'adult', currentBelt = 'white', currentStripes = 0, initialAttendanceCount }: QuickCreateParams) => {
       if (!user) throw new Error('User not authenticated');
       return studentService.create({
         fullName,
@@ -110,6 +111,7 @@ export function useStudents(options: UseStudentsOptions = {}) {
         category,
         currentBelt,
         currentStripes,
+        initialAttendanceCount: initialAttendanceCount || undefined,
         status: 'active',
         startDate: new Date(),
         tuitionValue: 0,

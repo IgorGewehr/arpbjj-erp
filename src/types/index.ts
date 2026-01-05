@@ -59,6 +59,38 @@ export type WeightCategory =
   | 'galo' | 'pluma' | 'pena' | 'leve' | 'medio'
   | 'meio-pesado' | 'pesado' | 'super-pesado' | 'pesadissimo' | 'absoluto';
 
+// Transport Types (for competitions)
+export type CompetitionTransportStatus = 'pending' | 'confirmed' | 'no_transport';
+export type StudentTransportPreference = 'need_transport' | 'own_transport' | 'undecided';
+
+// Weight Categories CBJJ (constant array for forms)
+export const WEIGHT_CATEGORIES_CBJJ = [
+  'Galo', 'Pluma', 'Pena', 'Leve', 'Médio',
+  'Meio-Pesado', 'Pesado', 'Super-Pesado', 'Pesadíssimo', 'Absoluto'
+] as const;
+
+// Age Categories Labels
+export const AGE_CATEGORY_LABELS: Record<AgeCategory, string> = {
+  kids: 'Infantil',
+  juvenile: 'Juvenil',
+  adult: 'Adulto',
+  master: 'Master'
+};
+
+// Transport Status Labels
+export const TRANSPORT_STATUS_LABELS: Record<CompetitionTransportStatus, string> = {
+  pending: 'Verificando',
+  confirmed: 'Confirmado',
+  no_transport: 'Sem transporte'
+};
+
+// Student Transport Preference Labels
+export const TRANSPORT_PREFERENCE_LABELS: Record<StudentTransportPreference, string> = {
+  need_transport: 'Precisa de transporte',
+  own_transport: 'Transporte próprio',
+  undecided: 'Ainda não decidiu'
+};
+
 // ============================================
 // User Interface
 // ============================================
@@ -315,11 +347,40 @@ export interface Competition {
 
   // Registration
   registrationDeadline?: Date;      // Deadline for enrollment
-  enrolledStudentIds: string[];     // Students confirmed to participate
+  enrolledStudentIds: string[];     // Students confirmed to participate (legacy, use enrollments)
+
+  // Transport
+  transportStatus?: CompetitionTransportStatus;  // pending | confirmed | no_transport
+  transportNotes?: string;                       // Notes about transport arrangements
+  transportCapacity?: number;                    // Number of spots available
+
+  // Custom weight categories (in addition to CBJJ standard)
+  customWeightCategories?: string[];
 
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;
+}
+
+// ============================================
+// Competition Enrollment Interface
+// ============================================
+export interface CompetitionEnrollment {
+  id: string;
+  competitionId: string;
+  competitionName?: string;         // Denormalized for display
+  studentId: string;
+  studentName: string;              // Denormalized for display
+
+  // Category selections (chosen by student at enrollment time)
+  ageCategory: AgeCategory;
+  weightCategory: string;           // Can be CBJJ standard or custom
+
+  // Transport preference
+  transportPreference: StudentTransportPreference;
+
+  enrolledAt: Date;
+  enrolledBy?: string;              // User who enrolled (could be self or admin)
 }
 
 // ============================================

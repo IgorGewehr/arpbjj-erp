@@ -5,3 +5,5 @@ export { AttendanceChart } from './AttendanceChart';
 export { RevenueOverview } from './RevenueOverview';
 export { AlertsPanel } from './AlertsPanel';
 export { QuickStudentDialog } from './QuickStudentDialog';
+export { MobileStatsCarousel } from './MobileStatsCarousel';
+export { MobileQuickActions } from './MobileQuickActions';

@@ -17,6 +17,7 @@ import {
   CompetitionResult,
   CompetitionStatus,
   CompetitionPosition,
+  CompetitionTransportStatus,
   AgeCategory,
   BeltColor,
   KidsBeltColor,
@@ -45,6 +46,12 @@ const docToCompetition = (doc: DocumentSnapshot): Competition => {
         ? new Date(data.registrationDeadline)
         : undefined,
     enrolledStudentIds: data.enrolledStudentIds || [],
+    // Transport fields
+    transportStatus: data.transportStatus,
+    transportNotes: data.transportNotes,
+    transportCapacity: data.transportCapacity,
+    // Custom weight categories
+    customWeightCategories: data.customWeightCategories || [],
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
     createdBy: data.createdBy,
@@ -154,6 +161,14 @@ export const competitionService = {
     if (data.registrationDeadline) {
       docData.registrationDeadline = Timestamp.fromDate(new Date(data.registrationDeadline));
     }
+    // Transport fields
+    if (data.transportStatus) docData.transportStatus = data.transportStatus;
+    if (data.transportNotes) docData.transportNotes = data.transportNotes;
+    if (data.transportCapacity !== undefined) docData.transportCapacity = data.transportCapacity;
+    // Custom weight categories
+    if (data.customWeightCategories && data.customWeightCategories.length > 0) {
+      docData.customWeightCategories = data.customWeightCategories;
+    }
 
     const docRef = await addDoc(collection(db, COMPETITIONS_COLLECTION), docData);
 
@@ -167,6 +182,10 @@ export const competitionService = {
       status: data.status,
       registrationDeadline: data.registrationDeadline ? new Date(data.registrationDeadline) : undefined,
       enrolledStudentIds: [],
+      transportStatus: data.transportStatus,
+      transportNotes: data.transportNotes,
+      transportCapacity: data.transportCapacity,
+      customWeightCategories: data.customWeightCategories || [],
       createdAt: now,
       updatedAt: now,
       createdBy,
@@ -197,11 +216,62 @@ export const competitionService = {
     if (data.registrationDeadline) {
       updateData.registrationDeadline = Timestamp.fromDate(new Date(data.registrationDeadline));
     }
+    // Transport fields
+    if (data.transportStatus !== undefined) updateData.transportStatus = data.transportStatus;
+    if (data.transportNotes !== undefined) updateData.transportNotes = data.transportNotes;
+    if (data.transportCapacity !== undefined) updateData.transportCapacity = data.transportCapacity;
+    // Custom weight categories
+    if (data.customWeightCategories !== undefined) updateData.customWeightCategories = data.customWeightCategories;
 
     await updateDoc(docRef, updateData);
 
     const updatedDoc = await getDoc(docRef);
     return docToCompetition(updatedDoc);
+  },
+
+  // ============================================
+  // Update Transport Status
+  // ============================================
+  async updateTransportStatus(
+    id: string,
+    status: CompetitionTransportStatus,
+    notes?: string,
+    capacity?: number
+  ): Promise<Competition> {
+    return this.update(id, {
+      transportStatus: status,
+      transportNotes: notes,
+      transportCapacity: capacity,
+    });
+  },
+
+  // ============================================
+  // Add Custom Weight Category
+  // ============================================
+  async addCustomWeightCategory(id: string, category: string): Promise<Competition> {
+    const competition = await this.getById(id);
+    if (!competition) throw new Error('Competition not found');
+
+    const currentCategories = competition.customWeightCategories || [];
+    if (currentCategories.includes(category)) {
+      return competition; // Already exists
+    }
+
+    return this.update(id, {
+      customWeightCategories: [...currentCategories, category],
+    });
+  },
+
+  // ============================================
+  // Remove Custom Weight Category
+  // ============================================
+  async removeCustomWeightCategory(id: string, category: string): Promise<Competition> {
+    const competition = await this.getById(id);
+    if (!competition) throw new Error('Competition not found');
+
+    return this.update(id, {
+      customWeightCategories: (competition.customWeightCategories || []).filter((c) => c !== category),
+    });
   },
 
   // ============================================

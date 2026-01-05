@@ -33,6 +33,7 @@ import {
   useTheme,
   useMediaQuery,
 } from '@mui/material';
+import { FadeInView, ScaleOnPress } from '@/components/mobile';
 import {
   ChevronLeft,
   ChevronRight,

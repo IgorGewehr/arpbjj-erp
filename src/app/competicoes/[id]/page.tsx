@@ -45,6 +45,9 @@ import {
   UserPlus,
   X,
   Check,
+  Bus,
+  Car,
+  HelpCircle,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -53,16 +56,24 @@ import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useFeedback, useConfirmDialog } from '@/components/providers';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { competitionService } from '@/services/competitionService';
+import { competitionEnrollmentService } from '@/services/competitionEnrollmentService';
 import { studentService } from '@/services/studentService';
 import { achievementService } from '@/services/achievementService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import {
   Competition,
+  CompetitionEnrollment,
   CompetitionResult,
   CompetitionStatus,
   CompetitionPosition,
+  CompetitionTransportStatus,
+  StudentTransportPreference,
   Student,
   AgeCategory,
+  WEIGHT_CATEGORIES_CBJJ,
+  AGE_CATEGORY_LABELS,
+  TRANSPORT_STATUS_LABELS,
+  TRANSPORT_PREFERENCE_LABELS,
 } from '@/types';
 
 // ============================================
@@ -81,92 +92,188 @@ const statusConfig: Record<CompetitionStatus, { label: string; color: 'warning' 
   completed: { label: 'Concluída', color: 'success' },
 };
 
-const ageCategoryLabels: Record<AgeCategory, string> = {
-  kids: 'Infantil',
-  juvenile: 'Juvenil',
-  adult: 'Adulto',
-  master: 'Master',
+const transportPreferenceIcons: Record<StudentTransportPreference, React.ReactNode> = {
+  need_transport: <Bus size={16} />,
+  own_transport: <Car size={16} />,
+  undecided: <HelpCircle size={16} />,
 };
 
-const weightCategories = [
-  'Galo', 'Pluma', 'Pena', 'Leve', 'Médio',
-  'Meio-Pesado', 'Pesado', 'Super-Pesado', 'Pesadíssimo', 'Absoluto',
-];
-
 // ============================================
-// Add Student Dialog
+// Enroll Student Dialog (with categories and transport)
 // ============================================
-interface AddStudentDialogProps {
+interface EnrollStudentDialogProps {
   open: boolean;
   onClose: () => void;
-  onAdd: (studentIds: string[]) => void;
+  onEnroll: (data: {
+    studentId: string;
+    studentName: string;
+    ageCategory: AgeCategory;
+    weightCategory: string;
+    transportPreference: StudentTransportPreference;
+  }) => void;
   enrolledIds: string[];
   students: Student[];
+  competition: Competition;
 }
 
-function AddStudentDialog({ open, onClose, onAdd, enrolledIds, students }: AddStudentDialogProps) {
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+function EnrollStudentDialog({ open, onClose, onEnroll, enrolledIds, students, competition }: EnrollStudentDialogProps) {
+  const [studentId, setStudentId] = useState('');
+  const [ageCategory, setAgeCategory] = useState<AgeCategory>('adult');
+  const [weightCategory, setWeightCategory] = useState('');
+  const [transportPreference, setTransportPreference] = useState<StudentTransportPreference>('undecided');
 
   const availableStudents = students.filter((s) => !enrolledIds.includes(s.id));
+  const selectedStudent = students.find((s) => s.id === studentId);
 
-  const handleToggle = (id: string) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
-    );
-  };
+  // Combine CBJJ categories with custom categories from competition
+  const allWeightCategories = [
+    ...WEIGHT_CATEGORIES_CBJJ,
+    ...(competition.customWeightCategories || []),
+  ];
 
   const handleSubmit = () => {
-    onAdd(selectedIds);
-    setSelectedIds([]);
+    if (!studentId || !selectedStudent || !weightCategory) return;
+
+    onEnroll({
+      studentId,
+      studentName: selectedStudent.fullName,
+      ageCategory,
+      weightCategory,
+      transportPreference,
+    });
+
+    // Reset form
+    setStudentId('');
+    setAgeCategory('adult');
+    setWeightCategory('');
+    setTransportPreference('undecided');
+    onClose();
+  };
+
+  const handleClose = () => {
+    setStudentId('');
+    setAgeCategory('adult');
+    setWeightCategory('');
+    setTransportPreference('undecided');
     onClose();
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Adicionar Alunos</DialogTitle>
+    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+      <DialogTitle>Inscrever Aluno</DialogTitle>
       <DialogContent dividers>
-        {availableStudents.length === 0 ? (
-          <Typography color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
-            Todos os alunos já estão inscritos
-          </Typography>
-        ) : (
-          <List>
-            {availableStudents.map((student) => (
-              <ListItem
-                key={student.id}
-                component="div"
-                onClick={() => handleToggle(student.id)}
-                sx={{ cursor: 'pointer', borderRadius: 1 }}
+        <Grid container spacing={3} sx={{ mt: 0 }}>
+          {/* Student Selection */}
+          <Grid size={{ xs: 12 }}>
+            <Autocomplete
+              options={availableStudents}
+              getOptionLabel={(opt) => opt.nickname || opt.fullName}
+              value={availableStudents.find((s) => s.id === studentId) || null}
+              onChange={(_, value) => {
+                setStudentId(value?.id || '');
+                // Auto-set age category based on student category
+                if (value?.category === 'kids') {
+                  setAgeCategory('kids');
+                }
+              }}
+              renderOption={(props, option) => {
+                const { key, ...rest } = props as { key: string } & React.HTMLAttributes<HTMLLIElement>;
+                return (
+                  <Box component="li" key={key} {...rest} sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                    <Avatar src={option.photoUrl} sx={{ width: 32, height: 32 }}>
+                      {option.fullName.charAt(0)}
+                    </Avatar>
+                    <Box>
+                      <Typography variant="body2">{option.nickname || option.fullName}</Typography>
+                      <BeltDisplay belt={option.currentBelt} stripes={option.currentStripes} size="small" />
+                    </Box>
+                  </Box>
+                );
+              }}
+              renderInput={(params) => (
+                <TextField {...params} label="Aluno" required />
+              )}
+              noOptionsText="Todos os alunos já estão inscritos"
+            />
+          </Grid>
+
+          {/* Age Category */}
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <FormControl fullWidth required>
+              <InputLabel>Categoria Idade</InputLabel>
+              <Select
+                value={ageCategory}
+                onChange={(e) => setAgeCategory(e.target.value as AgeCategory)}
+                label="Categoria Idade"
               >
-                <ListItemAvatar>
-                  <Avatar src={student.photoUrl}>
-                    {student.fullName.charAt(0)}
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={student.nickname || student.fullName}
-                  secondary={<BeltDisplay belt={student.currentBelt} stripes={student.currentStripes} size="small" />}
-                />
-                <ListItemSecondaryAction>
-                  <Checkbox
-                    edge="end"
-                    checked={selectedIds.includes(student.id)}
-                    onChange={() => handleToggle(student.id)}
-                  />
-                </ListItemSecondaryAction>
-              </ListItem>
-            ))}
-          </List>
-        )}
+                {Object.entries(AGE_CATEGORY_LABELS).map(([key, label]) => (
+                  <MenuItem key={key} value={key}>{label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* Weight Category */}
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <Autocomplete
+              freeSolo
+              options={allWeightCategories}
+              value={weightCategory}
+              onChange={(_, value) => setWeightCategory(value || '')}
+              onInputChange={(_, value) => setWeightCategory(value)}
+              renderInput={(params) => (
+                <TextField {...params} label="Categoria Peso" required />
+              )}
+            />
+          </Grid>
+
+          {/* Transport Preference */}
+          <Grid size={{ xs: 12 }}>
+            <FormControl fullWidth>
+              <InputLabel>Transporte</InputLabel>
+              <Select
+                value={transportPreference}
+                onChange={(e) => setTransportPreference(e.target.value as StudentTransportPreference)}
+                label="Transporte"
+              >
+                {Object.entries(TRANSPORT_PREFERENCE_LABELS).map(([key, label]) => (
+                  <MenuItem key={key} value={key}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      {transportPreferenceIcons[key as StudentTransportPreference]}
+                      {label}
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          {/* Transport Info from Competition */}
+          {competition.transportStatus && competition.transportStatus !== 'no_transport' && (
+            <Grid size={{ xs: 12 }}>
+              <Box sx={{ p: 2, bgcolor: 'info.light', borderRadius: 2, color: 'info.dark' }}>
+                <Typography variant="body2" fontWeight={600}>
+                  <Bus size={16} style={{ verticalAlign: 'middle', marginRight: 8 }} />
+                  Transporte: {TRANSPORT_STATUS_LABELS[competition.transportStatus]}
+                </Typography>
+                {competition.transportNotes && (
+                  <Typography variant="body2" sx={{ mt: 0.5 }}>
+                    {competition.transportNotes}
+                  </Typography>
+                )}
+              </Box>
+            </Grid>
+          )}
+        </Grid>
       </DialogContent>
       <DialogActions>
-        <Button onClick={onClose}>Cancelar</Button>
+        <Button onClick={handleClose}>Cancelar</Button>
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={selectedIds.length === 0}
+          disabled={!studentId || !weightCategory}
         >
-          Adicionar ({selectedIds.length})
+          Inscrever
         </Button>
       </DialogActions>
     </Dialog>
@@ -182,10 +289,11 @@ interface AddResultDialogProps {
   onSave: (data: Omit<CompetitionResult, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => void;
   competition: Competition;
   students: Student[];
+  enrollments: CompetitionEnrollment[];
   existingResult?: CompetitionResult;
 }
 
-function AddResultDialog({ open, onClose, onSave, competition, students, existingResult }: AddResultDialogProps) {
+function AddResultDialog({ open, onClose, onSave, competition, students, enrollments, existingResult }: AddResultDialogProps) {
   const [studentId, setStudentId] = useState(existingResult?.studentId || '');
   const [position, setPosition] = useState<CompetitionPosition>(existingResult?.position || 'participant');
   const [ageCategory, setAgeCategory] = useState<AgeCategory>(existingResult?.ageCategory || 'adult');
@@ -208,8 +316,20 @@ function AddResultDialog({ open, onClose, onSave, competition, students, existin
     }
   }, [existingResult, open]);
 
-  const enrolledStudents = students.filter((s) => competition.enrolledStudentIds.includes(s.id));
+  // Get enrolled students from enrollments
+  const enrolledIds = enrollments.map((e) => e.studentId);
+  const enrolledStudents = students.filter((s) => enrolledIds.includes(s.id));
   const selectedStudent = students.find((s) => s.id === studentId);
+
+  // Auto-fill category from enrollment when student is selected
+  const handleStudentChange = (newStudentId: string) => {
+    setStudentId(newStudentId);
+    const enrollment = enrollments.find((e) => e.studentId === newStudentId);
+    if (enrollment && !existingResult) {
+      setAgeCategory(enrollment.ageCategory);
+      setWeightCategory(enrollment.weightCategory);
+    }
+  };
 
   const handleSubmit = () => {
     if (!studentId || !selectedStudent) return;
@@ -241,7 +361,7 @@ function AddResultDialog({ open, onClose, onSave, competition, students, existin
               options={enrolledStudents}
               getOptionLabel={(opt) => opt.nickname || opt.fullName}
               value={enrolledStudents.find((s) => s.id === studentId) || null}
-              onChange={(_, value) => setStudentId(value?.id || '')}
+              onChange={(_, value) => handleStudentChange(value?.id || '')}
               disabled={!!existingResult}
               renderOption={(props, option) => {
                 const { key, ...rest } = props as { key: string } & React.HTMLAttributes<HTMLLIElement>;
@@ -302,7 +422,7 @@ function AddResultDialog({ open, onClose, onSave, competition, students, existin
                 onChange={(e) => setAgeCategory(e.target.value as AgeCategory)}
                 label="Categoria Idade"
               >
-                {Object.entries(ageCategoryLabels).map(([key, label]) => (
+                {Object.entries(AGE_CATEGORY_LABELS).map(([key, label]) => (
                   <MenuItem key={key} value={key}>{label}</MenuItem>
                 ))}
               </Select>
@@ -312,7 +432,7 @@ function AddResultDialog({ open, onClose, onSave, competition, students, existin
           <Grid size={{ xs: 12 }}>
             <Autocomplete
               freeSolo
-              options={weightCategories}
+              options={[...WEIGHT_CATEGORIES_CBJJ]}
               value={weightCategory}
               onChange={(_, value) => setWeightCategory(value || '')}
               onInputChange={(_, value) => setWeightCategory(value)}
@@ -364,6 +484,7 @@ export default function CompetitionDetailsPage() {
 
   const [competition, setCompetition] = useState<Competition | null>(null);
   const [results, setResults] = useState<CompetitionResult[]>([]);
+  const [enrollments, setEnrollments] = useState<CompetitionEnrollment[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -387,9 +508,10 @@ export default function CompetitionDetailsPage() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [compData, resultsData, studentsData] = await Promise.all([
+      const [compData, resultsData, enrollmentsData, studentsData] = await Promise.all([
         competitionService.getById(competitionId),
         competitionService.getResultsForCompetition(competitionId),
+        competitionEnrollmentService.getByCompetition(competitionId),
         studentService.getActive(),
       ]);
 
@@ -401,6 +523,7 @@ export default function CompetitionDetailsPage() {
 
       setCompetition(compData);
       setResults(resultsData);
+      setEnrollments(enrollmentsData);
       setStudents(studentsData);
       setEditData(compData);
     } catch (err) {
@@ -429,33 +552,52 @@ export default function CompetitionDetailsPage() {
     }
   };
 
-  const handleAddStudents = async (studentIds: string[]) => {
-    if (!competition) return;
+  const handleEnrollStudent = async (data: {
+    studentId: string;
+    studentName: string;
+    ageCategory: AgeCategory;
+    weightCategory: string;
+    transportPreference: StudentTransportPreference;
+  }) => {
+    if (!competition || !user) return;
 
     try {
-      for (const id of studentIds) {
-        await competitionService.enrollStudent(competition.id, id);
-      }
-      success(`${studentIds.length} aluno(s) inscrito(s) com sucesso!`);
+      await competitionEnrollmentService.enroll({
+        competitionId: competition.id,
+        competitionName: competition.name,
+        studentId: data.studentId,
+        studentName: data.studentName,
+        ageCategory: data.ageCategory,
+        weightCategory: data.weightCategory,
+        transportPreference: data.transportPreference,
+      }, user.id);
+
+      // Also update the legacy enrolledStudentIds for backwards compatibility
+      await competitionService.enrollStudent(competition.id, data.studentId);
+
+      success('Aluno inscrito com sucesso!');
       loadData();
-    } catch (err) {
-      showError('Erro ao inscrever alunos');
+    } catch (err: unknown) {
+      const errorMessage = err instanceof Error ? err.message : 'Erro ao inscrever aluno';
+      showError(errorMessage);
     }
   };
 
-  const handleRemoveStudent = async (studentId: string) => {
+  const handleRemoveStudent = async (enrollmentId: string, studentId: string) => {
     if (!competition) return;
 
-    const student = students.find((s) => s.id === studentId);
+    const enrollment = enrollments.find((e) => e.id === enrollmentId);
     const confirmed = await confirm({
       title: 'Remover Inscrição',
-      message: `Deseja remover ${student?.nickname || student?.fullName} da competição?`,
+      message: `Deseja remover ${enrollment?.studentName} da competição?`,
       confirmText: 'Remover',
       severity: 'warning',
     });
 
     if (confirmed) {
       try {
+        await competitionEnrollmentService.delete(enrollmentId);
+        // Also remove from legacy array
         await competitionService.unenrollStudent(competition.id, studentId);
         success('Inscrição removida');
         loadData();
@@ -530,7 +672,13 @@ export default function CompetitionDetailsPage() {
 
   if (!competition) return null;
 
-  const enrolledStudents = students.filter((s) => competition.enrolledStudentIds.includes(s.id));
+  // Get enrolled student IDs from the new enrollment system
+  const enrolledIds = enrollments.map((e) => e.studentId);
+  const transportStats = {
+    needTransport: enrollments.filter((e) => e.transportPreference === 'need_transport').length,
+    ownTransport: enrollments.filter((e) => e.transportPreference === 'own_transport').length,
+    undecided: enrollments.filter((e) => e.transportPreference === 'undecided').length,
+  };
   const status = statusConfig[competition.status];
 
   return (
@@ -636,7 +784,8 @@ export default function CompetitionDetailsPage() {
             <>
               <Paper sx={{ mb: 3, borderRadius: 3 }}>
                 <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ px: 2 }}>
-                  <Tab label={`Inscritos (${enrolledStudents.length})`} icon={<Users size={18} />} iconPosition="start" />
+                  <Tab label={`Inscritos (${enrollments.length})`} icon={<Users size={18} />} iconPosition="start" />
+                  <Tab label={`Transporte (${transportStats.needTransport})`} icon={<Bus size={18} />} iconPosition="start" />
                   <Tab label={`Resultados (${results.length})`} icon={<Medal size={18} />} iconPosition="start" />
                 </Tabs>
               </Paper>
@@ -653,11 +802,11 @@ export default function CompetitionDetailsPage() {
                       startIcon={<UserPlus size={18} />}
                       onClick={() => setAddStudentOpen(true)}
                     >
-                      Adicionar Alunos
+                      Inscrever Aluno
                     </Button>
                   </Box>
 
-                  {enrolledStudents.length === 0 ? (
+                  {enrollments.length === 0 ? (
                     <Box sx={{ textAlign: 'center', py: 6 }}>
                       <Users size={48} color="#ccc" />
                       <Typography color="text.secondary" sx={{ mt: 2 }}>
@@ -666,45 +815,174 @@ export default function CompetitionDetailsPage() {
                     </Box>
                   ) : (
                     <List>
-                      {enrolledStudents.map((student, index) => (
-                        <Box key={student.id}>
-                          {index > 0 && <Divider />}
-                          <ListItem sx={{ py: 2 }}>
-                            <ListItemAvatar>
-                              <Avatar src={student.photoUrl} sx={{ width: 48, height: 48 }}>
-                                {student.fullName.charAt(0)}
-                              </Avatar>
-                            </ListItemAvatar>
-                            <ListItemText
-                              primary={
-                                <Typography fontWeight={600}>
-                                  {student.nickname || student.fullName}
-                                </Typography>
-                              }
-                              secondary={
-                                <Box sx={{ mt: 0.5 }}>
-                                  <BeltDisplay belt={student.currentBelt} stripes={student.currentStripes} size="small" />
-                                </Box>
-                              }
-                            />
-                            <ListItemSecondaryAction>
-                              <IconButton
-                                edge="end"
-                                onClick={() => handleRemoveStudent(student.id)}
-                                color="error"
-                              >
-                                <X size={18} />
-                              </IconButton>
-                            </ListItemSecondaryAction>
-                          </ListItem>
-                        </Box>
-                      ))}
+                      {enrollments.map((enrollment, index) => {
+                        const student = students.find((s) => s.id === enrollment.studentId);
+                        return (
+                          <Box key={enrollment.id}>
+                            {index > 0 && <Divider />}
+                            <ListItem sx={{ py: 2 }}>
+                              <ListItemAvatar>
+                                <Avatar src={student?.photoUrl} sx={{ width: 48, height: 48 }}>
+                                  {enrollment.studentName.charAt(0)}
+                                </Avatar>
+                              </ListItemAvatar>
+                              <ListItemText
+                                primary={
+                                  <Typography fontWeight={600}>
+                                    {student?.nickname || enrollment.studentName}
+                                  </Typography>
+                                }
+                                secondary={
+                                  <Box sx={{ mt: 0.5, display: 'flex', gap: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+                                    {student && (
+                                      <BeltDisplay belt={student.currentBelt} stripes={student.currentStripes} size="small" />
+                                    )}
+                                    <Chip
+                                      size="small"
+                                      label={AGE_CATEGORY_LABELS[enrollment.ageCategory]}
+                                      variant="outlined"
+                                    />
+                                    <Chip
+                                      size="small"
+                                      label={enrollment.weightCategory}
+                                      variant="outlined"
+                                    />
+                                    <Chip
+                                      size="small"
+                                      icon={transportPreferenceIcons[enrollment.transportPreference] as React.ReactElement}
+                                      label={TRANSPORT_PREFERENCE_LABELS[enrollment.transportPreference]}
+                                      variant="outlined"
+                                      color={enrollment.transportPreference === 'need_transport' ? 'info' : 'default'}
+                                    />
+                                  </Box>
+                                }
+                              />
+                              <ListItemSecondaryAction>
+                                <IconButton
+                                  edge="end"
+                                  onClick={() => handleRemoveStudent(enrollment.id, enrollment.studentId)}
+                                  color="error"
+                                >
+                                  <X size={18} />
+                                </IconButton>
+                              </ListItemSecondaryAction>
+                            </ListItem>
+                          </Box>
+                        );
+                      })}
                     </List>
                   )}
                 </Paper>
               )}
 
               {tabValue === 1 && (
+                /* Transport Tab */
+                <Paper sx={{ p: 3, borderRadius: 3 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+                    <Typography variant="h6" fontWeight={600}>
+                      Transporte
+                    </Typography>
+                    <Chip
+                      label={competition.transportStatus ? TRANSPORT_STATUS_LABELS[competition.transportStatus] : 'Não definido'}
+                      color={competition.transportStatus === 'confirmed' ? 'success' : competition.transportStatus === 'no_transport' ? 'error' : 'warning'}
+                    />
+                  </Box>
+
+                  {/* Transport Stats */}
+                  <Grid container spacing={2} sx={{ mb: 3 }}>
+                    <Grid size={{ xs: 4 }}>
+                      <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="h4" fontWeight={700} color="info.main">
+                          {transportStats.needTransport}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Precisam de transporte
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid size={{ xs: 4 }}>
+                      <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="h4" fontWeight={700} color="success.main">
+                          {transportStats.ownTransport}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Transporte próprio
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                    <Grid size={{ xs: 4 }}>
+                      <Paper variant="outlined" sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography variant="h4" fontWeight={700} color="warning.main">
+                          {transportStats.undecided}
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Não decidiram
+                        </Typography>
+                      </Paper>
+                    </Grid>
+                  </Grid>
+
+                  {/* Transport Capacity Info */}
+                  {competition.transportCapacity && (
+                    <Box sx={{ mb: 3, p: 2, bgcolor: 'info.light', borderRadius: 2 }}>
+                      <Typography variant="body2" color="info.dark">
+                        <strong>Capacidade:</strong> {transportStats.needTransport} / {competition.transportCapacity} vagas ocupadas
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* Transport Notes */}
+                  {competition.transportNotes && (
+                    <Box sx={{ mb: 3, p: 2, bgcolor: 'grey.100', borderRadius: 2 }}>
+                      <Typography variant="body2" fontWeight={600} sx={{ mb: 0.5 }}>
+                        Informações:
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        {competition.transportNotes}
+                      </Typography>
+                    </Box>
+                  )}
+
+                  {/* List of students who need transport */}
+                  <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
+                    Alunos que precisam de transporte
+                  </Typography>
+                  {transportStats.needTransport === 0 ? (
+                    <Box sx={{ textAlign: 'center', py: 4 }}>
+                      <Bus size={48} color="#ccc" />
+                      <Typography color="text.secondary" sx={{ mt: 2 }}>
+                        Nenhum aluno precisa de transporte
+                      </Typography>
+                    </Box>
+                  ) : (
+                    <List>
+                      {enrollments
+                        .filter((e) => e.transportPreference === 'need_transport')
+                        .map((enrollment, index) => {
+                          const student = students.find((s) => s.id === enrollment.studentId);
+                          return (
+                            <Box key={enrollment.id}>
+                              {index > 0 && <Divider />}
+                              <ListItem sx={{ py: 1.5 }}>
+                                <ListItemAvatar>
+                                  <Avatar src={student?.photoUrl} sx={{ width: 40, height: 40 }}>
+                                    {enrollment.studentName.charAt(0)}
+                                  </Avatar>
+                                </ListItemAvatar>
+                                <ListItemText
+                                  primary={student?.nickname || enrollment.studentName}
+                                  secondary={`${AGE_CATEGORY_LABELS[enrollment.ageCategory]} - ${enrollment.weightCategory}`}
+                                />
+                              </ListItem>
+                            </Box>
+                          );
+                        })}
+                    </List>
+                  )}
+                </Paper>
+              )}
+
+              {tabValue === 2 && (
                 /* Results Tab */
                 <Paper sx={{ p: 3, borderRadius: 3 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -718,7 +996,7 @@ export default function CompetitionDetailsPage() {
                         setEditingResult(undefined);
                         setResultDialogOpen(true);
                       }}
-                      disabled={enrolledStudents.length === 0}
+                      disabled={enrollments.length === 0}
                     >
                       Registrar Resultado
                     </Button>
@@ -784,7 +1062,7 @@ export default function CompetitionDetailsPage() {
                                 </Box>
                               </Box>
                               <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                                <Chip size="small" label={ageCategoryLabels[result.ageCategory]} variant="outlined" />
+                                <Chip size="small" label={AGE_CATEGORY_LABELS[result.ageCategory]} variant="outlined" />
                                 <Chip size="small" label={result.weightCategory} variant="outlined" />
                               </Box>
                               {result.notes && (
@@ -805,12 +1083,13 @@ export default function CompetitionDetailsPage() {
         </Box>
 
         {/* Dialogs */}
-        <AddStudentDialog
+        <EnrollStudentDialog
           open={addStudentOpen}
           onClose={() => setAddStudentOpen(false)}
-          onAdd={handleAddStudents}
-          enrolledIds={competition.enrolledStudentIds}
+          onEnroll={handleEnrollStudent}
+          enrolledIds={enrolledIds}
           students={students}
+          competition={competition}
         />
 
         <AddResultDialog
@@ -822,6 +1101,7 @@ export default function CompetitionDetailsPage() {
           onSave={handleSaveResult}
           competition={competition}
           students={students}
+          enrollments={enrollments}
           existingResult={editingResult}
         />
       </AppLayout>

@@ -43,6 +43,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { AttendanceCard, AttendanceCardSkeleton } from './AttendanceCard';
+import { MobileAttendanceList } from './MobileAttendanceList';
 import { useAttendance } from '@/hooks';
 import { useConfirmDialog } from '@/components/providers';
 import {
@@ -886,8 +887,8 @@ export function AttendanceGrid({
             </Grid>
           </Grid>
 
-          {/* Toolbar: Search + Actions + View Toggle */}
-          {selectedClassId && students.length > 0 && (
+          {/* Toolbar: Search + Actions + View Toggle (Desktop only) */}
+          {selectedClassId && students.length > 0 && !isMobile && (
             <Paper sx={{ p: { xs: 1.5, sm: 2 }, mb: { xs: 2, sm: 3 }, borderRadius: 2 }}>
               <Box
                 sx={{
@@ -1031,8 +1032,19 @@ export function AttendanceGrid({
             </Paper>
           )}
 
-          {/* Students Grid View */}
-          {selectedClassId && filteredStudents.length > 0 && viewMode === 'grid' && (
+          {/* Mobile Optimized List */}
+          {selectedClassId && students.length > 0 && isMobile && (
+            <MobileAttendanceList
+              students={students}
+              isStudentPresent={isStudentPresent}
+              onToggle={toggleAttendance}
+              onMarkAll={handleMarkAllPresent}
+              onUnmarkAll={handleUnmarkAllPresent}
+            />
+          )}
+
+          {/* Desktop/Tablet Grid View */}
+          {selectedClassId && filteredStudents.length > 0 && viewMode === 'grid' && !isMobile && (
             <Box
               sx={{
                 display: 'grid',
@@ -1060,8 +1072,8 @@ export function AttendanceGrid({
             </Box>
           )}
 
-          {/* Students List View */}
-          {selectedClassId && filteredStudents.length > 0 && viewMode === 'list' && (
+          {/* Desktop/Tablet List View */}
+          {selectedClassId && filteredStudents.length > 0 && viewMode === 'list' && !isMobile && (
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
               {filteredStudents.map((student) => (
                 <ListRow

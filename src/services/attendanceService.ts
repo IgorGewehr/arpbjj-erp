@@ -14,13 +14,17 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Attendance, AttendanceFilters } from '@/types';
-import { startOfDay, endOfDay, format } from 'date-fns';
+import { startOfDay, endOfDay, format, differenceInYears } from 'date-fns';
 import { achievementService } from './achievementService';
+import { studentService } from './studentService';
 
 const COLLECTION = 'attendance';
 
 // Attendance milestones for achievements
 const ATTENDANCE_MILESTONES = [50, 100, 200, 500, 1000];
+
+// Anniversary milestones (years of training)
+const ANNIVERSARY_MILESTONES = [1, 2, 3, 5, 10];
 
 // ============================================
 // Helper: Convert Firestore document to Attendance
@@ -222,6 +226,11 @@ export const attendanceService = {
       // Silently ignore errors - don't break attendance flow
     });
 
+    // Check for anniversary milestones (async, don't block)
+    this.checkAnniversaryMilestone(studentId, studentName, verifiedBy).catch(() => {
+      // Silently ignore errors - don't break attendance flow
+    });
+
     return attendance;
   },
 
@@ -233,21 +242,62 @@ export const attendanceService = {
     studentName: string,
     createdBy: string
   ): Promise<void> {
-    const count = await this.getStudentAttendanceCount(studentId);
+    // Get system attendance count
+    const systemCount = await this.getStudentAttendanceCount(studentId);
 
-    // Check if current count matches any milestone
-    if (ATTENDANCE_MILESTONES.includes(count)) {
+    // Get student to access initialAttendanceCount (previous trainings)
+    const student = await studentService.getById(studentId);
+    const initialCount = student?.initialAttendanceCount || 0;
+
+    // Total count = system + previous trainings
+    const totalCount = systemCount + initialCount;
+
+    // Check if current total matches any milestone
+    if (ATTENDANCE_MILESTONES.includes(totalCount)) {
       // Check if achievement already exists
       const existingAchievements = await achievementService.getByStudent(studentId);
       const alreadyHasMilestone = existingAchievements.some(
-        (a) => a.type === 'milestone' && a.milestone === `${count}_presencas`
+        (a) => a.type === 'milestone' && a.milestone === `${totalCount}_presencas`
       );
 
       if (!alreadyHasMilestone) {
         await achievementService.createAttendanceMilestone(
           studentId,
           studentName,
-          count,
+          totalCount,
+          createdBy
+        );
+      }
+    }
+  },
+
+  // ============================================
+  // Check Anniversary Milestone
+  // ============================================
+  async checkAnniversaryMilestone(
+    studentId: string,
+    studentName: string,
+    createdBy: string
+  ): Promise<void> {
+    // Get student to access startDate
+    const student = await studentService.getById(studentId);
+    if (!student?.startDate) return;
+
+    const yearsTraining = differenceInYears(new Date(), new Date(student.startDate));
+
+    // Check if current years matches any anniversary milestone
+    if (ANNIVERSARY_MILESTONES.includes(yearsTraining)) {
+      // Check if achievement already exists
+      const existingAchievements = await achievementService.getByStudent(studentId);
+      const alreadyHasMilestone = existingAchievements.some(
+        (a) => a.type === 'milestone' && a.milestone === `${yearsTraining}_anos`
+      );
+
+      if (!alreadyHasMilestone) {
+        await achievementService.createAnniversaryMilestone(
+          studentId,
+          studentName,
+          yearsTraining,
           createdBy
         );
       }

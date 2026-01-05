@@ -1,6 +1,6 @@
 'use client';
 
-import { ReactNode, useCallback, useMemo } from 'react';
+import { ReactNode, useCallback, useMemo, useState } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Box,
@@ -29,11 +29,13 @@ import {
   History,
   MoreHorizontal,
   Star,
+  ChevronRight,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, usePermissions } from '@/components/providers';
 import { StudentPortalGuard } from '@/components/common';
 import { studentService, planService } from '@/services';
+import { BottomSheet, ScaleOnPress } from '@/components/mobile';
 
 const DRAWER_WIDTH = 220;
 
@@ -48,13 +50,14 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Início', icon: LayoutDashboard, path: '/portal', showInBottomNav: true },
-  { label: 'Meu Perfil', icon: User, path: '/portal/meu-perfil' },
-  { label: 'Histórico', icon: History, path: '/portal/linha-do-tempo' },
+  { label: 'Meu Perfil', icon: User, path: '/portal/meu-perfil', showInBottomNav: true },
   { label: 'Presenças', icon: ClipboardCheck, path: '/portal/presenca', showInBottomNav: true },
-  { label: 'Comportamento', icon: Star, path: '/portal/comportamento', requiresKids: true },
-  { label: 'Horários', icon: Calendar, path: '/portal/horarios', showInBottomNav: true },
   { label: 'Competições', icon: Trophy, path: '/portal/competicoes', showInBottomNav: true },
-  { label: 'Mais', icon: MoreHorizontal, path: '/portal/meu-perfil', showInBottomNav: true },
+  { label: 'Mais', icon: MoreHorizontal, path: '', showInBottomNav: true },
+  // Items below will appear in "Mais" menu
+  { label: 'Horários', icon: Calendar, path: '/portal/horarios' },
+  { label: 'Histórico', icon: History, path: '/portal/linha-do-tempo' },
+  { label: 'Comportamento', icon: Star, path: '/portal/comportamento', requiresKids: true },
   { label: 'Financeiro', icon: DollarSign, path: '/portal/financeiro', requiresPlan: true },
 ];
 
@@ -67,6 +70,7 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
   const router = useRouter();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   const { user, signOut } = useAuth();
   const { linkedStudentIds } = usePermissions();
@@ -101,6 +105,11 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
     return navItems.filter((item) => item.showInBottomNav);
   }, [navItems]);
 
+  // Items for the "Mais" BottomSheet menu (items not shown in bottom nav)
+  const moreMenuItems = useMemo(() => {
+    return navItems.filter((item) => !item.showInBottomNav && item.label !== 'Mais');
+  }, [navItems]);
+
   const handleNavigate = useCallback(
     (path: string) => {
       router.push(path);
@@ -120,8 +129,9 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
 
   // For "Mais" tab, check if any of the sub-pages are active
   const isMoreActive = () => {
-    return pathname === '/portal/meu-perfil' ||
+    return pathname.startsWith('/portal/horarios') ||
            pathname.startsWith('/portal/linha-do-tempo') ||
+           pathname.startsWith('/portal/comportamento') ||
            pathname.startsWith('/portal/financeiro');
   };
 
@@ -278,7 +288,7 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
         </Box>
       </Box>
 
-      {/* Mobile Bottom Navigation */}
+      {/* Mobile Bottom Navigation - Modern Fintech Style */}
       {isMobile && (
         <Box
           sx={{
@@ -286,13 +296,14 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
             bottom: 0,
             left: 0,
             right: 0,
-            bgcolor: '#fff',
+            bgcolor: 'rgba(255, 255, 255, 0.95)',
+            backdropFilter: 'blur(20px)',
             borderTop: '1px solid',
-            borderColor: 'grey.200',
+            borderColor: 'rgba(0, 0, 0, 0.08)',
             zIndex: 1100,
             px: 1,
-            py: 0.5,
-            paddingBottom: 'env(safe-area-inset-bottom)',
+            py: 0.75,
+            paddingBottom: 'calc(env(safe-area-inset-bottom) + 4px)',
           }}
         >
           <Box
@@ -305,46 +316,138 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
             {bottomNavItems.map((item) => {
               const Icon = item.icon;
               const active = item.label === 'Mais' ? isMoreActive() : isActive(item.path);
+              const isMoreButton = item.label === 'Mais';
 
               return (
                 <Box
-                  key={item.path}
-                  onClick={() => handleNavigate(item.path)}
+                  key={item.label}
+                  onClick={() => isMoreButton ? setMoreMenuOpen(true) : handleNavigate(item.path)}
                   sx={{
                     display: 'flex',
                     flexDirection: 'column',
                     alignItems: 'center',
-                    py: 1,
-                    px: 2,
+                    py: 0.75,
+                    px: 1.5,
                     cursor: 'pointer',
                     borderRadius: 2,
-                    minWidth: 64,
-                    transition: 'all 0.15s',
-                    bgcolor: active ? 'grey.100' : 'transparent',
+                    minWidth: 56,
+                    position: 'relative',
+                    transition: 'all 0.2s ease',
+                    '&:active': {
+                      transform: 'scale(0.95)',
+                    },
                   }}
                 >
-                  <Icon
-                    size={22}
-                    color={active ? '#111' : '#888'}
-                    strokeWidth={active ? 2.5 : 2}
-                  />
+                  {/* Active Indicator Pill */}
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      width: 48,
+                      height: 28,
+                      borderRadius: 3,
+                      bgcolor: active ? '#111' : 'transparent',
+                      transition: 'all 0.2s ease',
+                      mb: 0.25,
+                    }}
+                  >
+                    <Icon
+                      size={20}
+                      color={active ? '#fff' : '#666'}
+                      strokeWidth={active ? 2.5 : 2}
+                    />
+                  </Box>
                   <Typography
                     variant="caption"
                     sx={{
-                      mt: 0.25,
-                      fontSize: '0.65rem',
-                      fontWeight: active ? 600 : 400,
+                      fontSize: '0.6rem',
+                      fontWeight: active ? 600 : 500,
                       color: active ? 'text.primary' : 'text.secondary',
+                      letterSpacing: 0.2,
                     }}
                   >
                     {item.label}
                   </Typography>
+                  {/* Active Dot Indicator */}
+                  {active && (
+                    <Box
+                      sx={{
+                        position: 'absolute',
+                        bottom: 2,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        width: 4,
+                        height: 4,
+                        borderRadius: '50%',
+                        bgcolor: '#111',
+                      }}
+                    />
+                  )}
                 </Box>
               );
             })}
           </Box>
         </Box>
       )}
+
+      {/* More Menu BottomSheet */}
+      <BottomSheet
+        open={moreMenuOpen}
+        onClose={() => setMoreMenuOpen(false)}
+        title="Mais opções"
+        height="auto"
+      >
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          {moreMenuItems.map((item) => {
+            const Icon = item.icon;
+            const active = isActive(item.path);
+
+            return (
+              <ScaleOnPress key={item.path}>
+                <Box
+                  onClick={() => {
+                    handleNavigate(item.path);
+                    setMoreMenuOpen(false);
+                  }}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    p: 2,
+                    borderRadius: 2,
+                    bgcolor: active ? '#111' : 'grey.50',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 2,
+                      bgcolor: active ? 'rgba(255,255,255,0.1)' : 'grey.200',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Icon size={20} color={active ? '#fff' : '#444'} />
+                  </Box>
+                  <Typography
+                    variant="body1"
+                    fontWeight={active ? 600 : 500}
+                    sx={{ flex: 1, color: active ? '#fff' : 'text.primary' }}
+                  >
+                    {item.label}
+                  </Typography>
+                  <ChevronRight size={18} color={active ? '#fff' : '#999'} />
+                </Box>
+              </ScaleOnPress>
+            );
+          })}
+        </Box>
+      </BottomSheet>
     </Box>
   );
 }

@@ -15,13 +15,13 @@ import {
   IconButton,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { ArrowLeft, Save, Trophy } from 'lucide-react';
+import { ArrowLeft, Save, Trophy, Bus } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useFeedback } from '@/components/providers';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { competitionService } from '@/services/competitionService';
-import { CompetitionStatus } from '@/types';
+import { CompetitionStatus, CompetitionTransportStatus, TRANSPORT_STATUS_LABELS } from '@/types';
 import { format, parseISO } from 'date-fns';
 
 // ============================================
@@ -34,6 +34,10 @@ interface FormData {
   description: string;
   status: CompetitionStatus;
   registrationDeadline: string; // ISO date string
+  // Transport fields
+  transportStatus: CompetitionTransportStatus;
+  transportNotes: string;
+  transportCapacity: string;
 }
 
 const initialFormData: FormData = {
@@ -43,6 +47,9 @@ const initialFormData: FormData = {
   description: '',
   status: 'upcoming',
   registrationDeadline: '',
+  transportStatus: 'pending',
+  transportNotes: '',
+  transportCapacity: '',
 };
 
 // ============================================
@@ -95,6 +102,12 @@ export default function NewCompetitionPage() {
         status: formData.status,
         registrationDeadline: formData.registrationDeadline
           ? parseISO(formData.registrationDeadline)
+          : undefined,
+        // Transport fields
+        transportStatus: formData.transportStatus,
+        transportNotes: formData.transportNotes.trim() || undefined,
+        transportCapacity: formData.transportCapacity
+          ? parseInt(formData.transportCapacity, 10)
           : undefined,
         createdBy: user.id,
       };
@@ -248,6 +261,76 @@ export default function NewCompetitionPage() {
                   rows={4}
                   fullWidth
                   placeholder="Informações adicionais sobre a competição..."
+                />
+              </Grid>
+            </Grid>
+
+            {/* Transport Section */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 4, mb: 3 }}>
+              <Box
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  bgcolor: 'info.light',
+                  color: 'info.dark',
+                }}
+              >
+                <Bus size={28} />
+              </Box>
+              <Box>
+                <Typography variant="h6" fontWeight={600}>
+                  Transporte
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Informações sobre transporte para a competição
+                </Typography>
+              </Box>
+            </Box>
+
+            <Grid container spacing={3}>
+              {/* Transport Status */}
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <FormControl fullWidth>
+                  <InputLabel>Status do Transporte</InputLabel>
+                  <Select
+                    value={formData.transportStatus}
+                    onChange={(e) => handleChange('transportStatus', e.target.value as CompetitionTransportStatus)}
+                    label="Status do Transporte"
+                  >
+                    {Object.entries(TRANSPORT_STATUS_LABELS).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>{label}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Transport Capacity */}
+              <Grid size={{ xs: 12, sm: 6 }}>
+                <TextField
+                  label="Capacidade de Vagas"
+                  type="number"
+                  value={formData.transportCapacity}
+                  onChange={(e) => handleChange('transportCapacity', e.target.value)}
+                  fullWidth
+                  helperText="Número de vagas disponíveis no transporte"
+                  slotProps={{
+                    input: { inputProps: { min: 0 } },
+                  }}
+                  disabled={formData.transportStatus === 'no_transport'}
+                />
+              </Grid>
+
+              {/* Transport Notes */}
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  label="Informações sobre Transporte"
+                  value={formData.transportNotes}
+                  onChange={(e) => handleChange('transportNotes', e.target.value)}
+                  multiline
+                  rows={2}
+                  fullWidth
+                  placeholder="Ex: Saída às 6h da academia, retorno após as lutas..."
+                  disabled={formData.transportStatus === 'no_transport'}
                 />
               </Grid>
             </Grid>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import {
   AppBar,
   Toolbar,
@@ -16,6 +16,11 @@ import {
   Divider,
   useTheme,
   useMediaQuery,
+  Paper,
+  Popper,
+  ClickAwayListener,
+  CircularProgress,
+  alpha,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -27,9 +32,27 @@ import {
   Settings,
   LogOut,
   Plus,
+  GraduationCap,
+  CreditCard,
 } from 'lucide-react';
 import { useAuth, useThemeMode } from '@/components/providers';
 import { useRouter } from 'next/navigation';
+import { studentService } from '@/services/studentService';
+import { classService } from '@/services/classService';
+import { planService } from '@/services/planService';
+import { Student, Class, Plan } from '@/types';
+
+// ============================================
+// Search Result Types
+// ============================================
+type SearchResultType = 'student' | 'class' | 'plan';
+
+interface SearchResult {
+  id: string;
+  name: string;
+  type: SearchResultType;
+  subtitle?: string;
+}
 
 // ============================================
 // Props Interface
@@ -51,6 +74,125 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
 
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const [notificationAnchor, setNotificationAnchor] = useState<null | HTMLElement>(null);
+
+  // Search state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // Debounced search
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setSearchResults([]);
+      setShowResults(false);
+      return;
+    }
+
+    const debounceTimer = setTimeout(async () => {
+      setIsSearching(true);
+      try {
+        const results: SearchResult[] = [];
+        const searchLower = searchTerm.toLowerCase();
+
+        // Search students
+        const students = await studentService.search(searchTerm);
+        students.forEach((student: Student) => {
+          results.push({
+            id: student.id,
+            name: student.fullName,
+            type: 'student',
+            subtitle: student.nickname || student.currentBelt,
+          });
+        });
+
+        // Search classes (filter client-side)
+        const classes = await classService.list();
+        classes
+          .filter((cls: Class) => cls.name.toLowerCase().includes(searchLower))
+          .slice(0, 5)
+          .forEach((cls: Class) => {
+            results.push({
+              id: cls.id,
+              name: cls.name,
+              type: 'class',
+              subtitle: cls.category,
+            });
+          });
+
+        // Search plans (filter client-side)
+        const plans = await planService.list();
+        plans
+          .filter((plan: Plan) => plan.name.toLowerCase().includes(searchLower))
+          .slice(0, 5)
+          .forEach((plan: Plan) => {
+            results.push({
+              id: plan.id,
+              name: plan.name,
+              type: 'plan',
+              subtitle: `R$ ${plan.monthlyValue}/mês`,
+            });
+          });
+
+        setSearchResults(results);
+        setShowResults(results.length > 0);
+      } catch (error) {
+        console.error('Search error:', error);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(debounceTimer);
+  }, [searchTerm]);
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchTerm(e.target.value);
+  }, []);
+
+  const handleResultClick = useCallback((result: SearchResult) => {
+    setShowResults(false);
+    setSearchTerm('');
+    switch (result.type) {
+      case 'student':
+        router.push(`/alunos/${result.id}`);
+        break;
+      case 'class':
+        router.push(`/turmas/${result.id}`);
+        break;
+      case 'plan':
+        router.push(`/planos/${result.id}`);
+        break;
+    }
+  }, [router]);
+
+  const handleClickAway = useCallback(() => {
+    setShowResults(false);
+  }, []);
+
+  const getResultIcon = (type: SearchResultType) => {
+    switch (type) {
+      case 'student':
+        return <User size={16} />;
+      case 'class':
+        return <GraduationCap size={16} />;
+      case 'plan':
+        return <CreditCard size={16} />;
+    }
+  };
+
+  const getResultTypeLabel = (type: SearchResultType) => {
+    switch (type) {
+      case 'student':
+        return 'Aluno';
+      case 'class':
+        return 'Turma';
+      case 'plan':
+        return 'Plano';
+    }
+  };
 
   const handleUserMenuOpen = useCallback((event: React.MouseEvent<HTMLElement>) => {
     setUserMenuAnchor(event.currentTarget);
@@ -96,16 +238,33 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
       }}
     >
       <Toolbar sx={{ gap: { xs: 0.5, sm: 1, md: 2 }, px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 } }}>
-        {/* Menu Button (Mobile) */}
+        {/* Logo on Mobile (replaces menu button since we have BottomNav) */}
         {isMobile && (
-          <IconButton
-            edge="start"
-            color="inherit"
-            onClick={onMenuClick}
-            sx={{ color: 'text.primary' }}
-          >
-            <MenuIcon size={22} />
-          </IconButton>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Box
+              sx={{
+                width: 32,
+                height: 32,
+                borderRadius: 1.5,
+                bgcolor: 'primary.main',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <GraduationCap size={18} color="white" />
+            </Box>
+            <Typography
+              variant="subtitle1"
+              sx={{
+                fontWeight: 700,
+                color: 'text.primary',
+                fontSize: '0.95rem',
+              }}
+            >
+              MarcusJJ
+            </Typography>
+          </Box>
         )}
 
         {/* Title */}
@@ -124,40 +283,116 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
         )}
 
         {/* Search Bar - Hidden on xs, shown from sm */}
-        <Box
-          sx={{
-            flex: 1,
-            display: { xs: 'none', sm: 'flex' },
-            alignItems: 'center',
-            maxWidth: { sm: 280, md: 400 },
-            mx: { sm: 1, md: 2 },
-          }}
-        >
+        <ClickAwayListener onClickAway={handleClickAway}>
           <Box
+            ref={searchContainerRef}
             sx={{
-              display: 'flex',
+              flex: 1,
+              display: { xs: 'none', sm: 'flex' },
               alignItems: 'center',
-              bgcolor: 'action.hover',
-              borderRadius: 2,
-              px: { sm: 1.5, md: 2 },
-              py: 0.75,
-              width: '100%',
+              maxWidth: { sm: 280, md: 400 },
+              mx: { sm: 1, md: 2 },
+              position: 'relative',
             }}
           >
-            <Search size={18} style={{ color: theme.palette.text.secondary }} />
-            <InputBase
-              placeholder="Buscar aluno, turma..."
+            <Box
               sx={{
-                ml: 1,
-                flex: 1,
-                fontSize: { sm: '0.8rem', md: '0.9rem' },
-                '& input': {
-                  p: 0,
-                },
+                display: 'flex',
+                alignItems: 'center',
+                bgcolor: 'action.hover',
+                borderRadius: 2,
+                px: { sm: 1.5, md: 2 },
+                py: 0.75,
+                width: '100%',
               }}
-            />
+            >
+              {isSearching ? (
+                <CircularProgress size={18} sx={{ color: 'text.secondary' }} />
+              ) : (
+                <Search size={18} style={{ color: theme.palette.text.secondary }} />
+              )}
+              <InputBase
+                ref={searchInputRef}
+                placeholder="Buscar aluno, turma, plano..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                onFocus={() => searchResults.length > 0 && setShowResults(true)}
+                sx={{
+                  ml: 1,
+                  flex: 1,
+                  fontSize: { sm: '0.8rem', md: '0.9rem' },
+                  '& input': {
+                    p: 0,
+                  },
+                }}
+              />
+            </Box>
+
+            {/* Search Results Dropdown */}
+            <Popper
+              open={showResults}
+              anchorEl={searchContainerRef.current}
+              placement="bottom-start"
+              style={{ zIndex: theme.zIndex.modal + 1, width: searchContainerRef.current?.offsetWidth }}
+            >
+              <Paper
+                elevation={8}
+                sx={{
+                  mt: 1,
+                  maxHeight: 400,
+                  overflow: 'auto',
+                  borderRadius: 2,
+                }}
+              >
+                {searchResults.length === 0 && !isSearching ? (
+                  <Box sx={{ p: 2, textAlign: 'center' }}>
+                    <Typography variant="body2" color="text.secondary">
+                      Nenhum resultado encontrado
+                    </Typography>
+                  </Box>
+                ) : (
+                  searchResults.map((result) => (
+                    <MenuItem
+                      key={`${result.type}-${result.id}`}
+                      onClick={() => handleResultClick(result)}
+                      sx={{
+                        py: 1.5,
+                        px: 2,
+                        '&:hover': {
+                          bgcolor: alpha(theme.palette.primary.main, 0.08),
+                        },
+                      }}
+                    >
+                      <ListItemIcon sx={{ minWidth: 36, color: 'primary.main' }}>
+                        {getResultIcon(result.type)}
+                      </ListItemIcon>
+                      <ListItemText
+                        primary={result.name}
+                        secondary={result.subtitle}
+                        primaryTypographyProps={{ fontSize: '0.9rem', fontWeight: 500 }}
+                        secondaryTypographyProps={{ fontSize: '0.75rem' }}
+                      />
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          ml: 1,
+                          px: 1,
+                          py: 0.25,
+                          borderRadius: 1,
+                          bgcolor: alpha(theme.palette.primary.main, 0.1),
+                          color: 'primary.main',
+                          fontWeight: 500,
+                        }}
+                      >
+                        {getResultTypeLabel(result.type)}
+                      </Typography>
+                    </MenuItem>
+                  ))
+                )}
+              </Paper>
+            </Popper>
           </Box>
-        </Box>
+        </ClickAwayListener>
 
         {/* Mobile Search Icon - Only on xs */}
         <IconButton

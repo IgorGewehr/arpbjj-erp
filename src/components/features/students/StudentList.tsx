@@ -19,7 +19,6 @@ import {
   useTheme,
   useMediaQuery,
   IconButton,
-  Drawer,
   Button,
 } from '@mui/material';
 import { Search, Grid, List, Users, Filter, X } from 'lucide-react';
@@ -28,6 +27,7 @@ import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses } from '@/hooks';
 import { Student, BeltColor, StudentStatus, StudentCategory } from '@/types';
 import { useRouter } from 'next/navigation';
+import { BottomSheet, FadeInView, ScaleOnPress } from '@/components/mobile';
 
 // ============================================
 // Belt Options
@@ -255,26 +255,13 @@ export function StudentList() {
 
   return (
     <Box>
-      {/* Mobile Filters Drawer */}
-      <Drawer
-        anchor="bottom"
+      {/* Mobile Filters BottomSheet */}
+      <BottomSheet
         open={mobileFiltersOpen}
         onClose={() => setMobileFiltersOpen(false)}
-        PaperProps={{
-          sx: {
-            borderTopLeftRadius: 16,
-            borderTopRightRadius: 16,
-            maxHeight: '70vh',
-            p: 2,
-          },
-        }}
+        title="Filtros"
+        height="auto"
       >
-        <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <Typography variant="h6" fontWeight={600}>Filtros</Typography>
-          <IconButton onClick={() => setMobileFiltersOpen(false)}>
-            <X size={20} />
-          </IconButton>
-        </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {FilterContent}
           {activeFiltersCount > 0 && (
@@ -297,45 +284,46 @@ export function StudentList() {
             Aplicar Filtros
           </Button>
         </Box>
-      </Drawer>
+      </BottomSheet>
 
       {/* Header */}
-      <Box sx={{ mb: { xs: 2, sm: 4 } }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
-          <Box>
-            <Typography
-              variant="h4"
-              fontWeight={700}
-              gutterBottom
-              sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
-            >
-              Alunos
-            </Typography>
-            <Typography
-              variant="body1"
-              color="text.secondary"
-              sx={{ fontSize: { xs: '0.8rem', sm: '1rem' } }}
-            >
-              {stats.total} alunos ({stats.byStatus.active} ativos)
-            </Typography>
-          </Box>
+      <FadeInView direction="down" delay={0}>
+        <Box sx={{ mb: { xs: 2, sm: 4 } }}>
+          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
+            <Box>
+              <Typography
+                variant="h4"
+                fontWeight={700}
+                gutterBottom
+                sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
+              >
+                Alunos
+              </Typography>
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                sx={{ fontSize: { xs: '0.8rem', sm: '1rem' } }}
+              >
+                {stats.total} alunos ({stats.byStatus.active} ativos)
+              </Typography>
+            </Box>
 
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <ToggleButtonGroup
-              value={viewMode}
-              exclusive
-              onChange={handleViewModeChange}
-              size="small"
-            >
-              <ToggleButton value="grid">
-                <Grid size={isMobile ? 16 : 18} />
-              </ToggleButton>
-              <ToggleButton value="list">
-                <List size={isMobile ? 16 : 18} />
-              </ToggleButton>
-            </ToggleButtonGroup>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <ToggleButtonGroup
+                value={viewMode}
+                exclusive
+                onChange={handleViewModeChange}
+                size="small"
+              >
+                <ToggleButton value="grid">
+                  <Grid size={isMobile ? 16 : 18} />
+                </ToggleButton>
+                <ToggleButton value="list">
+                  <List size={isMobile ? 16 : 18} />
+                </ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
           </Box>
-        </Box>
 
         {/* Filters - Mobile */}
         <Box sx={{ display: { xs: 'flex', md: 'none' }, gap: 1, alignItems: 'center' }}>
@@ -408,7 +396,8 @@ export function StudentList() {
             />
           )}
         </Box>
-      </Box>
+        </Box>
+      </FadeInView>
 
       {/* Loading State */}
       {isLoading && (
@@ -455,24 +444,27 @@ export function StudentList() {
 
       {/* Students Grid/List */}
       {!isLoading && filteredStudents.length > 0 && (
-        <Box
-          sx={{
-            display: 'grid',
-            gridTemplateColumns: viewMode === 'grid'
-              ? { xs: 'repeat(2, 1fr)', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }
-              : '1fr',
-            gap: { xs: 1, sm: 2 },
-          }}
-        >
-          {filteredStudents.map((student) => (
-            <StudentCard
-              key={student.id}
-              student={student}
-              onClick={handleStudentClick}
-              compact={viewMode === 'list'}
-            />
-          ))}
-        </Box>
+        <FadeInView direction="up" delay={100}>
+          <Box
+            sx={{
+              display: 'grid',
+              gridTemplateColumns: viewMode === 'grid'
+                ? { xs: 'repeat(2, 1fr)', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }
+                : '1fr',
+              gap: { xs: 1, sm: 2 },
+            }}
+          >
+            {filteredStudents.map((student) => (
+              <ScaleOnPress key={student.id}>
+                <StudentCard
+                  student={student}
+                  onClick={handleStudentClick}
+                  compact={viewMode === 'list'}
+                />
+              </ScaleOnPress>
+            ))}
+          </Box>
+        </FadeInView>
       )}
 
       {/* Quick Register FAB */}

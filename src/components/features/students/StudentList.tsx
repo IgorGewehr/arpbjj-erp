@@ -405,7 +405,11 @@ export function StudentList() {
           sx={{
             display: 'grid',
             gridTemplateColumns: viewMode === 'grid'
-              ? { xs: 'repeat(2, 1fr)', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }
+              ? {
+                  xs: 'repeat(auto-fill, minmax(140px, 1fr))',
+                  sm: 'repeat(auto-fill, minmax(200px, 1fr))',
+                  md: 'repeat(auto-fill, minmax(240px, 1fr))',
+                }
               : '1fr',
             gap: { xs: 1, sm: 2 },
           }}
@@ -449,7 +453,11 @@ export function StudentList() {
             sx={{
               display: 'grid',
               gridTemplateColumns: viewMode === 'grid'
-                ? { xs: 'repeat(2, 1fr)', sm: 'repeat(2, 1fr)', md: 'repeat(3, 1fr)', lg: 'repeat(4, 1fr)' }
+                ? {
+                    xs: 'repeat(auto-fill, minmax(140px, 1fr))',
+                    sm: 'repeat(auto-fill, minmax(200px, 1fr))',
+                    md: 'repeat(auto-fill, minmax(240px, 1fr))',
+                  }
                 : '1fr',
               gap: { xs: 1, sm: 2 },
             }}

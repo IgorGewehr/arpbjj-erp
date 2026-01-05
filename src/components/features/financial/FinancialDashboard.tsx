@@ -706,6 +706,7 @@ export function FinancialDashboard() {
   const [showPixSettings, setShowPixSettings] = useState(false);
   const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>('');
   const [classFilter, setClassFilter] = useState<string>('');
+  const [planFilter, setPlanFilter] = useState<string>('');
   const [markPaidDialogOpen, setMarkPaidDialogOpen] = useState(false);
   const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Financial | null>(null);
@@ -771,28 +772,58 @@ export function FinancialDashboard() {
       }
     }
 
+    // Filter by plan
+    if (planFilter) {
+      const selectedPlan = plans.find(p => p.id === planFilter);
+      if (selectedPlan) {
+        result = result.filter(f => selectedPlan.studentIds?.includes(f.studentId));
+      }
+    }
+
     return result;
-  }, [financials, statusFilter, classFilter, classes]);
+  }, [financials, statusFilter, classFilter, classes, planFilter, plans]);
 
-  // Filtered pending payments by class
+  // Filtered pending payments by class and plan
   const filteredPendingPayments = useMemo(() => {
-    if (!classFilter) return pendingPayments;
-    const selectedClass = classes.find(c => c.id === classFilter);
-    if (selectedClass) {
-      return pendingPayments.filter(f => selectedClass.studentIds?.includes(f.studentId));
-    }
-    return pendingPayments;
-  }, [pendingPayments, classFilter, classes]);
+    let result = pendingPayments;
 
-  // Filtered overdue payments by class
-  const filteredOverduePayments = useMemo(() => {
-    if (!classFilter) return overduePayments;
-    const selectedClass = classes.find(c => c.id === classFilter);
-    if (selectedClass) {
-      return overduePayments.filter(f => selectedClass.studentIds?.includes(f.studentId));
+    if (classFilter) {
+      const selectedClass = classes.find(c => c.id === classFilter);
+      if (selectedClass) {
+        result = result.filter(f => selectedClass.studentIds?.includes(f.studentId));
+      }
     }
-    return overduePayments;
-  }, [overduePayments, classFilter, classes]);
+
+    if (planFilter) {
+      const selectedPlan = plans.find(p => p.id === planFilter);
+      if (selectedPlan) {
+        result = result.filter(f => selectedPlan.studentIds?.includes(f.studentId));
+      }
+    }
+
+    return result;
+  }, [pendingPayments, classFilter, classes, planFilter, plans]);
+
+  // Filtered overdue payments by class and plan
+  const filteredOverduePayments = useMemo(() => {
+    let result = overduePayments;
+
+    if (classFilter) {
+      const selectedClass = classes.find(c => c.id === classFilter);
+      if (selectedClass) {
+        result = result.filter(f => selectedClass.studentIds?.includes(f.studentId));
+      }
+    }
+
+    if (planFilter) {
+      const selectedPlan = plans.find(p => p.id === planFilter);
+      if (selectedPlan) {
+        result = result.filter(f => selectedPlan.studentIds?.includes(f.studentId));
+      }
+    }
+
+    return result;
+  }, [overduePayments, classFilter, classes, planFilter, plans]);
 
   // ============================================
   // Handle Status Filter Change
@@ -803,6 +834,10 @@ export function FinancialDashboard() {
 
   const handleClassFilterChange = useCallback((e: SelectChangeEvent<string>) => {
     setClassFilter(e.target.value);
+  }, []);
+
+  const handlePlanFilterChange = useCallback((e: SelectChangeEvent<string>) => {
+    setPlanFilter(e.target.value);
   }, []);
 
   // ============================================
@@ -1340,11 +1375,26 @@ export function FinancialDashboard() {
                   ))}
                 </Select>
               </FormControl>
-              {(statusFilter || classFilter) && (
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Plano</InputLabel>
+                <Select
+                  value={planFilter}
+                  onChange={handlePlanFilterChange}
+                  label="Plano"
+                >
+                  <MenuItem value="">Todos os Planos</MenuItem>
+                  {plans.map((plan) => (
+                    <MenuItem key={plan.id} value={plan.id}>
+                      {plan.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              {(statusFilter || classFilter || planFilter) && (
                 <Chip
                   label="Limpar filtros"
-                  onClick={() => { setStatusFilter(''); setClassFilter(''); }}
-                  onDelete={() => { setStatusFilter(''); setClassFilter(''); }}
+                  onClick={() => { setStatusFilter(''); setClassFilter(''); setPlanFilter(''); }}
+                  onDelete={() => { setStatusFilter(''); setClassFilter(''); setPlanFilter(''); }}
                   size="small"
                   variant="outlined"
                   sx={{ borderColor: '#1a1a1a', color: '#1a1a1a' }}
@@ -1383,8 +1433,8 @@ export function FinancialDashboard() {
         {/* Tab: Pendentes */}
         <TabPanel value={tabValue} index={2}>
           <Box sx={{ p: 3 }}>
-            {/* Class Filter */}
-            <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+            {/* Filters */}
+            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
               <FormControl size="small" sx={{ minWidth: 150 }}>
                 <InputLabel>Turma</InputLabel>
                 <Select
@@ -1396,6 +1446,21 @@ export function FinancialDashboard() {
                   {classes.map((cls) => (
                     <MenuItem key={cls.id} value={cls.id}>
                       {cls.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Plano</InputLabel>
+                <Select
+                  value={planFilter}
+                  onChange={handlePlanFilterChange}
+                  label="Plano"
+                >
+                  <MenuItem value="">Todos os Planos</MenuItem>
+                  {plans.map((plan) => (
+                    <MenuItem key={plan.id} value={plan.id}>
+                      {plan.name}
                     </MenuItem>
                   ))}
                 </Select>
@@ -1425,8 +1490,8 @@ export function FinancialDashboard() {
         {/* Tab: Atrasados */}
         <TabPanel value={tabValue} index={3}>
           <Box sx={{ p: 3 }}>
-            {/* Class Filter */}
-            <Box sx={{ display: 'flex', gap: 2, mb: 3 }}>
+            {/* Filters */}
+            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
               <FormControl size="small" sx={{ minWidth: 150 }}>
                 <InputLabel>Turma</InputLabel>
                 <Select
@@ -1438,6 +1503,21 @@ export function FinancialDashboard() {
                   {classes.map((cls) => (
                     <MenuItem key={cls.id} value={cls.id}>
                       {cls.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Plano</InputLabel>
+                <Select
+                  value={planFilter}
+                  onChange={handlePlanFilterChange}
+                  label="Plano"
+                >
+                  <MenuItem value="">Todos os Planos</MenuItem>
+                  {plans.map((plan) => (
+                    <MenuItem key={plan.id} value={plan.id}>
+                      {plan.name}
                     </MenuItem>
                   ))}
                 </Select>

@@ -198,20 +198,24 @@ export function StudentCard({
         borderRadius: 3,
         opacity: student.status === 'inactive' ? 0.6 : 1,
         position: 'relative',
+        height: { xs: 140, sm: 160 },
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
-      <CardActionArea onClick={handleClick} sx={{ p: 2.5, pr: 8 }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 2 }}>
+      <CardActionArea onClick={handleClick} sx={{ p: { xs: 1.5, sm: 2.5 }, pr: { xs: 6, sm: 8 }, height: '100%', overflow: 'hidden' }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1.5, sm: 2 }, height: '100%', overflow: 'hidden' }}>
           {/* Avatar */}
           <Avatar
             src={student.photoUrl}
             sx={{
-              width: 64,
-              height: 64,
+              width: { xs: 48, sm: 64 },
+              height: { xs: 48, sm: 64 },
               bgcolor: beltColor.bg,
               color: beltColor.text,
-              fontSize: '1.25rem',
+              fontSize: { xs: '1rem', sm: '1.25rem' },
               fontWeight: 600,
+              flexShrink: 0,
             }}
           >
             {getInitials(student.fullName)}
@@ -219,33 +223,44 @@ export function StudentCard({
 
           {/* Info */}
           <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
               <Typography
                 variant="h6"
                 fontWeight={600}
-                sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                sx={{
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  fontSize: { xs: '0.9rem', sm: '1.25rem' }
+                }}
               >
                 {student.nickname || student.fullName.split(' ')[0]}
               </Typography>
               {student.status === 'injured' && (
-                <AlertCircle size={16} style={{ color: '#f59e0b' }} />
+                <AlertCircle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
               )}
             </Box>
 
             <Typography
               variant="body2"
               color="text.secondary"
-              sx={{ mb: 1.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              sx={{
+                mb: { xs: 1, sm: 1.5 },
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+                fontSize: { xs: '0.7rem', sm: '0.875rem' }
+              }}
             >
               {student.fullName}
             </Typography>
 
             {/* Belt and Status */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1.5 }, flexWrap: 'wrap' }}>
               <BeltDisplay
                 belt={student.currentBelt}
                 stripes={student.currentStripes}
-                size="medium"
+                size="small"
               />
 
               <Chip
@@ -253,14 +268,14 @@ export function StudentCard({
                 size="small"
                 color={status.color}
                 variant="outlined"
-                sx={{ fontSize: '0.7rem' }}
+                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 24 } }}
               />
 
               <Chip
                 label={student.category === 'kids' ? 'Kids' : 'Adulto'}
                 size="small"
                 variant="outlined"
-                sx={{ fontSize: '0.7rem' }}
+                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 24 } }}
               />
             </Box>
           </Box>
@@ -271,8 +286,8 @@ export function StudentCard({
       <Box
         sx={{
           position: 'absolute',
-          right: 20,
-          top: 20,
+          right: { xs: 8, sm: 20 },
+          top: { xs: 8, sm: 20 },
           display: 'flex',
           flexDirection: 'column',
           gap: 1,
@@ -285,9 +300,11 @@ export function StudentCard({
           sx={{
             bgcolor: 'action.hover',
             '&:hover': { bgcolor: 'success.light' },
+            width: { xs: 32, sm: 36 },
+            height: { xs: 32, sm: 36 },
           }}
         >
-          <Phone size={18} />
+          <Phone size={16} />
         </IconButton>
       </Box>
     </Card>

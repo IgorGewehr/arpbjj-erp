@@ -254,7 +254,7 @@ export function StudentList() {
   );
 
   return (
-    <Box>
+    <Box sx={{ width: '100%', maxWidth: '100%', overflowX: 'hidden' }}>
       {/* Mobile Filters BottomSheet */}
       <BottomSheet
         open={mobileFiltersOpen}

@@ -4,20 +4,23 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Box, CircularProgress } from '@mui/material';
 import { useAuth } from '@/components/providers';
+import { getDefaultRoute } from '@/lib/permissions';
 
 export default function Home() {
   const router = useRouter();
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading, user } = useAuth();
 
   useEffect(() => {
     if (!loading) {
-      if (isAuthenticated) {
-        router.push('/dashboard');
+      if (isAuthenticated && user) {
+        // Redirect based on user role
+        const defaultRoute = getDefaultRoute(user.role);
+        router.replace(defaultRoute);
       } else {
-        router.push('/login');
+        router.replace('/login');
       }
     }
-  }, [isAuthenticated, loading, router]);
+  }, [isAuthenticated, loading, user, router]);
 
   return (
     <Box

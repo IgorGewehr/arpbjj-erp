@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { Fab, Zoom } from '@mui/material';
+import { Fab, Zoom, useTheme, useMediaQuery } from '@mui/material';
 import { Plus } from 'lucide-react';
 import { QuickRegisterDialog } from './QuickRegisterDialog';
 
@@ -16,6 +16,8 @@ interface QuickRegisterFabProps {
 // QuickRegisterFab Component
 // ============================================
 export function QuickRegisterFab({ onSuccess }: QuickRegisterFabProps) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [dialogOpen, setDialogOpen] = useState(false);
 
   const handleOpen = useCallback(() => {
@@ -26,6 +28,10 @@ export function QuickRegisterFab({ onSuccess }: QuickRegisterFabProps) {
     setDialogOpen(false);
   }, []);
 
+  // On mobile, position FAB above the bottom navigation bar
+  // Bottom nav is ~60px + safe area, so we add extra margin
+  const bottomPosition = isMobile ? 80 : 24;
+
   return (
     <>
       <Zoom in timeout={300}>
@@ -34,14 +40,14 @@ export function QuickRegisterFab({ onSuccess }: QuickRegisterFabProps) {
           onClick={handleOpen}
           sx={{
             position: 'fixed',
-            bottom: 24,
-            right: 24,
-            width: 64,
-            height: 64,
+            bottom: bottomPosition,
+            right: { xs: 16, sm: 24 },
+            width: { xs: 56, sm: 64 },
+            height: { xs: 56, sm: 64 },
             zIndex: 1000,
           }}
         >
-          <Plus size={28} />
+          <Plus size={isMobile ? 24 : 28} />
         </Fab>
       </Zoom>
 

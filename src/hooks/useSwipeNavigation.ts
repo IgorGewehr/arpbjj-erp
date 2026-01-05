@@ -73,9 +73,44 @@ export function useSwipeNavigation(
     }
   }, [router]);
 
+  // Check if element or its parents have horizontal scroll
+  const isInsideHorizontalScroll = useCallback((element: HTMLElement | null): boolean => {
+    while (element) {
+      const style = window.getComputedStyle(element);
+      const overflowX = style.getPropertyValue('overflow-x');
+      const isScrollable = overflowX === 'auto' || overflowX === 'scroll';
+      const hasHorizontalScroll = element.scrollWidth > element.clientWidth;
+
+      if (isScrollable && hasHorizontalScroll) {
+        return true;
+      }
+
+      // Also check for snap scroll containers (carousels)
+      const scrollSnapType = style.getPropertyValue('scroll-snap-type');
+      if (scrollSnapType && scrollSnapType !== 'none') {
+        return true;
+      }
+
+      element = element.parentElement;
+    }
+    return false;
+  }, []);
+
   // Touch start handler
   const onTouchStart = useCallback((e: React.TouchEvent) => {
     if (!enabled) return;
+
+    // Check if touch started inside a horizontally scrollable element
+    const target = e.target as HTMLElement;
+    if (isInsideHorizontalScroll(target)) {
+      swipeRef.current = {
+        startX: 0,
+        startY: 0,
+        currentX: 0,
+        isSwiping: false,
+      };
+      return;
+    }
 
     const touch = e.touches[0];
     swipeRef.current = {
@@ -84,7 +119,7 @@ export function useSwipeNavigation(
       currentX: touch.clientX,
       isSwiping: false,
     };
-  }, [enabled]);
+  }, [enabled, isInsideHorizontalScroll]);
 
   // Touch move handler
   const onTouchMove = useCallback((e: React.TouchEvent) => {

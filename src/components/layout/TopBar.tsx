@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, forwardRef } from 'react';
+import { TransitionProps } from '@mui/material/transitions';
 import {
   AppBar,
   Toolbar,
@@ -21,6 +22,10 @@ import {
   ClickAwayListener,
   CircularProgress,
   alpha,
+  Dialog,
+  Slide,
+  TextField,
+  InputAdornment,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -34,6 +39,8 @@ import {
   Plus,
   GraduationCap,
   CreditCard,
+  X,
+  ArrowLeft,
 } from 'lucide-react';
 import { useAuth, useThemeMode } from '@/components/providers';
 import { useRouter } from 'next/navigation';
@@ -55,6 +62,16 @@ interface SearchResult {
 }
 
 // ============================================
+// Slide Transition for Mobile Search Dialog
+// ============================================
+const SlideTransition = forwardRef(function Transition(
+  props: TransitionProps & { children: React.ReactElement },
+  ref: React.Ref<unknown>
+) {
+  return <Slide direction="down" ref={ref} {...props} />;
+});
+
+// ============================================
 // Props Interface
 // ============================================
 interface TopBarProps {
@@ -74,6 +91,9 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
 
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const [notificationAnchor, setNotificationAnchor] = useState<null | HTMLElement>(null);
+
+  // Mobile search dialog state
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   // Search state
   const [searchTerm, setSearchTerm] = useState('');
@@ -172,6 +192,33 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
     setShowResults(false);
   }, []);
 
+  // Mobile search handlers
+  const handleMobileSearchOpen = useCallback(() => {
+    setMobileSearchOpen(true);
+  }, []);
+
+  const handleMobileSearchClose = useCallback(() => {
+    setMobileSearchOpen(false);
+    setSearchTerm('');
+    setSearchResults([]);
+    setShowResults(false);
+  }, []);
+
+  const handleMobileResultClick = useCallback((result: SearchResult) => {
+    handleMobileSearchClose();
+    switch (result.type) {
+      case 'student':
+        router.push(`/alunos/${result.id}`);
+        break;
+      case 'class':
+        router.push(`/turmas/${result.id}`);
+        break;
+      case 'plan':
+        router.push(`/planos/${result.id}`);
+        break;
+    }
+  }, [router, handleMobileSearchClose]);
+
   const getResultIcon = (type: SearchResultType) => {
     switch (type) {
       case 'student':
@@ -212,7 +259,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
 
   const handleProfile = useCallback(() => {
     handleUserMenuClose();
-    router.push('/perfil');
+    router.push('/configuracoes');
   }, [handleUserMenuClose, router]);
 
   const handleSettings = useCallback(() => {
@@ -396,6 +443,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
 
         {/* Mobile Search Icon - Only on xs */}
         <IconButton
+          onClick={handleMobileSearchOpen}
           sx={{
             display: { xs: 'flex', sm: 'none' },
             color: 'text.primary',
@@ -482,12 +530,6 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
             </Typography>
           </Box>
           <Divider />
-          <MenuItem onClick={handleProfile}>
-            <ListItemIcon>
-              <User size={18} />
-            </ListItemIcon>
-            <ListItemText>Meu Perfil</ListItemText>
-          </MenuItem>
           <MenuItem onClick={handleSettings}>
             <ListItemIcon>
               <Settings size={18} />
@@ -532,6 +574,186 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           </Box>
         </Menu>
       </Toolbar>
+
+      {/* Mobile Search Dialog */}
+      <Dialog
+        fullScreen
+        open={mobileSearchOpen}
+        onClose={handleMobileSearchClose}
+        TransitionComponent={SlideTransition}
+        sx={{
+          '& .MuiDialog-paper': {
+            bgcolor: 'background.default',
+          },
+        }}
+      >
+        <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+          {/* Search Header */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1,
+              p: 1.5,
+              borderBottom: '1px solid',
+              borderColor: 'divider',
+              bgcolor: 'background.paper',
+            }}
+          >
+            <IconButton onClick={handleMobileSearchClose} sx={{ color: 'text.primary' }}>
+              <ArrowLeft size={22} />
+            </IconButton>
+            <TextField
+              autoFocus
+              fullWidth
+              placeholder="Buscar aluno, turma, plano..."
+              value={searchTerm}
+              onChange={handleSearchChange}
+              size="small"
+              sx={{
+                '& .MuiOutlinedInput-root': {
+                  borderRadius: 2,
+                  bgcolor: 'action.hover',
+                  '& fieldset': {
+                    border: 'none',
+                  },
+                },
+              }}
+              slotProps={{
+                input: {
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      {isSearching ? (
+                        <CircularProgress size={18} sx={{ color: 'text.secondary' }} />
+                      ) : (
+                        <Search size={18} style={{ color: theme.palette.text.secondary }} />
+                      )}
+                    </InputAdornment>
+                  ),
+                  endAdornment: searchTerm && (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        onClick={() => {
+                          setSearchTerm('');
+                          setSearchResults([]);
+                        }}
+                      >
+                        <X size={16} />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                },
+              }}
+            />
+          </Box>
+
+          {/* Search Results */}
+          <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
+            {searchTerm && searchResults.length === 0 && !isSearching ? (
+              <Box sx={{ p: 4, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Nenhum resultado para &quot;{searchTerm}&quot;
+                </Typography>
+              </Box>
+            ) : (
+              searchResults.map((result) => (
+                <Paper
+                  key={`mobile-${result.type}-${result.id}`}
+                  onClick={() => handleMobileResultClick(result)}
+                  elevation={0}
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 1.5,
+                    p: 1.5,
+                    mb: 1,
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                    bgcolor: 'background.paper',
+                    border: '1px solid',
+                    borderColor: 'divider',
+                    transition: 'all 0.15s ease',
+                    '&:active': {
+                      transform: 'scale(0.98)',
+                      bgcolor: 'action.hover',
+                    },
+                  }}
+                >
+                  <Box
+                    sx={{
+                      width: 40,
+                      height: 40,
+                      borderRadius: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      bgcolor: alpha(theme.palette.primary.main, 0.1),
+                      color: 'primary.main',
+                    }}
+                  >
+                    {getResultIcon(result.type)}
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography
+                      variant="body1"
+                      fontWeight={500}
+                      sx={{
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        whiteSpace: 'nowrap',
+                      }}
+                    >
+                      {result.name}
+                    </Typography>
+                    {result.subtitle && (
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          display: 'block',
+                        }}
+                      >
+                        {result.subtitle}
+                      </Typography>
+                    )}
+                  </Box>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      px: 1,
+                      py: 0.25,
+                      borderRadius: 1,
+                      bgcolor: alpha(theme.palette.primary.main, 0.1),
+                      color: 'primary.main',
+                      fontWeight: 500,
+                      flexShrink: 0,
+                    }}
+                  >
+                    {getResultTypeLabel(result.type)}
+                  </Typography>
+                </Paper>
+              ))
+            )}
+
+            {/* Empty state when no search */}
+            {!searchTerm && (
+              <Box sx={{ p: 4, textAlign: 'center' }}>
+                <Search size={48} style={{ color: theme.palette.text.disabled, marginBottom: 16 }} />
+                <Typography variant="body1" color="text.secondary" fontWeight={500}>
+                  O que você procura?
+                </Typography>
+                <Typography variant="body2" color="text.disabled" sx={{ mt: 0.5 }}>
+                  Busque por alunos, turmas ou planos
+                </Typography>
+              </Box>
+            )}
+          </Box>
+        </Box>
+      </Dialog>
     </AppBar>
   );
 }

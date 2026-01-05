@@ -14,7 +14,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Attendance, AttendanceFilters } from '@/types';
-import { startOfDay, endOfDay, format, differenceInYears } from 'date-fns';
+import { startOfDay, endOfDay, format, differenceInYears, addYears } from 'date-fns';
 import { achievementService } from './achievementService';
 import { studentService } from './studentService';
 
@@ -283,21 +283,26 @@ export const attendanceService = {
     const student = await studentService.getById(studentId);
     if (!student?.startDate) return;
 
-    const yearsTraining = differenceInYears(new Date(), new Date(student.startDate));
+    const startDate = new Date(student.startDate);
+    const yearsTraining = differenceInYears(new Date(), startDate);
 
     // Check if current years matches any anniversary milestone
     if (ANNIVERSARY_MILESTONES.includes(yearsTraining)) {
       // Check if achievement already exists
       const existingAchievements = await achievementService.getByStudent(studentId);
       const alreadyHasMilestone = existingAchievements.some(
-        (a) => a.type === 'milestone' && a.milestone === `${yearsTraining}_anos`
+        (a) => a.type === 'milestone' && a.milestone === `${yearsTraining}_anos_treino`
       );
 
       if (!alreadyHasMilestone) {
+        // Calculate the actual anniversary date (startDate + years of training)
+        const anniversaryDate = addYears(startDate, yearsTraining);
+
         await achievementService.createAnniversaryMilestone(
           studentId,
           studentName,
           yearsTraining,
+          anniversaryDate,
           createdBy
         );
       }

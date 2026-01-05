@@ -339,6 +339,7 @@ export const achievementService = {
     milestone: string,
     title: string,
     description?: string,
+    date?: Date,
     createdBy?: string
   ): Promise<Achievement> {
     return this.create(
@@ -348,7 +349,7 @@ export const achievementService = {
         type: 'milestone',
         title,
         description,
-        date: new Date(),
+        date: date ?? new Date(),
         milestone,
         isPublic: true,
       },
@@ -386,6 +387,7 @@ export const achievementService = {
       `${attendanceCount}_presencas`,
       `${attendanceCount} Presenças`,
       `Alcançou a marca de ${attendanceCount} presenças na academia!`,
+      undefined, // Use current date for attendance milestones
       createdBy
     );
   },
@@ -397,6 +399,7 @@ export const achievementService = {
     studentId: string,
     studentName: string,
     years: number,
+    anniversaryDate: Date,
     createdBy?: string
   ): Promise<Achievement | null> {
     const validYears = [1, 2, 3, 5, 10];
@@ -422,6 +425,7 @@ export const achievementService = {
       `${years}_anos_treino`,
       `${years} ${yearText.charAt(0).toUpperCase() + yearText.slice(1)} de Treino`,
       `Completou ${years} ${yearText} treinando na academia!`,
+      anniversaryDate,
       createdBy
     );
   },

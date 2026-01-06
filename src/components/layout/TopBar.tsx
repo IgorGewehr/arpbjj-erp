@@ -445,6 +445,37 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           </Box>
         </ClickAwayListener>
 
+        {/* Academy Label - Only on Desktop */}
+        <Box
+          sx={{
+            display: { xs: 'none', md: 'flex' },
+            alignItems: 'baseline',
+            gap: 0.75,
+            ml: 2,
+          }}
+        >
+          <Typography
+            variant="subtitle2"
+            sx={{
+              fontWeight: 700,
+              color: 'text.primary',
+              fontSize: '0.85rem',
+            }}
+          >
+            Tropa Jiu-Jitsu
+          </Typography>
+          <Typography
+            variant="caption"
+            sx={{
+              color: 'text.secondary',
+              fontSize: '0.7rem',
+              fontStyle: 'italic',
+            }}
+          >
+            - Vamos avante, ombro a ombro
+          </Typography>
+        </Box>
+
         {/* Mobile Search Icon - Only on xs */}
         <IconButton
           onClick={handleMobileSearchOpen}

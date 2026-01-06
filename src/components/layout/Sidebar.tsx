@@ -277,6 +277,38 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             </ListItem>
           ))}
         </List>
+
+        {/* Logo below navigation */}
+        {!collapsed && (
+          <Box
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              mt: 3,
+              mb: 2,
+              px: 2,
+            }}
+          >
+            <Box
+              sx={{
+                width: 120,
+                height: 120,
+                borderRadius: 2,
+                overflow: 'hidden',
+                position: 'relative',
+                opacity: 0.15,
+              }}
+            >
+              <Image
+                src="/logo_login.png"
+                alt="T23"
+                fill
+                style={{ objectFit: 'contain' }}
+              />
+            </Box>
+          </Box>
+        )}
       </Box>
 
       <Divider />

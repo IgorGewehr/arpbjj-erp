@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Box, Typography, Grid, Paper, Skeleton, useTheme, useMediaQuery } from '@mui/material';
+import { Box, Typography, Grid, Paper, Skeleton, useTheme, useMediaQuery, alpha } from '@mui/material';
+import Image from 'next/image';
 import {
   Users,
   CheckCircle,
@@ -95,7 +96,36 @@ export function DashboardView() {
 
   return (
     <FadeIn>
-      <Box>
+      <Box sx={{ position: 'relative', minHeight: '100%' }}>
+        {/* Background Logo - Desktop Only */}
+        {!isMobile && (
+          <Box
+            sx={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-30%, -50%)',
+              width: '60vw',
+              height: '60vw',
+              maxWidth: 700,
+              maxHeight: 700,
+              zIndex: 0,
+              pointerEvents: 'none',
+              opacity: 0.04,
+            }}
+          >
+            <Image
+              src="/logo_login.png"
+              alt=""
+              fill
+              style={{ objectFit: 'contain' }}
+              priority
+            />
+          </Box>
+        )}
+
+        {/* Content */}
+        <Box sx={{ position: 'relative', zIndex: 1 }}>
         {/* Header */}
         <SlideIn direction="down">
           <Box sx={{ mb: { xs: 2, sm: 4 } }}>
@@ -258,6 +288,7 @@ export function DashboardView() {
           onClose={() => setQuickStudentOpen(false)}
           onSuccess={handleQuickStudentSuccess}
         />
+        </Box>
       </Box>
     </FadeIn>
   );

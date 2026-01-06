@@ -310,10 +310,10 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
               sx={{
                 fontWeight: 700,
                 color: 'text.primary',
-                fontSize: '0.95rem',
+                fontSize: '0.9rem',
               }}
             >
-              T23
+              Tropa Jiu-Jitsu - Vamos avante, ombro a ombro
             </Typography>
           </Box>
         )}
@@ -446,35 +446,17 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
         </ClickAwayListener>
 
         {/* Academy Label - Only on Desktop */}
-        <Box
+        <Typography
           sx={{
-            display: { xs: 'none', md: 'flex' },
-            alignItems: 'baseline',
-            gap: 0.75,
+            display: { xs: 'none', md: 'block' },
+            fontWeight: 700,
+            color: 'text.primary',
+            fontSize: '1.1rem',
             ml: 2,
           }}
         >
-          <Typography
-            variant="subtitle2"
-            sx={{
-              fontWeight: 700,
-              color: 'text.primary',
-              fontSize: '0.85rem',
-            }}
-          >
-            Tropa Jiu-Jitsu
-          </Typography>
-          <Typography
-            variant="caption"
-            sx={{
-              color: 'text.secondary',
-              fontSize: '0.7rem',
-              fontStyle: 'italic',
-            }}
-          >
-            - Vamos avante, ombro a ombro
-          </Typography>
-        </Box>
+          Tropa Jiu-Jitsu - Vamos avante, ombro a ombro
+        </Typography>
 
         {/* Mobile Search Icon - Only on xs */}
         <IconButton

@@ -120,44 +120,32 @@ export function BeltDisplay({
           borderColor: 'divider',
         }}
       >
-        {/* Belt body - with optional white stripe in middle */}
-        {showMiddleStripe ? (
-          <>
-            {/* First half of belt */}
+        {/* Belt body - with optional white stripe in middle (horizontal) */}
+        <Box
+          sx={{
+            flex: 1,
+            bgcolor: beltColor,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            position: 'relative',
+          }}
+        >
+          {showMiddleStripe && (
             <Box
               sx={{
-                flex: 1,
-                bgcolor: beltColor,
-              }}
-            />
-            {/* White stripe in middle */}
-            <Box
-              sx={{
-                width: config.height * 0.25,
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                height: config.height * 0.2,
                 bgcolor: '#FFFFFF',
-                borderLeft: '0.5px solid rgba(0,0,0,0.1)',
-                borderRight: '0.5px solid rgba(0,0,0,0.1)',
+                boxShadow: '0 0.5px 1px rgba(0,0,0,0.15)',
               }}
             />
-            {/* Second half of belt */}
-            <Box
-              sx={{
-                flex: 1,
-                bgcolor: beltColor,
-              }}
-            />
-          </>
-        ) : (
-          <Box
-            sx={{
-              flex: 1,
-              bgcolor: beltColor,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-          />
-        )}
+          )}
+        </Box>
 
         {/* Black tip with stripes */}
         <Box

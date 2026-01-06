@@ -255,42 +255,29 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Box
                 sx={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: '50%',
-                  overflow: 'hidden',
+                  width: 36,
+                  height: 36,
                   position: 'relative',
+                  flexShrink: 0,
                 }}
               >
                 <Image
-                  src="/logo_login.png"
+                  src="/logo_conteudo.png"
                   alt="T23"
                   fill
-                  style={{ objectFit: 'cover' }}
+                  style={{ objectFit: 'contain' }}
                 />
               </Box>
-              <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
-                <Typography
-                  variant="subtitle1"
-                  sx={{
-                    fontWeight: 700,
-                    color: 'text.primary',
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  T23 JJ
-                </Typography>
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: 'text.secondary',
-                    fontSize: '0.65rem',
-                    fontStyle: 'italic',
-                  }}
-                >
-                  - Vamos avante, ombro a ombro
-                </Typography>
-              </Box>
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  fontWeight: 700,
+                  color: 'text.primary',
+                  fontSize: '0.9rem',
+                }}
+              >
+                T23 JJ - Vamos avante, ombro a ombro
+              </Typography>
             </Box>
           </Toolbar>
         </AppBar>

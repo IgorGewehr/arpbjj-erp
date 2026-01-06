@@ -167,6 +167,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                 overflow: 'hidden',
                 position: 'relative',
                 flexShrink: 0,
+                mr: '1px',
               }}
             >
               <Image
@@ -178,20 +179,26 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             </Box>
             <Box>
               <Typography
-                variant="h6"
+                variant="subtitle2"
                 sx={{
                   fontWeight: 700,
                   color: 'text.primary',
-                  lineHeight: 1.2,
+                  lineHeight: 1.3,
+                  fontSize: '0.85rem',
                 }}
               >
-                Tropa 23
+                Tropa Jiu-Jitsu
               </Typography>
               <Typography
-                variant="caption"
-                sx={{ color: 'text.secondary', lineHeight: 1 }}
+                variant="subtitle2"
+                sx={{
+                  fontWeight: 700,
+                  color: 'text.primary',
+                  lineHeight: 1.3,
+                  fontSize: '0.85rem',
+                }}
               >
-                Jiu-Jitsu
+                - Vamos avante, ombro a ombro
               </Typography>
             </Box>
           </Box>
@@ -278,37 +285,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           ))}
         </List>
 
-        {/* Logo below navigation */}
-        {!collapsed && (
-          <Box
-            sx={{
-              display: 'flex',
-              justifyContent: 'center',
-              alignItems: 'center',
-              mt: 3,
-              mb: 2,
-              px: 2,
-            }}
-          >
-            <Box
-              sx={{
-                width: 120,
-                height: 120,
-                borderRadius: 2,
-                overflow: 'hidden',
-                position: 'relative',
-                opacity: 0.15,
-              }}
-            >
-              <Image
-                src="/logo_login.png"
-                alt="T23"
-                fill
-                style={{ objectFit: 'contain' }}
-              />
-            </Box>
-          </Box>
-        )}
       </Box>
 
       <Divider />

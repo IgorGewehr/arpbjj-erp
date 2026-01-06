@@ -27,7 +27,10 @@ import { Student, Plan } from '@/types';
 
 const BELT_LABELS: Record<string, string> = {
   white: 'Branca', blue: 'Azul', purple: 'Roxa', brown: 'Marrom', black: 'Preta',
-  grey: 'Cinza', yellow: 'Amarela', orange: 'Laranja', green: 'Verde',
+  grey: 'Cinza', 'grey-white': 'Cinza/Branca',
+  yellow: 'Amarela', 'yellow-white': 'Amarela/Branca',
+  orange: 'Laranja', 'orange-white': 'Laranja/Branca',
+  green: 'Verde', 'green-white': 'Verde/Branca',
 };
 
 export default function StudentProfilePage() {

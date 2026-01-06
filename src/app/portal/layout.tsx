@@ -252,44 +252,45 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
           }}
         >
           <Toolbar sx={{ minHeight: 56, px: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Typography
-                variant="subtitle1"
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box
                 sx={{
-                  fontWeight: 700,
-                  color: 'text.primary',
-                  fontSize: '0.85rem',
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  position: 'relative',
                 }}
               >
-                T23 JJ
-              </Typography>
-              <Typography
-                variant="caption"
-                sx={{
-                  color: 'text.secondary',
-                  fontSize: '0.7rem',
-                  fontStyle: 'italic',
-                }}
-              >
-                - Vamos avante, ombro a ombro
-              </Typography>
-            </Box>
-            <Box sx={{ flex: 1 }} />
-            <Box
-              sx={{
-                width: 36,
-                height: 36,
-                borderRadius: '50%',
-                overflow: 'hidden',
-                position: 'relative',
-              }}
-            >
-              <Image
-                src="/logo_conteudo.png"
-                alt="T23"
-                fill
-                style={{ objectFit: 'cover' }}
-              />
+                <Image
+                  src="/logo_login.png"
+                  alt="T23"
+                  fill
+                  style={{ objectFit: 'cover' }}
+                />
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5 }}>
+                <Typography
+                  variant="subtitle1"
+                  sx={{
+                    fontWeight: 700,
+                    color: 'text.primary',
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  T23 JJ
+                </Typography>
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: 'text.secondary',
+                    fontSize: '0.65rem',
+                    fontStyle: 'italic',
+                  }}
+                >
+                  - Vamos avante, ombro a ombro
+                </Typography>
+              </Box>
             </Box>
           </Toolbar>
         </AppBar>

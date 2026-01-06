@@ -364,7 +364,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
               )}
               <InputBase
                 ref={searchInputRef}
-                placeholder="Buscar aluno, turma, plano..."
+                placeholder="Buscar aluno"
                 value={searchTerm}
                 onChange={handleSearchChange}
                 onFocus={() => searchResults.length > 0 && setShowResults(true)}
@@ -625,7 +625,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
             <TextField
               autoFocus
               fullWidth
-              placeholder="Buscar aluno, turma, plano..."
+              placeholder="Buscar aluno"
               value={searchTerm}
               onChange={handleSearchChange}
               size="small"

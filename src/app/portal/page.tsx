@@ -179,7 +179,7 @@ export default function PortalHomePage() {
 
   return (
     <PullToRefresh onRefresh={handleRefresh}>
-      <Box sx={{ position: 'relative', minHeight: '100%' }}>
+      <Box sx={{ position: 'relative', minHeight: '100%', overflowY: { xs: 'hidden', md: 'visible' } }}>
         {/* Background Logo - Mobile Only */}
         <Box
           sx={{

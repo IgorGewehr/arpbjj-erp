@@ -49,9 +49,13 @@ const adultBeltOptions: { value: BeltColor; label: string }[] = [
 const kidsBeltOptions: { value: KidsBeltColor; label: string }[] = [
   { value: 'white', label: 'Branca' },
   { value: 'grey', label: 'Cinza' },
+  { value: 'grey-white', label: 'Cinza/Branca' },
   { value: 'yellow', label: 'Amarela' },
+  { value: 'yellow-white', label: 'Amarela/Branca' },
   { value: 'orange', label: 'Laranja' },
+  { value: 'orange-white', label: 'Laranja/Branca' },
   { value: 'green', label: 'Verde' },
+  { value: 'green-white', label: 'Verde/Branca' },
 ];
 
 // ============================================

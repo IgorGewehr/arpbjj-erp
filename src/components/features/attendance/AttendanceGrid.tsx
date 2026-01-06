@@ -73,9 +73,13 @@ const BELT_COLORS: Record<BeltColor | KidsBeltColor, string> = {
   brown: '#78350F',
   black: '#171717',
   grey: '#6B7280',
+  'grey-white': '#6B7280',
   yellow: '#EAB308',
+  'yellow-white': '#EAB308',
   orange: '#EA580C',
+  'orange-white': '#EA580C',
   green: '#16A34A',
+  'green-white': '#16A34A',
 };
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];

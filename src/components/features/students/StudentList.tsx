@@ -26,7 +26,7 @@ import { Search, Grid, List, Users, Filter } from 'lucide-react';
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses, usePlans } from '@/hooks';
-import { Student, BeltColor, StudentStatus, StudentCategory } from '@/types';
+import { Student, BeltColor, KidsBeltColor, StudentStatus, StudentCategory } from '@/types';
 import { useRouter } from 'next/navigation';
 import { BottomSheet, FadeInView, ScaleOnPress } from '@/components/mobile';
 
@@ -99,13 +99,45 @@ const DebouncedSearchInput = memo(function DebouncedSearchInput({
 // ============================================
 // Belt Options
 // ============================================
-const beltOptions: { value: BeltColor | ''; label: string }[] = [
+const adultBeltOptions: { value: BeltColor | ''; label: string }[] = [
   { value: '', label: 'Todas as Faixas' },
   { value: 'white', label: 'Branca' },
   { value: 'blue', label: 'Azul' },
   { value: 'purple', label: 'Roxa' },
   { value: 'brown', label: 'Marrom' },
   { value: 'black', label: 'Preta' },
+];
+
+const kidsBeltOptions: { value: KidsBeltColor | ''; label: string }[] = [
+  { value: '', label: 'Todas as Faixas' },
+  { value: 'white', label: 'Branca' },
+  { value: 'grey', label: 'Cinza' },
+  { value: 'grey-white', label: 'Cinza/Branca' },
+  { value: 'yellow', label: 'Amarela' },
+  { value: 'yellow-white', label: 'Amarela/Branca' },
+  { value: 'orange', label: 'Laranja' },
+  { value: 'orange-white', label: 'Laranja/Branca' },
+  { value: 'green', label: 'Verde' },
+  { value: 'green-white', label: 'Verde/Branca' },
+];
+
+const allBeltOptions: { value: BeltColor | KidsBeltColor | ''; label: string }[] = [
+  { value: '', label: 'Todas as Faixas' },
+  // Adult belts
+  { value: 'white', label: 'Branca' },
+  { value: 'blue', label: 'Azul' },
+  { value: 'purple', label: 'Roxa' },
+  { value: 'brown', label: 'Marrom' },
+  { value: 'black', label: 'Preta' },
+  // Kids belts
+  { value: 'grey', label: 'Cinza' },
+  { value: 'grey-white', label: 'Cinza/Branca' },
+  { value: 'yellow', label: 'Amarela' },
+  { value: 'yellow-white', label: 'Amarela/Branca' },
+  { value: 'orange', label: 'Laranja' },
+  { value: 'orange-white', label: 'Laranja/Branca' },
+  { value: 'green', label: 'Verde' },
+  { value: 'green-white', label: 'Verde/Branca' },
 ];
 
 // ============================================
@@ -233,10 +265,23 @@ export function StudentList() {
 
   const handleCategoryChange = useCallback(
     (e: SelectChangeEvent<string>) => {
-      updateFilter('category', e.target.value || undefined);
+      const newCategory = e.target.value || undefined;
+      updateFilter('category', newCategory);
+      // Reset belt filter when category changes (belts are different per category)
+      updateFilter('belt', undefined);
     },
     [updateFilter]
   );
+
+  // Get belt options based on category filter
+  const currentBeltOptions = useMemo(() => {
+    if (filters.category === 'kids') {
+      return kidsBeltOptions;
+    } else if (filters.category === 'adult') {
+      return adultBeltOptions;
+    }
+    return allBeltOptions;
+  }, [filters.category]);
 
   const handleClassChange = useCallback(
     (e: SelectChangeEvent<string>) => {
@@ -291,7 +336,7 @@ export function StudentList() {
           onChange={handleBeltChange}
           label="Faixa"
         >
-          {beltOptions.map((opt) => (
+          {currentBeltOptions.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>
               {opt.label}
             </MenuItem>

@@ -35,7 +35,12 @@ export interface RolePermissions {
 
 // Belt System
 export type BeltColor = 'white' | 'blue' | 'purple' | 'brown' | 'black';
-export type KidsBeltColor = 'white' | 'grey' | 'yellow' | 'orange' | 'green';
+export type KidsBeltColor =
+  | 'white'
+  | 'grey' | 'grey-white'
+  | 'yellow' | 'yellow-white'
+  | 'orange' | 'orange-white'
+  | 'green' | 'green-white';
 export type Stripes = 0 | 1 | 2 | 3 | 4;
 
 // Student Status

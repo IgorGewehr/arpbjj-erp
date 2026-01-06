@@ -78,17 +78,25 @@ const BELT_LABELS: Record<BeltColor, string> = {
 const KIDS_BELT_COLORS: Record<KidsBeltColor, string> = {
   white: '#e5e5e5',
   grey: '#6b7280',
+  'grey-white': '#6b7280',
   yellow: '#eab308',
+  'yellow-white': '#eab308',
   orange: '#f97316',
+  'orange-white': '#f97316',
   green: '#22c55e',
+  'green-white': '#22c55e',
 };
 
 const KIDS_BELT_LABELS: Record<KidsBeltColor, string> = {
   white: 'Branca',
   grey: 'Cinza',
+  'grey-white': 'Cinza/Branca',
   yellow: 'Amarela',
+  'yellow-white': 'Amarela/Branca',
   orange: 'Laranja',
+  'orange-white': 'Laranja/Branca',
   green: 'Verde',
+  'green-white': 'Verde/Branca',
 };
 
 // ============================================

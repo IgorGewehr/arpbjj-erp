@@ -7,27 +7,44 @@ import { BeltColor, Stripes } from '@/types';
 // Belt Colors
 // ============================================
 const BELT_COLORS: Record<string, string> = {
+  // Adult belts
   white: '#F5F5F5',
   blue: '#1E40AF',
   purple: '#7C3AED',
   brown: '#78350F',
   black: '#171717',
+  // Kids belts
   grey: '#6B7280',
+  'grey-white': '#6B7280',
   yellow: '#EAB308',
+  'yellow-white': '#EAB308',
   orange: '#EA580C',
+  'orange-white': '#EA580C',
   green: '#16A34A',
+  'green-white': '#16A34A',
 };
 
 const BELT_LABELS: Record<string, string> = {
+  // Adult belts
   white: 'Branca',
   blue: 'Azul',
   purple: 'Roxa',
   brown: 'Marrom',
   black: 'Preta',
+  // Kids belts
   grey: 'Cinza',
+  'grey-white': 'Cinza/Branca',
   yellow: 'Amarela',
+  'yellow-white': 'Amarela/Branca',
   orange: 'Laranja',
+  'orange-white': 'Laranja/Branca',
   green: 'Verde',
+  'green-white': 'Verde/Branca',
+};
+
+// Check if belt has white stripe in the middle
+const hasWhiteStripe = (belt: string): boolean => {
+  return belt.endsWith('-white');
 };
 
 // ============================================
@@ -87,6 +104,7 @@ export function BeltDisplay({
   const beltLabel = BELT_LABELS[belt] || belt;
   const isWhiteBelt = belt === 'white';
   const isBlackBelt = belt === 'black';
+  const showMiddleStripe = hasWhiteStripe(belt);
 
   return (
     <Box sx={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
@@ -102,16 +120,44 @@ export function BeltDisplay({
           borderColor: 'divider',
         }}
       >
-        {/* Belt body */}
-        <Box
-          sx={{
-            flex: 1,
-            bgcolor: beltColor,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}
-        />
+        {/* Belt body - with optional white stripe in middle */}
+        {showMiddleStripe ? (
+          <>
+            {/* First half of belt */}
+            <Box
+              sx={{
+                flex: 1,
+                bgcolor: beltColor,
+              }}
+            />
+            {/* White stripe in middle */}
+            <Box
+              sx={{
+                width: config.height * 0.25,
+                bgcolor: '#FFFFFF',
+                borderLeft: '0.5px solid rgba(0,0,0,0.1)',
+                borderRight: '0.5px solid rgba(0,0,0,0.1)',
+              }}
+            />
+            {/* Second half of belt */}
+            <Box
+              sx={{
+                flex: 1,
+                bgcolor: beltColor,
+              }}
+            />
+          </>
+        ) : (
+          <Box
+            sx={{
+              flex: 1,
+              bgcolor: beltColor,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          />
+        )}
 
         {/* Black tip with stripes */}
         <Box

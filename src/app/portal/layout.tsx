@@ -31,6 +31,7 @@ import {
   Star,
   ChevronRight,
 } from 'lucide-react';
+import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, usePermissions } from '@/components/providers';
 import { StudentPortalGuard } from '@/components/common';
@@ -251,17 +252,35 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
           }}
         >
           <Toolbar sx={{ minHeight: 56, px: 2 }}>
-            <Avatar
-              src={student?.photoUrl}
-              sx={{ width: 32, height: 32, bgcolor: '#111', fontSize: '0.75rem', fontWeight: 600 }}
-            >
-              {displayName.charAt(0).toUpperCase()}
-            </Avatar>
-            <Box sx={{ flex: 1, ml: 1.5 }}>
-              <Typography variant="body2" fontWeight={600} color="text.primary">
-                {displayName}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Box
+                sx={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: '50%',
+                  overflow: 'hidden',
+                  position: 'relative',
+                }}
+              >
+                <Image
+                  src="/logo_conteudo.png"
+                  alt="T23"
+                  fill
+                  style={{ objectFit: 'cover' }}
+                />
+              </Box>
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  fontWeight: 700,
+                  color: 'text.primary',
+                  fontSize: '0.95rem',
+                }}
+              >
+                T23
               </Typography>
             </Box>
+            <Box sx={{ flex: 1 }} />
             <IconButton
               size="small"
               onClick={handleSignOut}

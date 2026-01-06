@@ -198,13 +198,13 @@ export function StudentCard({
         borderRadius: 3,
         opacity: student.status === 'inactive' ? 0.6 : 1,
         position: 'relative',
-        height: { xs: 140, sm: 160 },
+        height: { xs: 130, sm: 150 },
         display: 'flex',
         flexDirection: 'column',
       }}
     >
-      <CardActionArea onClick={handleClick} sx={{ p: { xs: 1.5, sm: 2.5 }, pr: { xs: 6, sm: 8 }, height: '100%', overflow: 'hidden' }}>
-        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1.5, sm: 2 }, height: '100%', overflow: 'hidden' }}>
+      <CardActionArea onClick={handleClick} sx={{ p: { xs: 1.5, sm: 2.5 }, pr: { xs: 6, sm: 8 }, height: '100%' }}>
+        <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1.5, sm: 2 }, height: '100%' }}>
           {/* Avatar */}
           <Avatar
             src={student.photoUrl}
@@ -222,60 +222,63 @@ export function StudentCard({
           </Avatar>
 
           {/* Info */}
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mb: 0.5 }}>
+          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: { xs: 0.25, sm: 0.5 } }}>
+            {/* Apelido */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <Typography
-                variant="h6"
                 fontWeight={600}
                 sx={{
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
-                  fontSize: { xs: '0.9rem', sm: '1.25rem' }
+                  fontSize: { xs: '0.85rem', sm: '1rem' },
+                  lineHeight: 1.2,
                 }}
               >
                 {student.nickname || student.fullName.split(' ')[0]}
               </Typography>
               {student.status === 'injured' && (
-                <AlertCircle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                <AlertCircle size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />
               )}
             </Box>
 
+            {/* Nome completo */}
             <Typography
-              variant="body2"
               color="text.secondary"
               sx={{
-                mb: { xs: 1, sm: 1.5 },
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
-                fontSize: { xs: '0.7rem', sm: '0.875rem' }
+                fontSize: { xs: '0.65rem', sm: '0.75rem' },
+                lineHeight: 1.2,
               }}
             >
               {student.fullName}
             </Typography>
 
-            {/* Belt and Status */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.5, sm: 1.5 }, flexWrap: 'wrap' }}>
+            {/* Faixa */}
+            <Box sx={{ mt: { xs: 0.25, sm: 0.5 } }}>
               <BeltDisplay
                 belt={student.currentBelt}
                 stripes={student.currentStripes}
                 size="small"
               />
+            </Box>
 
+            {/* Tags */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <Chip
                 label={status.label}
                 size="small"
                 color={status.color}
                 variant="outlined"
-                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 24 } }}
+                sx={{ fontSize: { xs: '0.55rem', sm: '0.6rem' }, height: { xs: 16, sm: 18 } }}
               />
-
               <Chip
                 label={student.category === 'kids' ? 'Kids' : 'Adulto'}
                 size="small"
                 variant="outlined"
-                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 24 } }}
+                sx={{ fontSize: { xs: '0.55rem', sm: '0.6rem' }, height: { xs: 16, sm: 18 } }}
               />
             </Box>
           </Box>

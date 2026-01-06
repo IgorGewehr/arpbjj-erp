@@ -118,9 +118,9 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
         const results: SearchResult[] = [];
         const searchLower = searchTerm.toLowerCase();
 
-        // Search students
-        const students = await studentService.search(searchTerm);
-        students.forEach((student: Student) => {
+        // Search students using the new searchByName method
+        const students = await studentService.searchByName(searchTerm);
+        students.slice(0, 10).forEach((student: Student) => {
           results.push({
             id: student.id,
             name: student.fullName,

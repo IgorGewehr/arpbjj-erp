@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef, memo } from 'react';
 import {
   Box,
   Typography,
@@ -22,13 +22,79 @@ import {
   Button,
   CircularProgress,
 } from '@mui/material';
-import { Search, Grid, List, Users, Filter, X } from 'lucide-react';
+import { Search, Grid, List, Users, Filter } from 'lucide-react';
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses, usePlans } from '@/hooks';
 import { Student, BeltColor, StudentStatus, StudentCategory } from '@/types';
 import { useRouter } from 'next/navigation';
 import { BottomSheet, FadeInView, ScaleOnPress } from '@/components/mobile';
+
+// ============================================
+// Debounced Search Input Component (Optimized)
+// ============================================
+interface DebouncedSearchInputProps {
+  onSearch: (term: string) => void;
+  isSearching: boolean;
+  placeholder?: string;
+  size?: 'small' | 'medium';
+  fullWidth?: boolean;
+  sx?: Record<string, unknown>;
+}
+
+const DebouncedSearchInput = memo(function DebouncedSearchInput({
+  onSearch,
+  isSearching,
+  placeholder = 'Buscar...',
+  size = 'small',
+  fullWidth = false,
+  sx = {},
+}: DebouncedSearchInputProps) {
+  const [localValue, setLocalValue] = useState('');
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setLocalValue(value);
+
+    // Clear previous timeout
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    // Debounce the search callback
+    debounceRef.current = setTimeout(() => {
+      onSearch(value);
+    }, 400);
+  }, [onSearch]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, []);
+
+  return (
+    <TextField
+      placeholder={placeholder}
+      value={localValue}
+      onChange={handleChange}
+      size={size}
+      fullWidth={fullWidth}
+      sx={sx}
+      InputProps={{
+        startAdornment: (
+          <InputAdornment position="start">
+            {isSearching ? <CircularProgress size={18} /> : <Search size={18} />}
+          </InputAdornment>
+        ),
+      }}
+    />
+  );
+});
 
 // ============================================
 // Belt Options
@@ -89,14 +155,12 @@ export function StudentList() {
   const { classes } = useClasses();
   const { plans } = usePlans();
 
-  const [localSearchTerm, setLocalSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [classFilter, setClassFilter] = useState<string>('');
   const [planFilter, setPlanFilter] = useState<string>('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const initialViewModeSet = useRef(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
-  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Definir viewMode padrão como 'list' em telas pequenas (mobile)
   useEffect(() => {
@@ -105,23 +169,6 @@ export function StudentList() {
       initialViewModeSet.current = true;
     }
   }, [isMobile]);
-
-  // Debounced search - calls database after 300ms of no typing
-  useEffect(() => {
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current);
-    }
-
-    searchTimeoutRef.current = setTimeout(() => {
-      handleSearch(localSearchTerm);
-    }, 300);
-
-    return () => {
-      if (searchTimeoutRef.current) {
-        clearTimeout(searchTimeoutRef.current);
-      }
-    };
-  }, [localSearchTerm, handleSearch]);
 
   // Infinite scroll - IntersectionObserver
   useEffect(() => {
@@ -229,7 +276,6 @@ export function StudentList() {
   const handleClearFilters = useCallback(() => {
     clearFilters();
     clearSearch();
-    setLocalSearchTerm('');
     setClassFilter('');
     setPlanFilter('');
   }, [clearFilters, clearSearch]);
@@ -395,19 +441,12 @@ export function StudentList() {
 
         {/* Filters - Mobile */}
         <Box sx={{ display: { xs: 'flex', md: 'none' }, gap: 1, alignItems: 'center' }}>
-          <TextField
+          <DebouncedSearchInput
+            onSearch={handleSearch}
+            isSearching={isSearching}
             placeholder="Buscar aluno..."
-            value={localSearchTerm}
-            onChange={(e) => setLocalSearchTerm(e.target.value)}
-            size="small"
+            fullWidth
             sx={{ flex: 1 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  {isSearching ? <CircularProgress size={16} /> : <Search size={16} />}
-                </InputAdornment>
-              ),
-            }}
           />
           <IconButton
             onClick={() => setMobileFiltersOpen(true)}
@@ -435,19 +474,11 @@ export function StudentList() {
         {/* Filters - Desktop */}
         <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Search */}
-          <TextField
+          <DebouncedSearchInput
+            onSearch={handleSearch}
+            isSearching={isSearching}
             placeholder="Buscar aluno..."
-            value={localSearchTerm}
-            onChange={(e) => setLocalSearchTerm(e.target.value)}
-            size="small"
             sx={{ minWidth: 250 }}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  {isSearching ? <CircularProgress size={18} /> : <Search size={18} />}
-                </InputAdornment>
-              ),
-            }}
           />
 
           {FilterContent}
@@ -507,7 +538,7 @@ export function StudentList() {
             Nenhum aluno encontrado
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-            {localSearchTerm || activeFiltersCount > 0
+            {searchTerm || activeFiltersCount > 0
               ? 'Tente ajustar os filtros de busca'
               : 'Clique no botão + para cadastrar um novo aluno'}
           </Typography>
@@ -542,7 +573,7 @@ export function StudentList() {
           </Box>
 
           {/* Load More Trigger */}
-          {hasNextPage && !localSearchTerm && (
+          {hasNextPage && !searchTerm && (
             <Box
               ref={loadMoreRef}
               sx={{

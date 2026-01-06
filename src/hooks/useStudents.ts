@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
 import { studentService } from '@/services';
 import { useAuth, useFeedback } from '@/components/providers';
 import { Student, StudentFilters, StudentStatus, StudentCategory, BeltColor, KidsBeltColor, Stripes } from '@/types';
@@ -38,23 +38,71 @@ export function useStudents(options: UseStudentsOptions = {}) {
   // Filter state
   const [filters, setFilters] = useState<StudentFilters>(initialFilters);
 
+  // Search state
+  const [searchTerm, setSearchTerm] = useState('');
+  const [searchResults, setSearchResults] = useState<Student[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+
   // ============================================
-  // Fetch Students
+  // Fetch Students with Infinite Scroll
   // ============================================
   const {
-    data: studentsData,
+    data: infiniteData,
     isLoading,
     error,
     refetch,
-  } = useQuery({
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: [QUERY_KEYS.students, filters],
-    queryFn: () => studentService.list(filters),
+    queryFn: ({ pageParam }) => studentService.listAll(filters, 30, pageParam as string | undefined),
+    initialPageParam: undefined as string | undefined,
+    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastId : undefined,
     enabled: autoLoad,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
-  const students = studentsData?.data || [];
-  const pagination = studentsData?.pagination;
+  // Flatten all pages into a single array
+  const allStudents = useMemo(() => {
+    if (!infiniteData?.pages) return [];
+    return infiniteData.pages.flatMap(page => page.data);
+  }, [infiniteData]);
+
+  // Use search results if searching, otherwise use paginated results
+  const students = searchResults !== null ? searchResults : allStudents;
+
+  // Pagination info from first page
+  const pagination = infiniteData?.pages[0]?.pagination;
+
+  // ============================================
+  // Search Handler - Direct database query
+  // ============================================
+  const handleSearch = useCallback(async (term: string) => {
+    setSearchTerm(term);
+
+    if (!term.trim()) {
+      setSearchResults(null);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      const results = await studentService.searchByName(term, filters);
+      setSearchResults(results);
+    } catch {
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  }, [filters]);
+
+  // Clear search when filters change
+  useEffect(() => {
+    if (searchTerm) {
+      handleSearch(searchTerm);
+    }
+  }, [filters]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ============================================
   // Fetch Active Students
@@ -259,6 +307,19 @@ export function useStudents(options: UseStudentsOptions = {}) {
     updateFilter,
     clearFilters,
 
+    // Search
+    searchTerm,
+    handleSearch,
+    clearSearch: useCallback(() => {
+      setSearchTerm('');
+      setSearchResults(null);
+    }, []),
+
+    // Infinite Scroll
+    fetchNextPage,
+    hasNextPage: hasNextPage && searchResults === null, // Disable infinite scroll when searching
+    isFetchingNextPage,
+
     // Actions
     getStudent,
     createStudent: createMutation.mutateAsync,
@@ -273,7 +334,7 @@ export function useStudents(options: UseStudentsOptions = {}) {
     isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
-    isSearching: searchMutation.isPending,
+    isSearching,
     error,
 
     // Refresh

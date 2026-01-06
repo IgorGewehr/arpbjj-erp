@@ -170,6 +170,7 @@ export interface Student {
 
   // Attendance tracking
   initialAttendanceCount?: number;  // Previous attendances (from other systems/academies)
+  attendanceCount?: number;         // Attendances registered in this system (auto-updated)
 
   // Status
   status: StudentStatus;

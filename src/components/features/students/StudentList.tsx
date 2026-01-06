@@ -20,6 +20,7 @@ import {
   useMediaQuery,
   IconButton,
   Button,
+  CircularProgress,
 } from '@mui/material';
 import { Search, Grid, List, Users, Filter, X } from 'lucide-react';
 import { StudentCard } from './StudentCard';
@@ -77,16 +78,25 @@ export function StudentList() {
     clearFilters,
     stats,
     isLoading,
+    isSearching,
+    handleSearch,
+    searchTerm,
+    clearSearch,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
   } = useStudents();
   const { classes } = useClasses();
   const { plans } = usePlans();
 
-  const [searchTerm, setSearchTerm] = useState('');
+  const [localSearchTerm, setLocalSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [classFilter, setClassFilter] = useState<string>('');
   const [planFilter, setPlanFilter] = useState<string>('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const initialViewModeSet = useRef(false);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
+  const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Definir viewMode padrão como 'list' em telas pequenas (mobile)
   useEffect(() => {
@@ -96,20 +106,44 @@ export function StudentList() {
     }
   }, [isMobile]);
 
-  // Filter students by search term and class
+  // Debounced search - calls database after 300ms of no typing
+  useEffect(() => {
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    searchTimeoutRef.current = setTimeout(() => {
+      handleSearch(localSearchTerm);
+    }, 300);
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [localSearchTerm, handleSearch]);
+
+  // Infinite scroll - IntersectionObserver
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage && !isSearching) {
+          fetchNextPage();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    if (loadMoreRef.current) {
+      observer.observe(loadMoreRef.current);
+    }
+
+    return () => observer.disconnect();
+  }, [hasNextPage, isFetchingNextPage, isSearching, fetchNextPage]);
+
+  // Filter students by class and plan (local filters)
   const filteredStudents = useMemo(() => {
     let result = students;
-
-    // Filter by search term
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      result = result.filter(
-        (s) =>
-          s.fullName.toLowerCase().includes(term) ||
-          s.nickname?.toLowerCase().includes(term) ||
-          s.phone?.includes(term)
-      );
-    }
 
     // Filter by class
     if (classFilter) {
@@ -125,7 +159,7 @@ export function StudentList() {
     }
 
     return result;
-  }, [students, searchTerm, classFilter, classes, planFilter]);
+  }, [students, classFilter, classes, planFilter]);
 
   // Handle student click
   const handleStudentClick = useCallback(
@@ -191,12 +225,14 @@ export function StudentList() {
     return filterCount + (classFilter ? 1 : 0) + (planFilter ? 1 : 0);
   }, [filters, classFilter, planFilter]);
 
-  // Clear all filters including class and plan filter
+  // Clear all filters including class, plan filter and search
   const handleClearFilters = useCallback(() => {
     clearFilters();
+    clearSearch();
+    setLocalSearchTerm('');
     setClassFilter('');
     setPlanFilter('');
-  }, [clearFilters]);
+  }, [clearFilters, clearSearch]);
 
   // Filter content for both desktop and mobile
   const FilterContent = (
@@ -361,14 +397,14 @@ export function StudentList() {
         <Box sx={{ display: { xs: 'flex', md: 'none' }, gap: 1, alignItems: 'center' }}>
           <TextField
             placeholder="Buscar aluno..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={localSearchTerm}
+            onChange={(e) => setLocalSearchTerm(e.target.value)}
             size="small"
             sx={{ flex: 1 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <Search size={16} />
+                  {isSearching ? <CircularProgress size={16} /> : <Search size={16} />}
                 </InputAdornment>
               ),
             }}
@@ -401,14 +437,14 @@ export function StudentList() {
           {/* Search */}
           <TextField
             placeholder="Buscar aluno..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            value={localSearchTerm}
+            onChange={(e) => setLocalSearchTerm(e.target.value)}
             size="small"
             sx={{ minWidth: 250 }}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <Search size={18} />
+                  {isSearching ? <CircularProgress size={18} /> : <Search size={18} />}
                 </InputAdornment>
               ),
             }}
@@ -458,7 +494,7 @@ export function StudentList() {
       )}
 
       {/* Empty State */}
-      {!isLoading && filteredStudents.length === 0 && (
+      {!isLoading && !isSearching && filteredStudents.length === 0 && (
         <Paper
           sx={{
             p: { xs: 4, sm: 6 },
@@ -471,7 +507,7 @@ export function StudentList() {
             Nenhum aluno encontrado
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-            {searchTerm || activeFiltersCount > 0
+            {localSearchTerm || activeFiltersCount > 0
               ? 'Tente ajustar os filtros de busca'
               : 'Clique no botão + para cadastrar um novo aluno'}
           </Typography>
@@ -504,6 +540,33 @@ export function StudentList() {
               </ScaleOnPress>
             ))}
           </Box>
+
+          {/* Load More Trigger */}
+          {hasNextPage && !localSearchTerm && (
+            <Box
+              ref={loadMoreRef}
+              sx={{
+                display: 'flex',
+                justifyContent: 'center',
+                alignItems: 'center',
+                py: 4,
+                gap: 2,
+              }}
+            >
+              {isFetchingNextPage ? (
+                <>
+                  <CircularProgress size={24} />
+                  <Typography variant="body2" color="text.secondary">
+                    Carregando mais alunos...
+                  </Typography>
+                </>
+              ) : (
+                <Typography variant="body2" color="text.secondary">
+                  Role para carregar mais
+                </Typography>
+              )}
+            </Box>
+          )}
         </FadeInView>
       )}
 

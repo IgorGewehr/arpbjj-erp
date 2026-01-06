@@ -29,6 +29,8 @@ import {
   Select,
   MenuItem,
   CircularProgress,
+  TextField,
+  Alert,
 } from '@mui/material';
 import {
   ArrowLeft,
@@ -53,6 +55,7 @@ import {
   Copy,
   Trophy,
   History,
+  Trash2,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -62,7 +65,7 @@ import { getBeltChipColor } from '@/lib/theme';
 import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode } from '@/types';
-import { financialService, attendanceService } from '@/services';
+import { financialService, attendanceService, studentService } from '@/services';
 import { Attendance } from '@/types';
 import { linkCodeService } from '@/services/linkCodeService';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -310,6 +313,11 @@ export default function StudentProfilePage() {
   const [generatedLinkCode, setGeneratedLinkCode] = useState<LinkCode | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
 
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
   // Determine if student is kids category
   const isKidsStudent = student?.category === 'kids';
   const beltOptions = isKidsStudent ? kidsBeltOptions : adultBeltOptions;
@@ -526,6 +534,25 @@ export default function StudentProfilePage() {
     }
   }, [generatedLinkCode, showSuccess]);
 
+  // Handle delete student
+  const handleDeleteStudent = useCallback(async () => {
+    if (!student) return;
+
+    setDeleting(true);
+    try {
+      await studentService.hardDelete(studentId);
+      showSuccess('Aluno excluido com sucesso!');
+      router.push('/alunos');
+    } catch (err) {
+      console.error('Erro ao excluir aluno:', err);
+      showError('Erro ao excluir aluno. Tente novamente.');
+    } finally {
+      setDeleting(false);
+      setDeleteDialogOpen(false);
+      setDeleteConfirmText('');
+    }
+  }, [student, studentId, router, showSuccess, showError]);
+
   // Financial stats
   const financialStats = useMemo(() => {
     const paid = studentFinancials.filter((f) => f.status === 'paid');
@@ -708,6 +735,19 @@ export default function StudentProfilePage() {
                     fullWidth
                   >
                     Editar
+                  </Button>
+                </Box>
+
+                {/* Delete Button */}
+                <Box sx={{ mt: 2 }}>
+                  <Button
+                    variant="outlined"
+                    color="error"
+                    startIcon={<Trash2 size={18} />}
+                    onClick={() => setDeleteDialogOpen(true)}
+                    fullWidth
+                  >
+                    Excluir Aluno
                   </Button>
                 </Box>
 
@@ -1614,6 +1654,69 @@ export default function StudentProfilePage() {
               onClick={() => setLinkCodeDialogOpen(false)}
             >
               Fechar
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog
+          open={deleteDialogOpen}
+          onClose={() => {
+            setDeleteDialogOpen(false);
+            setDeleteConfirmText('');
+          }}
+          maxWidth="sm"
+          fullWidth
+        >
+          <DialogTitle sx={{ color: 'error.main', display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Trash2 size={24} />
+            Excluir Aluno
+          </DialogTitle>
+          <DialogContent>
+            <Alert severity="error" sx={{ mb: 3 }}>
+              <Typography variant="body2" fontWeight={600} gutterBottom>
+                Esta acao e irreversivel!
+              </Typography>
+              <Typography variant="body2">
+                Todos os dados do aluno serao permanentemente excluidos, incluindo historico de presencas e graduacoes.
+              </Typography>
+            </Alert>
+
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Para confirmar a exclusao de <strong>{student?.fullName}</strong>, digite{' '}
+              <strong>&quot;EXCLUIR&quot;</strong> no campo abaixo:
+            </Typography>
+
+            <TextField
+              fullWidth
+              placeholder="Digite EXCLUIR para confirmar"
+              value={deleteConfirmText}
+              onChange={(e) => setDeleteConfirmText(e.target.value.toUpperCase())}
+              error={deleteConfirmText.length > 0 && deleteConfirmText !== 'EXCLUIR'}
+              helperText={
+                deleteConfirmText.length > 0 && deleteConfirmText !== 'EXCLUIR'
+                  ? 'Digite exatamente "EXCLUIR" para confirmar'
+                  : ''
+              }
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button
+              onClick={() => {
+                setDeleteDialogOpen(false);
+                setDeleteConfirmText('');
+              }}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              color="error"
+              onClick={handleDeleteStudent}
+              disabled={deleteConfirmText !== 'EXCLUIR' || deleting}
+              startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : <Trash2 size={16} />}
+            >
+              {deleting ? 'Excluindo...' : 'Excluir Permanentemente'}
             </Button>
           </DialogActions>
         </Dialog>

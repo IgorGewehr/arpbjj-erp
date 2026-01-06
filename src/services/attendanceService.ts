@@ -11,6 +11,8 @@ import {
   Timestamp,
   DocumentSnapshot,
   writeBatch,
+  updateDoc,
+  increment,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Attendance, AttendanceFilters } from '@/types';
@@ -207,6 +209,14 @@ export const attendanceService = {
 
     const docRef = await addDoc(collection(db, COLLECTION), docData);
 
+    // Increment the student's attendanceCount (async, don't block main flow)
+    const studentDocRef = doc(db, 'students', studentId);
+    updateDoc(studentDocRef, {
+      attendanceCount: increment(1),
+    }).catch(() => {
+      // Silently ignore errors - don't break attendance flow
+    });
+
     // Return the attendance object directly without re-fetching
     const attendance: Attendance = {
       id: docRef.id,
@@ -342,11 +352,19 @@ export const attendanceService = {
 
     // Delete all matches (should be only one)
     const batch = writeBatch(db);
-    matchingDocs.forEach((doc) => {
-      batch.delete(doc.ref);
+    matchingDocs.forEach((docSnapshot) => {
+      batch.delete(docSnapshot.ref);
     });
 
     await batch.commit();
+
+    // Decrement the student's attendanceCount (async, don't block main flow)
+    const studentDocRef = doc(db, 'students', studentId);
+    updateDoc(studentDocRef, {
+      attendanceCount: increment(-matchingDocs.length),
+    }).catch(() => {
+      // Silently ignore errors
+    });
   },
 
   // ============================================

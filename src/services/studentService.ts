@@ -14,6 +14,7 @@ import {
   serverTimestamp,
   Timestamp,
   QueryConstraint,
+  writeBatch,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Student, StudentFilters, Pagination, PaginatedResponse } from '@/types';
@@ -58,6 +59,7 @@ const docToStudent = (doc: DocumentSnapshot): Student => {
     weight: data.weight,
     beltHistory,
     initialAttendanceCount: data.initialAttendanceCount,
+    attendanceCount: data.attendanceCount,
     planId: data.planId,
     status: data.status,
     statusNote: data.statusNote,
@@ -126,6 +128,117 @@ const studentToDoc = (student: Partial<Student>): Record<string, unknown> => {
 // Student Service
 // ============================================
 export const studentService = {
+  // ============================================
+  // List Students with Infinite Scroll Support
+  // Sorted by total attendance (attendanceCount + initialAttendanceCount)
+  // ============================================
+  async listAll(
+    filters: StudentFilters = {},
+    pageSize = 30,
+    lastStudentId?: string
+  ): Promise<PaginatedResponse<Student> & { hasMore: boolean; lastId?: string }> {
+    // Build filter constraints
+    const filterConstraints: QueryConstraint[] = [];
+
+    if (filters.status) {
+      filterConstraints.push(where('status', '==', filters.status));
+    }
+    if (filters.category) {
+      filterConstraints.push(where('category', '==', filters.category));
+    }
+    if (filters.belt) {
+      filterConstraints.push(where('currentBelt', '==', filters.belt));
+    }
+
+    // Query with filters only (no limit) - we need all to sort by computed field
+    const q = query(collection(db, COLLECTION), ...filterConstraints);
+    const snapshot = await getDocs(q);
+
+    let students = snapshot.docs.map(docToStudent);
+
+    // Sort by total attendance count (descending) - most active first
+    students.sort((a, b) => {
+      const totalA = (a.attendanceCount || 0) + (a.initialAttendanceCount || 0);
+      const totalB = (b.attendanceCount || 0) + (b.initialAttendanceCount || 0);
+      if (totalB !== totalA) return totalB - totalA;
+      // Secondary sort by name for consistency
+      return a.fullName.localeCompare(b.fullName);
+    });
+
+    const total = students.length;
+
+    // If we have a cursor, find the position and slice from there
+    let startIndex = 0;
+    if (lastStudentId) {
+      const cursorIndex = students.findIndex(s => s.id === lastStudentId);
+      if (cursorIndex !== -1) {
+        startIndex = cursorIndex + 1;
+      }
+    }
+
+    // Get the page of students
+    const pageStudents = students.slice(startIndex, startIndex + pageSize);
+    const hasMore = startIndex + pageSize < total;
+    const lastId = pageStudents.length > 0 ? pageStudents[pageStudents.length - 1].id : undefined;
+
+    const pagination: Pagination = {
+      page: Math.floor(startIndex / pageSize) + 1,
+      perPage: pageSize,
+      total,
+      totalPages: Math.ceil(total / pageSize),
+    };
+
+    return {
+      data: pageStudents,
+      pagination,
+      success: true,
+      hasMore,
+      lastId,
+    };
+  },
+
+  // ============================================
+  // Search Students by Name (Direct database query)
+  // ============================================
+  async searchByName(searchTerm: string, filters: StudentFilters = {}): Promise<Student[]> {
+    // Build filter constraints
+    const filterConstraints: QueryConstraint[] = [];
+
+    if (filters.status) {
+      filterConstraints.push(where('status', '==', filters.status));
+    }
+    if (filters.category) {
+      filterConstraints.push(where('category', '==', filters.category));
+    }
+    if (filters.belt) {
+      filterConstraints.push(where('currentBelt', '==', filters.belt));
+    }
+
+    // Fetch all filtered students and search in memory
+    // (Firestore doesn't support case-insensitive contains search)
+    const q = query(collection(db, COLLECTION), ...filterConstraints);
+    const snapshot = await getDocs(q);
+
+    const students = snapshot.docs.map(docToStudent);
+    const term = searchTerm.toLowerCase().trim();
+
+    // Filter by name match
+    const matches = students.filter(s =>
+      s.fullName.toLowerCase().includes(term) ||
+      s.nickname?.toLowerCase().includes(term)
+    );
+
+    // Sort by total attendance
+    matches.sort((a, b) => {
+      const totalA = (a.attendanceCount || 0) + (a.initialAttendanceCount || 0);
+      const totalB = (b.attendanceCount || 0) + (b.initialAttendanceCount || 0);
+      if (totalB !== totalA) return totalB - totalA;
+      return a.fullName.localeCompare(b.fullName);
+    });
+
+    return matches;
+  },
+
   // ============================================
   // List Students with Pagination and Filters
   // ============================================
@@ -383,6 +496,50 @@ export const studentService = {
       currentBelt: newBelt,
       currentStripes: newStripes,
     });
+  },
+
+  // ============================================
+  // Sync Attendance Counts for all students
+  // (Run once to populate attendanceCount field for existing students)
+  // ============================================
+  async syncAttendanceCounts(): Promise<{ updated: number; errors: number }> {
+    const result = { updated: 0, errors: 0 };
+
+    // Get all students
+    const studentsSnapshot = await getDocs(collection(db, COLLECTION));
+
+    // Get all attendance records
+    const attendanceSnapshot = await getDocs(collection(db, 'attendance'));
+
+    // Count attendance per student
+    const countByStudent: Record<string, number> = {};
+    attendanceSnapshot.docs.forEach(doc => {
+      const studentId = doc.data().studentId;
+      countByStudent[studentId] = (countByStudent[studentId] || 0) + 1;
+    });
+
+    // Update each student with their count
+    const BATCH_SIZE = 500;
+    const students = studentsSnapshot.docs;
+
+    for (let i = 0; i < students.length; i += BATCH_SIZE) {
+      const batch = writeBatch(db);
+      const batchStudents = students.slice(i, i + BATCH_SIZE);
+
+      batchStudents.forEach(studentDoc => {
+        const count = countByStudent[studentDoc.id] || 0;
+        batch.update(studentDoc.ref, { attendanceCount: count });
+      });
+
+      try {
+        await batch.commit();
+        result.updated += batchStudents.length;
+      } catch {
+        result.errors += batchStudents.length;
+      }
+    }
+
+    return result;
   },
 };
 

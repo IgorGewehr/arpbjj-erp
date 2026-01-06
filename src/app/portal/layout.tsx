@@ -456,6 +456,49 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
               </ScaleOnPress>
             );
           })}
+
+          {/* Logout Button */}
+          <Box sx={{ borderTop: '1px solid', borderColor: 'grey.200', pt: 2, mt: 1 }}>
+            <ScaleOnPress>
+              <Box
+                onClick={() => {
+                  setMoreMenuOpen(false);
+                  handleSignOut();
+                }}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 2,
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: 'grey.50',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 40,
+                    height: 40,
+                    borderRadius: 2,
+                    bgcolor: 'error.50',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <LogOut size={20} color="#DC2626" />
+                </Box>
+                <Typography
+                  variant="body1"
+                  fontWeight={500}
+                  sx={{ flex: 1, color: 'error.main' }}
+                >
+                  Sair
+                </Typography>
+              </Box>
+            </ScaleOnPress>
+          </Box>
         </Box>
       </BottomSheet>
     </Box>

@@ -198,7 +198,7 @@ export function StudentCard({
         borderRadius: 3,
         opacity: student.status === 'inactive' ? 0.6 : 1,
         position: 'relative',
-        height: { xs: 130, sm: 150 },
+        height: { xs: 145, sm: 165 },
         display: 'flex',
         flexDirection: 'column',
       }}
@@ -222,7 +222,7 @@ export function StudentCard({
           </Avatar>
 
           {/* Info */}
-          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: { xs: 0.25, sm: 0.5 } }}>
+          <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: { xs: 0.5, sm: 0.75 } }}>
             {/* Apelido */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
               <Typography
@@ -231,14 +231,14 @@ export function StudentCard({
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
-                  fontSize: { xs: '0.85rem', sm: '1rem' },
+                  fontSize: { xs: '0.95rem', sm: '1.1rem' },
                   lineHeight: 1.2,
                 }}
               >
                 {student.nickname || student.fullName.split(' ')[0]}
               </Typography>
               {student.status === 'injured' && (
-                <AlertCircle size={12} style={{ color: '#f59e0b', flexShrink: 0 }} />
+                <AlertCircle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
               )}
             </Box>
 
@@ -249,7 +249,7 @@ export function StudentCard({
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
-                fontSize: { xs: '0.65rem', sm: '0.75rem' },
+                fontSize: { xs: '0.75rem', sm: '0.85rem' },
                 lineHeight: 1.2,
               }}
             >
@@ -272,13 +272,13 @@ export function StudentCard({
                 size="small"
                 color={status.color}
                 variant="outlined"
-                sx={{ fontSize: { xs: '0.55rem', sm: '0.6rem' }, height: { xs: 16, sm: 18 } }}
+                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
               />
               <Chip
                 label={student.category === 'kids' ? 'Kids' : 'Adulto'}
                 size="small"
                 variant="outlined"
-                sx={{ fontSize: { xs: '0.55rem', sm: '0.6rem' }, height: { xs: 16, sm: 18 } }}
+                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
               />
             </Box>
           </Box>

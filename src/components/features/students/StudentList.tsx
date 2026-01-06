@@ -24,7 +24,7 @@ import {
 import { Search, Grid, List, Users, Filter, X } from 'lucide-react';
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
-import { useStudents, useClasses } from '@/hooks';
+import { useStudents, useClasses, usePlans } from '@/hooks';
 import { Student, BeltColor, StudentStatus, StudentCategory } from '@/types';
 import { useRouter } from 'next/navigation';
 import { BottomSheet, FadeInView, ScaleOnPress } from '@/components/mobile';
@@ -79,10 +79,12 @@ export function StudentList() {
     isLoading,
   } = useStudents();
   const { classes } = useClasses();
+  const { plans } = usePlans();
 
   const [searchTerm, setSearchTerm] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [classFilter, setClassFilter] = useState<string>('');
+  const [planFilter, setPlanFilter] = useState<string>('');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const initialViewModeSet = useRef(false);
 
@@ -117,8 +119,13 @@ export function StudentList() {
       }
     }
 
+    // Filter by plan
+    if (planFilter) {
+      result = result.filter(s => s.planId === planFilter);
+    }
+
     return result;
-  }, [students, searchTerm, classFilter, classes]);
+  }, [students, searchTerm, classFilter, classes, planFilter]);
 
   // Handle student click
   const handleStudentClick = useCallback(
@@ -157,6 +164,13 @@ export function StudentList() {
     []
   );
 
+  const handlePlanChange = useCallback(
+    (e: SelectChangeEvent<string>) => {
+      setPlanFilter(e.target.value);
+    },
+    []
+  );
+
   // Handle view mode change
   const handleViewModeChange = useCallback(
     (_: React.MouseEvent<HTMLElement>, newMode: 'grid' | 'list' | null) => {
@@ -174,13 +188,14 @@ export function StudentList() {
   // Active filters count
   const activeFiltersCount = useMemo(() => {
     const filterCount = Object.values(filters).filter((v) => v !== undefined && v !== '').length;
-    return filterCount + (classFilter ? 1 : 0);
-  }, [filters, classFilter]);
+    return filterCount + (classFilter ? 1 : 0) + (planFilter ? 1 : 0);
+  }, [filters, classFilter, planFilter]);
 
-  // Clear all filters including class filter
+  // Clear all filters including class and plan filter
   const handleClearFilters = useCallback(() => {
     clearFilters();
     setClassFilter('');
+    setPlanFilter('');
   }, [clearFilters]);
 
   // Filter content for both desktop and mobile
@@ -246,6 +261,23 @@ export function StudentList() {
           {classes.map((cls) => (
             <MenuItem key={cls.id} value={cls.id}>
               {cls.name}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      {/* Plan Filter */}
+      <FormControl size="small" sx={{ minWidth: isMobile ? '100%' : 150 }}>
+        <InputLabel>Plano</InputLabel>
+        <Select
+          value={planFilter}
+          onChange={handlePlanChange}
+          label="Plano"
+        >
+          <MenuItem value="">Todos os Planos</MenuItem>
+          {plans.map((plan) => (
+            <MenuItem key={plan.id} value={plan.id}>
+              {plan.name}
             </MenuItem>
           ))}
         </Select>

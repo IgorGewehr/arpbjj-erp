@@ -338,16 +338,16 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           </Typography>
         )}
 
-        {/* Search Bar - Hidden on xs, shown from sm */}
+        {/* Search Bar - Only on Desktop */}
         <ClickAwayListener onClickAway={handleClickAway}>
           <Box
             ref={searchContainerRef}
             sx={{
               flex: 1,
-              display: { xs: 'none', sm: 'flex' },
+              display: { xs: 'none', md: 'flex' },
               alignItems: 'center',
-              maxWidth: { sm: 280, md: 400 },
-              mx: { sm: 1, md: 2 },
+              maxWidth: 400,
+              mx: 2,
               position: 'relative',
             }}
           >
@@ -464,17 +464,6 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           Tropa Jiu-Jitsu - Vamos avante, ombro a ombro
         </Typography>
         <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
-
-        {/* Mobile Search Icon - Only on xs */}
-        <IconButton
-          onClick={handleMobileSearchOpen}
-          sx={{
-            display: { xs: 'flex', sm: 'none' },
-            color: 'text.primary',
-          }}
-        >
-          <Search size={20} />
-        </IconButton>
 
         {/* Spacer - Only on Mobile/Tablet */}
         <Box sx={{ flex: 1, display: { xs: 'block', md: 'none' } }} />

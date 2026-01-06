@@ -288,14 +288,16 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
       <Toolbar sx={{ gap: { xs: 0.5, sm: 1, md: 2 }, px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 } }}>
         {/* Logo on Mobile (replaces menu button since we have BottomNav) */}
         {isMobile && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, flex: 1 }}>
             <Box
               sx={{
                 width: 32,
                 height: 32,
+                minWidth: 32,
                 borderRadius: '50%',
                 overflow: 'hidden',
                 position: 'relative',
+                flexShrink: 0,
               }}
             >
               <Image
@@ -310,10 +312,13 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
               sx={{
                 fontWeight: 700,
                 color: 'text.primary',
-                fontSize: '0.9rem',
+                fontSize: '0.75rem',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
               }}
             >
-              Tropa Jiu-Jitsu - Vamos avante, ombro a ombro
+              T23 JJ - Vamos avante, ombro a ombro
             </Typography>
           </Box>
         )}

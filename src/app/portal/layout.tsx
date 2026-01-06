@@ -51,7 +51,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { label: 'Início', icon: LayoutDashboard, path: '/portal', showInBottomNav: true },
-  { label: 'Meu Perfil', icon: User, path: '/portal/meu-perfil', showInBottomNav: true },
+  { label: 'Perfil', icon: User, path: '/portal/meu-perfil', showInBottomNav: true },
   { label: 'Presenças', icon: ClipboardCheck, path: '/portal/presenca', showInBottomNav: true },
   { label: 'Competições', icon: Trophy, path: '/portal/competicoes', showInBottomNav: true },
   { label: 'Mais', icon: MoreHorizontal, path: '', showInBottomNav: true },

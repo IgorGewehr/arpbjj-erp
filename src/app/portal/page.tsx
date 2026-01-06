@@ -2,7 +2,7 @@
 
 import { useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Box, Typography, Skeleton, Paper, useTheme, useMediaQuery } from '@mui/material';
+import { Box, Typography, Skeleton, Paper, useTheme } from '@mui/material';
 import Image from 'next/image';
 import { ArrowRight, AlertTriangle, ClipboardCheck, History, Trophy, Calendar, Award, Timer, Flame } from 'lucide-react';
 import { useAuth, usePermissions } from '@/components/providers';
@@ -32,7 +32,6 @@ const BELT_LABELS: Record<string, string> = {
 
 export default function PortalHomePage() {
   const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -181,17 +180,18 @@ export default function PortalHomePage() {
   return (
     <PullToRefresh onRefresh={handleRefresh}>
       <Box sx={{ position: 'relative', minHeight: '100%' }}>
-        {/* Background Logo */}
+        {/* Background Logo - Mobile Only */}
         <Box
           sx={{
+            display: { xs: 'block', md: 'none' },
             position: 'fixed',
             top: '50%',
             left: '50%',
             transform: 'translate(-50%, -50%)',
-            width: { xs: '80vw', md: '50vw' },
-            height: { xs: '80vw', md: '50vw' },
-            maxWidth: { xs: 350, md: 500 },
-            maxHeight: { xs: 350, md: 500 },
+            width: '80vw',
+            height: '80vw',
+            maxWidth: 350,
+            maxHeight: 350,
             zIndex: 0,
             pointerEvents: 'none',
             opacity: 0.04,

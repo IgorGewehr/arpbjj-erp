@@ -2,7 +2,8 @@
 
 import { useMemo, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Box, Typography, Skeleton, Paper, useTheme } from '@mui/material';
+import { Box, Typography, Skeleton, Paper, useTheme, useMediaQuery } from '@mui/material';
+import Image from 'next/image';
 import { ArrowRight, AlertTriangle, ClipboardCheck, History, Trophy, Calendar, Award, Timer, Flame } from 'lucide-react';
 import { useAuth, usePermissions } from '@/components/providers';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -31,6 +32,7 @@ const BELT_LABELS: Record<string, string> = {
 
 export default function PortalHomePage() {
   const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuth();
@@ -178,7 +180,34 @@ export default function PortalHomePage() {
 
   return (
     <PullToRefresh onRefresh={handleRefresh}>
-      <Box>
+      <Box sx={{ position: 'relative', minHeight: '100%' }}>
+        {/* Background Logo */}
+        <Box
+          sx={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)',
+            width: { xs: '80vw', md: '50vw' },
+            height: { xs: '80vw', md: '50vw' },
+            maxWidth: { xs: 350, md: 500 },
+            maxHeight: { xs: 350, md: 500 },
+            zIndex: 0,
+            pointerEvents: 'none',
+            opacity: 0.04,
+          }}
+        >
+          <Image
+            src="/logo_login.png"
+            alt=""
+            fill
+            style={{ objectFit: 'contain' }}
+            priority
+          />
+        </Box>
+
+        {/* Content */}
+        <Box sx={{ position: 'relative', zIndex: 1 }}>
         {/* Header */}
         <FadeInView direction="down" delay={0}>
           <Box sx={{ mb: 2.5 }}>
@@ -412,6 +441,7 @@ export default function PortalHomePage() {
             </Box>
           </Box>
         </FadeInView>
+        </Box>
       </Box>
     </PullToRefresh>
   );

@@ -127,7 +127,6 @@ export default function LoginPage() {
             aspectRatio: '1',
             position: 'relative',
             flexShrink: 0,
-            mb: { xs: -2, sm: -7 },
           }}
         >
           <Image

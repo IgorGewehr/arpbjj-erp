@@ -11,8 +11,10 @@ import {
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/components/providers';
-import { useStudents, useFinancial } from '@/hooks';
+import { useFinancial } from '@/hooks';
+import { studentService } from '@/services';
 import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
 import { AttendanceChart } from './AttendanceChart';
@@ -32,7 +34,14 @@ export function DashboardView() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const router = useRouter();
   const { user } = useAuth();
-  const { students, stats: studentStats, isLoading: loadingStudents, refresh: refreshStudents } = useStudents();
+
+  // Fetch student stats directly (not paginated)
+  const { data: studentStats, isLoading: loadingStudents, refetch: refreshStudents } = useQuery({
+    queryKey: ['dashboard-student-stats'],
+    queryFn: () => studentService.getDashboardStats(),
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
   const { pendingPayments, overduePayments, monthlySummary, isLoading: loadingFinancial } = useFinancial();
 
   // Quick student dialog state
@@ -121,8 +130,8 @@ export function DashboardView() {
               </Box>
             ) : (
               <MobileStatsCarousel
-                activeStudents={studentStats.byStatus.active}
-                totalStudents={studentStats.total}
+                activeStudents={studentStats?.byStatus.active || 0}
+                totalStudents={studentStats?.total || 0}
                 monthlyRevenue={monthlySummary?.paidAmount || 0}
                 paidCount={monthlySummary?.paid || 0}
                 pendingCount={pendingPayments.length}
@@ -164,8 +173,8 @@ export function DashboardView() {
                   <SlideIn direction="up" delay={0.1}>
                     <StatCard
                       title="Alunos Ativos"
-                      value={studentStats.byStatus.active}
-                      subtitle={`de ${studentStats.total} total`}
+                      value={studentStats?.byStatus.active || 0}
+                      subtitle={`de ${studentStats?.total || 0} total`}
                       icon={Users}
                       color="#1a1a1a"
                       bgColor="#f5f5f5"

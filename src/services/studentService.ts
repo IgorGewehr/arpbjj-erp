@@ -485,6 +485,46 @@ export const studentService = {
   },
 
   // ============================================
+  // Get Dashboard Stats (Single query, optimized)
+  // ============================================
+  async getDashboardStats(): Promise<{
+    total: number;
+    byStatus: { active: number; injured: number; inactive: number; suspended: number };
+    byCategory: { kids: number; adult: number };
+  }> {
+    const snapshot = await getDocs(collection(db, COLLECTION));
+
+    const stats = {
+      total: 0,
+      byStatus: { active: 0, injured: 0, inactive: 0, suspended: 0 } as Record<string, number>,
+      byCategory: { kids: 0, adult: 0 } as Record<string, number>,
+    };
+
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      stats.total++;
+
+      // Count by status
+      const status = data.status as string;
+      if (status && stats.byStatus[status] !== undefined) {
+        stats.byStatus[status]++;
+      }
+
+      // Count by category
+      const category = data.category as string;
+      if (category && stats.byCategory[category] !== undefined) {
+        stats.byCategory[category]++;
+      }
+    });
+
+    return stats as {
+      total: number;
+      byStatus: { active: number; injured: number; inactive: number; suspended: number };
+      byCategory: { kids: number; adult: number };
+    };
+  },
+
+  // ============================================
   // Update Belt/Stripes
   // ============================================
   async updateBelt(

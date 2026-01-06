@@ -445,18 +445,24 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           </Box>
         </ClickAwayListener>
 
-        {/* Academy Label - Only on Desktop */}
-        <Typography
+        {/* Academy Label - Only on Desktop (Centered) */}
+        <Box
           sx={{
-            display: { xs: 'none', md: 'block' },
-            fontWeight: 700,
-            color: 'text.primary',
-            fontSize: '1.1rem',
-            ml: 2,
+            display: { xs: 'none', md: 'flex' },
+            flex: 1,
+            justifyContent: 'center',
           }}
         >
-          Tropa Jiu-Jitsu - Vamos avante, ombro a ombro
-        </Typography>
+          <Typography
+            sx={{
+              fontWeight: 700,
+              color: 'text.primary',
+              fontSize: '1.1rem',
+            }}
+          >
+            Tropa Jiu-Jitsu - Vamos avante, ombro a ombro
+          </Typography>
+        </Box>
 
         {/* Mobile Search Icon - Only on xs */}
         <IconButton
@@ -469,8 +475,8 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           <Search size={20} />
         </IconButton>
 
-        {/* Spacer */}
-        <Box sx={{ flex: 1 }} />
+        {/* Spacer - Only on Mobile/Tablet */}
+        <Box sx={{ flex: 1, display: { xs: 'block', md: 'none' } }} />
 
         {/* Actions */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 0.25, sm: 0.5, md: 1 } }}>

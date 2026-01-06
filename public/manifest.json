@@ -1,0 +1,21 @@
+{
+  "name": "Tropa 23 Jiu-Jitsu",
+  "short_name": "T23",
+  "description": "Sistema de gestão da academia Tropa 23 Jiu-Jitsu",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#FAFAFA",
+  "theme_color": "#171717",
+  "icons": [
+    {
+      "src": "/logo_conteudo.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo_conteudo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

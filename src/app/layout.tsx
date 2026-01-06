@@ -11,17 +11,17 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: {
-    default: 'MarcusJJ - Sistema de Gestão',
-    template: '%s | MarcusJJ',
+    default: 'Tropa 23 Jiu-Jitsu - Sistema de Gestão',
+    template: '%s | T23',
   },
-  description: 'Sistema de gestão completo para academias de Jiu-Jitsu',
-  keywords: ['jiu-jitsu', 'academia', 'gestão', 'alunos', 'chamada', 'financeiro'],
-  authors: [{ name: 'MarcusJJ' }],
-  creator: 'MarcusJJ',
+  description: 'Sistema de gestão da academia Tropa 23 Jiu-Jitsu',
+  keywords: ['jiu-jitsu', 'academia', 'gestão', 'alunos', 'chamada', 'financeiro', 'tropa 23', 't23'],
+  authors: [{ name: 'Tropa 23 Jiu-Jitsu' }],
+  creator: 'Tropa 23 Jiu-Jitsu',
   manifest: '/manifest.json',
   icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    icon: '/logo_conteudo.png',
+    apple: '/logo_conteudo.png',
   },
 };
 

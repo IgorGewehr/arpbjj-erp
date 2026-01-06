@@ -33,6 +33,7 @@ import {
   Trophy,
   X,
 } from 'lucide-react';
+import Image from 'next/image';
 import { useAuth } from '@/components/providers';
 
 // ============================================
@@ -162,14 +163,18 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
               sx={{
                 width: 40,
                 height: 40,
-                borderRadius: 2,
-                bgcolor: 'primary.main',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                position: 'relative',
+                flexShrink: 0,
               }}
             >
-              <GraduationCap size={24} color="white" />
+              <Image
+                src="/logo_conteudo.png"
+                alt="T23"
+                fill
+                style={{ objectFit: 'cover' }}
+              />
             </Box>
             <Box>
               <Typography
@@ -180,13 +185,13 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                   lineHeight: 1.2,
                 }}
               >
-                MarcusJJ
+                Tropa 23
               </Typography>
               <Typography
                 variant="caption"
                 sx={{ color: 'text.secondary', lineHeight: 1 }}
               >
-                Academia
+                Jiu-Jitsu
               </Typography>
             </Box>
           </Box>
@@ -197,14 +202,17 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             sx={{
               width: 40,
               height: 40,
-              borderRadius: 2,
-              bgcolor: 'primary.main',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              position: 'relative',
             }}
           >
-            <GraduationCap size={24} color="white" />
+            <Image
+              src="/logo_conteudo.png"
+              alt="T23"
+              fill
+              style={{ objectFit: 'cover' }}
+            />
           </Box>
         )}
 
@@ -405,14 +413,18 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             sx={{
               width: 36,
               height: 36,
-              borderRadius: 2,
-              bgcolor: 'primary.main',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              borderRadius: '50%',
+              overflow: 'hidden',
+              position: 'relative',
+              flexShrink: 0,
             }}
           >
-            <GraduationCap size={20} color="white" />
+            <Image
+              src="/logo_conteudo.png"
+              alt="T23"
+              fill
+              style={{ objectFit: 'cover' }}
+            />
           </Box>
           <Box>
             <Typography
@@ -424,13 +436,13 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                 fontSize: '1rem',
               }}
             >
-              MarcusJJ
+              Tropa 23
             </Typography>
             <Typography
               variant="caption"
               sx={{ color: 'text.secondary', lineHeight: 1, fontSize: '0.7rem' }}
             >
-              Academia
+              Jiu-Jitsu
             </Typography>
           </Box>
         </Box>

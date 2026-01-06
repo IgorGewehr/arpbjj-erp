@@ -42,6 +42,7 @@ import {
   X,
   ArrowLeft,
 } from 'lucide-react';
+import Image from 'next/image';
 import { useAuth, useThemeMode } from '@/components/providers';
 import { useRouter } from 'next/navigation';
 import { studentService } from '@/services/studentService';
@@ -292,14 +293,17 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
               sx={{
                 width: 32,
                 height: 32,
-                borderRadius: 1.5,
-                bgcolor: 'primary.main',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                position: 'relative',
               }}
             >
-              <GraduationCap size={18} color="white" />
+              <Image
+                src="/logo_conteudo.png"
+                alt="T23"
+                fill
+                style={{ objectFit: 'cover' }}
+              />
             </Box>
             <Typography
               variant="subtitle1"
@@ -309,7 +313,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
                 fontSize: '0.95rem',
               }}
             >
-              MarcusJJ
+              T23
             </Typography>
           </Box>
         )}

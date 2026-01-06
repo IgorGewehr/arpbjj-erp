@@ -31,8 +31,6 @@ import {
   Menu as MenuIcon,
   Search,
   Bell,
-  Sun,
-  Moon,
   User,
   Settings,
   LogOut,
@@ -43,7 +41,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 import Image from 'next/image';
-import { useAuth, useThemeMode } from '@/components/providers';
+import { useAuth } from '@/components/providers';
 import { useRouter } from 'next/navigation';
 import { studentService } from '@/services/studentService';
 import { classService } from '@/services/classService';
@@ -88,7 +86,6 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const router = useRouter();
   const { user, signOut } = useAuth();
-  const { isDark, toggleMode } = useThemeMode();
 
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
   const [notificationAnchor, setNotificationAnchor] = useState<null | HTMLElement>(null);
@@ -480,14 +477,6 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
             onClick={() => router.push('/alunos/novo')}
           >
             <Plus size={20} />
-          </IconButton>
-
-          {/* Theme Toggle */}
-          <IconButton
-            onClick={toggleMode}
-            sx={{ color: 'text.primary', p: { xs: 0.75, sm: 1 } }}
-          >
-            {isDark ? <Sun size={isMobile ? 18 : 20} /> : <Moon size={isMobile ? 18 : 20} />}
           </IconButton>
 
           {/* Notifications */}

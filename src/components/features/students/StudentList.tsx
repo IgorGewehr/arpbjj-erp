@@ -22,11 +22,74 @@ import {
   Button,
   CircularProgress,
 } from '@mui/material';
-import { Search, Grid, List, Users, Filter } from 'lucide-react';
+import { Search, Grid, List, Users, Filter, ArrowUpDown } from 'lucide-react';
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses, usePlans } from '@/hooks';
 import { Student, BeltColor, KidsBeltColor, StudentStatus, StudentCategory } from '@/types';
+
+// ============================================
+// Sort Options
+// ============================================
+type SortOption = 'alphabetical' | 'graduation' | 'attendance' | 'tatami_time';
+
+const sortOptions: { value: SortOption; label: string }[] = [
+  { value: 'alphabetical', label: 'Ordem Alfabética' },
+  { value: 'graduation', label: 'Graduação' },
+  { value: 'attendance', label: 'Número de Presenças' },
+  { value: 'tatami_time', label: 'Tempo de Tatame' },
+];
+
+// Belt order maps (higher index = higher graduation)
+const adultBeltOrder: Record<string, number> = {
+  white: 0,
+  blue: 1,
+  purple: 2,
+  brown: 3,
+  black: 4,
+};
+
+const kidsBeltOrder: Record<string, number> = {
+  white: 0,
+  grey: 1,
+  'grey-white': 2,
+  'grey-black': 3,
+  yellow: 4,
+  'yellow-white': 5,
+  'yellow-black': 6,
+  orange: 7,
+  'orange-white': 8,
+  'orange-black': 9,
+  green: 10,
+  'green-white': 11,
+  'green-black': 12,
+};
+
+// Get belt order value (combining adults and kids)
+function getBeltOrderValue(belt: string, stripes: number): number {
+  const adultOrder = adultBeltOrder[belt];
+  const kidsOrder = kidsBeltOrder[belt];
+
+  // Base value: belt order * 10 + stripes (to account for stripes within same belt)
+  if (adultOrder !== undefined) {
+    return adultOrder * 10 + stripes;
+  }
+  if (kidsOrder !== undefined) {
+    // Kids belts start after adult black belt (50+)
+    return 50 + kidsOrder * 10 + stripes;
+  }
+  return 0;
+}
+
+// Get total attendance count
+function getTotalAttendance(student: Student): number {
+  return (student.initialAttendanceCount || 0) + (student.attendanceCount || 0);
+}
+
+// Get tatami start date (jiu-jitsu start date or academy start date)
+function getTatamiStartDate(student: Student): Date {
+  return student.jiujitsuStartDate || student.startDate;
+}
 import { useRouter } from 'next/navigation';
 import { BottomSheet, FadeInView, ScaleOnPress } from '@/components/mobile';
 
@@ -198,6 +261,7 @@ export function StudentList() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [classFilter, setClassFilter] = useState<string>('');
   const [planFilter, setPlanFilter] = useState<string>('');
+  const [sortBy, setSortBy] = useState<SortOption>('alphabetical');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const initialViewModeSet = useRef(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
@@ -228,7 +292,7 @@ export function StudentList() {
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, isSearching, fetchNextPage]);
 
-  // Filter students by class and plan (local filters)
+  // Filter and sort students by class, plan, and sort option
   const filteredStudents = useMemo(() => {
     let result = students;
 
@@ -245,8 +309,35 @@ export function StudentList() {
       result = result.filter(s => s.planId === planFilter);
     }
 
+    // Sort students
+    result = [...result].sort((a, b) => {
+      switch (sortBy) {
+        case 'alphabetical':
+          return a.fullName.localeCompare(b.fullName, 'pt-BR');
+
+        case 'graduation':
+          // Higher graduation first (descending)
+          const aGraduation = getBeltOrderValue(a.currentBelt, a.currentStripes);
+          const bGraduation = getBeltOrderValue(b.currentBelt, b.currentStripes);
+          return bGraduation - aGraduation;
+
+        case 'attendance':
+          // More attendance first (descending)
+          return getTotalAttendance(b) - getTotalAttendance(a);
+
+        case 'tatami_time':
+          // Older (more time on tatami) first - earlier date comes first
+          const aDate = getTatamiStartDate(a);
+          const bDate = getTatamiStartDate(b);
+          return new Date(aDate).getTime() - new Date(bDate).getTime();
+
+        default:
+          return 0;
+      }
+    });
+
     return result;
-  }, [students, classFilter, classes, planFilter]);
+  }, [students, classFilter, classes, planFilter, sortBy]);
 
   // Handle student click
   const handleStudentClick = useCallback(
@@ -301,6 +392,13 @@ export function StudentList() {
   const handlePlanChange = useCallback(
     (e: SelectChangeEvent<string>) => {
       setPlanFilter(e.target.value);
+    },
+    []
+  );
+
+  const handleSortChange = useCallback(
+    (e: SelectChangeEvent<string>) => {
+      setSortBy(e.target.value as SortOption);
     },
     []
   );
@@ -413,6 +511,27 @@ export function StudentList() {
           {plans.map((plan) => (
             <MenuItem key={plan.id} value={plan.id}>
               {plan.name}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+
+      {/* Sort By */}
+      <FormControl size="small" sx={{ minWidth: isMobile ? '100%' : 180 }}>
+        <InputLabel>Ordenar por</InputLabel>
+        <Select
+          value={sortBy}
+          onChange={handleSortChange}
+          label="Ordenar por"
+          startAdornment={
+            <InputAdornment position="start">
+              <ArrowUpDown size={16} />
+            </InputAdornment>
+          }
+        >
+          {sortOptions.map((opt) => (
+            <MenuItem key={opt.value} value={opt.value}>
+              {opt.label}
             </MenuItem>
           ))}
         </Select>

@@ -65,12 +65,16 @@ const getBeltName = (belt: BeltColor | KidsBeltColor): string => {
     black: 'Preta',
     grey: 'Cinza',
     'grey-white': 'Cinza/Branca',
+    'grey-black': 'Cinza/Preta',
     yellow: 'Amarela',
     'yellow-white': 'Amarela/Branca',
+    'yellow-black': 'Amarela/Preta',
     orange: 'Laranja',
     'orange-white': 'Laranja/Branca',
+    'orange-black': 'Laranja/Preta',
     green: 'Verde',
     'green-white': 'Verde/Branca',
+    'green-black': 'Verde/Preta',
   };
   return names[belt] || belt;
 };
@@ -368,6 +372,7 @@ export const achievementService = {
     studentId: string,
     studentName: string,
     attendanceCount: number,
+    milestoneDate?: Date,
     createdBy?: string
   ): Promise<Achievement | null> {
     const milestones = [50, 100, 200, 500, 1000];
@@ -391,7 +396,7 @@ export const achievementService = {
       `${attendanceCount}_presencas`,
       `${attendanceCount} Presenças`,
       `Alcançou a marca de ${attendanceCount} presenças na academia!`,
-      undefined, // Use current date for attendance milestones
+      milestoneDate, // Use the actual date when milestone was reached
       createdBy
     );
   },

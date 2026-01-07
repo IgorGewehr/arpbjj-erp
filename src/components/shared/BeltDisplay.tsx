@@ -16,12 +16,16 @@ const BELT_COLORS: Record<string, string> = {
   // Kids belts
   grey: '#6B7280',
   'grey-white': '#6B7280',
+  'grey-black': '#6B7280',
   yellow: '#EAB308',
   'yellow-white': '#EAB308',
+  'yellow-black': '#EAB308',
   orange: '#EA580C',
   'orange-white': '#EA580C',
+  'orange-black': '#EA580C',
   green: '#16A34A',
   'green-white': '#16A34A',
+  'green-black': '#16A34A',
 };
 
 const BELT_LABELS: Record<string, string> = {
@@ -34,17 +38,26 @@ const BELT_LABELS: Record<string, string> = {
   // Kids belts
   grey: 'Cinza',
   'grey-white': 'Cinza/Branca',
+  'grey-black': 'Cinza/Preta',
   yellow: 'Amarela',
   'yellow-white': 'Amarela/Branca',
+  'yellow-black': 'Amarela/Preta',
   orange: 'Laranja',
   'orange-white': 'Laranja/Branca',
+  'orange-black': 'Laranja/Preta',
   green: 'Verde',
   'green-white': 'Verde/Branca',
+  'green-black': 'Verde/Preta',
 };
 
 // Check if belt has white stripe in the middle
 const hasWhiteStripe = (belt: string): boolean => {
   return belt.endsWith('-white');
+};
+
+// Check if belt has black stripe in the middle
+const hasBlackStripe = (belt: string): boolean => {
+  return belt.endsWith('-black');
 };
 
 // ============================================
@@ -104,7 +117,8 @@ export function BeltDisplay({
   const beltLabel = BELT_LABELS[belt] || belt;
   const isWhiteBelt = belt === 'white';
   const isBlackBelt = belt === 'black';
-  const showMiddleStripe = hasWhiteStripe(belt);
+  const showWhiteStripe = hasWhiteStripe(belt);
+  const showBlackStripe = hasBlackStripe(belt);
 
   return (
     <Box sx={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center', gap: 0.5 }}>
@@ -131,7 +145,7 @@ export function BeltDisplay({
             position: 'relative',
           }}
         >
-          {showMiddleStripe && (
+          {showWhiteStripe && (
             <Box
               sx={{
                 position: 'absolute',
@@ -141,6 +155,20 @@ export function BeltDisplay({
                 transform: 'translateY(-50%)',
                 height: config.height * 0.2,
                 bgcolor: '#FFFFFF',
+                boxShadow: '0 0.5px 1px rgba(0,0,0,0.15)',
+              }}
+            />
+          )}
+          {showBlackStripe && (
+            <Box
+              sx={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                top: '50%',
+                transform: 'translateY(-50%)',
+                height: config.height * 0.2,
+                bgcolor: '#171717',
                 boxShadow: '0 0.5px 1px rgba(0,0,0,0.15)',
               }}
             />

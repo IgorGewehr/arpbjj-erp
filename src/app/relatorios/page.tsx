@@ -79,24 +79,32 @@ const KIDS_BELT_COLORS: Record<KidsBeltColor, string> = {
   white: '#e5e5e5',
   grey: '#6b7280',
   'grey-white': '#6b7280',
+  'grey-black': '#6b7280',
   yellow: '#eab308',
   'yellow-white': '#eab308',
+  'yellow-black': '#eab308',
   orange: '#f97316',
   'orange-white': '#f97316',
+  'orange-black': '#f97316',
   green: '#22c55e',
   'green-white': '#22c55e',
+  'green-black': '#22c55e',
 };
 
 const KIDS_BELT_LABELS: Record<KidsBeltColor, string> = {
   white: 'Branca',
   grey: 'Cinza',
   'grey-white': 'Cinza/Branca',
+  'grey-black': 'Cinza/Preta',
   yellow: 'Amarela',
   'yellow-white': 'Amarela/Branca',
+  'yellow-black': 'Amarela/Preta',
   orange: 'Laranja',
   'orange-white': 'Laranja/Branca',
+  'orange-black': 'Laranja/Preta',
   green: 'Verde',
   'green-white': 'Verde/Branca',
+  'green-black': 'Verde/Preta',
 };
 
 // ============================================

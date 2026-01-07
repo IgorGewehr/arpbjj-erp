@@ -27,12 +27,16 @@ const BELT_COLORS: Record<BeltColor | KidsBeltColor, string> = {
   black: '#171717',
   grey: '#6B7280',
   'grey-white': '#6B7280',
+  'grey-black': '#6B7280',
   yellow: '#EAB308',
   'yellow-white': '#EAB308',
+  'yellow-black': '#EAB308',
   orange: '#EA580C',
   'orange-white': '#EA580C',
+  'orange-black': '#EA580C',
   green: '#16A34A',
   'green-white': '#16A34A',
+  'green-black': '#16A34A',
 };
 
 // ============================================

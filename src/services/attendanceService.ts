@@ -271,10 +271,27 @@ export const attendanceService = {
       );
 
       if (!alreadyHasMilestone) {
+        // Calculate the actual date when milestone was reached
+        // If initialCount >= milestone, we can't determine the exact date
+        // If system records reached the milestone, find the N-th attendance
+        let milestoneDate: Date | undefined;
+
+        if (initialCount < totalCount) {
+          // The milestone was reached in the system, find the exact attendance date
+          const targetSystemIndex = totalCount - initialCount; // Which system attendance hit the milestone
+          const allAttendance = await this.getByStudent(studentId, 10000);
+          // Sort by date ascending to find the N-th attendance
+          const sortedAsc = allAttendance.sort((a, b) => a.date.getTime() - b.date.getTime());
+          if (sortedAsc.length >= targetSystemIndex) {
+            milestoneDate = sortedAsc[targetSystemIndex - 1].date;
+          }
+        }
+
         await achievementService.createAttendanceMilestone(
           studentId,
           studentName,
           totalCount,
+          milestoneDate,
           createdBy
         );
       }
@@ -500,6 +517,163 @@ export const attendanceService = {
   async delete(id: string): Promise<void> {
     const docRef = doc(db, COLLECTION, id);
     await deleteDoc(docRef);
+  },
+
+  // ============================================
+  // Recalculate All Achievements for a Student
+  // ============================================
+  async recalculateAchievementsForStudent(
+    studentId: string,
+    studentName: string,
+    createdBy: string
+  ): Promise<{ anniversaryCreated: string[]; attendanceCreated: string[] }> {
+    const result = {
+      anniversaryCreated: [] as string[],
+      attendanceCreated: [] as string[],
+    };
+
+    // Get student data
+    const student = await studentService.getById(studentId);
+    if (!student) return result;
+
+    // Get all attendance records for this student, sorted by date ascending
+    const allAttendance = await this.getByStudent(studentId, 10000);
+    const sortedAttendance = allAttendance.sort((a, b) => a.date.getTime() - b.date.getTime());
+
+    const initialCount = student.initialAttendanceCount || 0;
+    const systemCount = sortedAttendance.length;
+    const totalCount = initialCount + systemCount;
+
+    // Get existing achievements to avoid duplicates
+    const existingAchievements = await achievementService.getByStudent(studentId);
+
+    // ========== ATTENDANCE MILESTONES ==========
+    for (const milestone of ATTENDANCE_MILESTONES) {
+      if (totalCount >= milestone) {
+        // Check if already exists
+        const alreadyExists = existingAchievements.some(
+          (a) => a.type === 'milestone' && a.milestone === `${milestone}_presencas`
+        );
+
+        if (!alreadyExists) {
+          // Calculate the date when milestone was reached
+          let milestoneDate: Date | undefined;
+
+          if (initialCount >= milestone) {
+            // Milestone was already reached before system records
+            // Use startDate as approximation
+            milestoneDate = student.startDate ? new Date(student.startDate) : undefined;
+          } else {
+            // Find the system attendance that reached this milestone
+            const targetSystemIndex = milestone - initialCount;
+            if (sortedAttendance.length >= targetSystemIndex) {
+              milestoneDate = sortedAttendance[targetSystemIndex - 1].date;
+            }
+          }
+
+          const created = await achievementService.createAttendanceMilestone(
+            studentId,
+            studentName,
+            milestone,
+            milestoneDate,
+            createdBy
+          );
+
+          if (created) {
+            result.attendanceCreated.push(`${milestone} presenças`);
+          }
+        }
+      }
+    }
+
+    // ========== ANNIVERSARY MILESTONES ==========
+    if (student.startDate) {
+      const startDate = new Date(student.startDate);
+      const now = new Date();
+      const yearsTraining = differenceInYears(now, startDate);
+
+      for (const yearMilestone of ANNIVERSARY_MILESTONES) {
+        if (yearsTraining >= yearMilestone) {
+          // Check if already exists
+          const alreadyExists = existingAchievements.some(
+            (a) => a.type === 'milestone' && a.milestone === `${yearMilestone}_anos_treino`
+          );
+
+          if (!alreadyExists) {
+            // Calculate the exact anniversary date
+            const anniversaryDate = addYears(startDate, yearMilestone);
+
+            const created = await achievementService.createAnniversaryMilestone(
+              studentId,
+              studentName,
+              yearMilestone,
+              anniversaryDate,
+              createdBy
+            );
+
+            if (created) {
+              result.anniversaryCreated.push(`${yearMilestone} ano(s)`);
+            }
+          }
+        }
+      }
+    }
+
+    return result;
+  },
+
+  // ============================================
+  // Recalculate All Achievements for All Students
+  // ============================================
+  async recalculateAllAchievements(
+    createdBy: string
+  ): Promise<{
+    studentsProcessed: number;
+    totalAnniversaryCreated: number;
+    totalAttendanceCreated: number;
+    details: Array<{
+      studentId: string;
+      studentName: string;
+      anniversaryCreated: string[];
+      attendanceCreated: string[];
+    }>;
+  }> {
+    const result = {
+      studentsProcessed: 0,
+      totalAnniversaryCreated: 0,
+      totalAttendanceCreated: 0,
+      details: [] as Array<{
+        studentId: string;
+        studentName: string;
+        anniversaryCreated: string[];
+        attendanceCreated: string[];
+      }>,
+    };
+
+    // Get all active students
+    const activeStudents = await studentService.getByStatus('active');
+
+    for (const student of activeStudents) {
+      const studentResult = await this.recalculateAchievementsForStudent(
+        student.id,
+        student.fullName,
+        createdBy
+      );
+
+      result.studentsProcessed++;
+      result.totalAnniversaryCreated += studentResult.anniversaryCreated.length;
+      result.totalAttendanceCreated += studentResult.attendanceCreated.length;
+
+      if (studentResult.anniversaryCreated.length > 0 || studentResult.attendanceCreated.length > 0) {
+        result.details.push({
+          studentId: student.id,
+          studentName: student.fullName,
+          ...studentResult,
+        });
+      }
+    }
+
+    return result;
   },
 };
 

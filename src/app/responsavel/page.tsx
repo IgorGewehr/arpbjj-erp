@@ -43,12 +43,16 @@ const BELT_INFO: Record<BeltColor | KidsBeltColor, { bg: string; text: string; l
   black: { bg: '#171717', text: '#fff', label: 'Preta' },
   grey: { bg: '#6B7280', text: '#fff', label: 'Cinza' },
   'grey-white': { bg: '#6B7280', text: '#fff', label: 'Cinza/Branca' },
+  'grey-black': { bg: '#6B7280', text: '#fff', label: 'Cinza/Preta' },
   yellow: { bg: '#EAB308', text: '#333', label: 'Amarela' },
   'yellow-white': { bg: '#EAB308', text: '#333', label: 'Amarela/Branca' },
+  'yellow-black': { bg: '#EAB308', text: '#333', label: 'Amarela/Preta' },
   orange: { bg: '#EA580C', text: '#fff', label: 'Laranja' },
   'orange-white': { bg: '#EA580C', text: '#fff', label: 'Laranja/Branca' },
+  'orange-black': { bg: '#EA580C', text: '#fff', label: 'Laranja/Preta' },
   green: { bg: '#16A34A', text: '#fff', label: 'Verde' },
   'green-white': { bg: '#16A34A', text: '#fff', label: 'Verde/Branca' },
+  'green-black': { bg: '#16A34A', text: '#fff', label: 'Verde/Preta' },
 };
 
 // ============================================

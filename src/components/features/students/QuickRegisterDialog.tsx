@@ -37,12 +37,16 @@ const kidsBelts: { value: KidsBeltColor; label: string; color: string }[] = [
   { value: 'white', label: 'Branca', color: '#FFFFFF' },
   { value: 'grey', label: 'Cinza', color: '#6B7280' },
   { value: 'grey-white', label: 'Cinza/Branca', color: '#6B7280' },
+  { value: 'grey-black', label: 'Cinza/Preta', color: '#6B7280' },
   { value: 'yellow', label: 'Amarela', color: '#EAB308' },
   { value: 'yellow-white', label: 'Amarela/Branca', color: '#EAB308' },
+  { value: 'yellow-black', label: 'Amarela/Preta', color: '#EAB308' },
   { value: 'orange', label: 'Laranja', color: '#EA580C' },
   { value: 'orange-white', label: 'Laranja/Branca', color: '#EA580C' },
+  { value: 'orange-black', label: 'Laranja/Preta', color: '#EA580C' },
   { value: 'green', label: 'Verde', color: '#16A34A' },
   { value: 'green-white', label: 'Verde/Branca', color: '#16A34A' },
+  { value: 'green-black', label: 'Verde/Preta', color: '#16A34A' },
 ];
 
 // ============================================

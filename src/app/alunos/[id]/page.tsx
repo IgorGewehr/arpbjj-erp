@@ -194,12 +194,16 @@ const beltLabels: Record<string, string> = {
   black: 'Preta',
   grey: 'Cinza',
   'grey-white': 'Cinza/Branca',
+  'grey-black': 'Cinza/Preta',
   yellow: 'Amarela',
   'yellow-white': 'Amarela/Branca',
+  'yellow-black': 'Amarela/Preta',
   orange: 'Laranja',
   'orange-white': 'Laranja/Branca',
+  'orange-black': 'Laranja/Preta',
   green: 'Verde',
   'green-white': 'Verde/Branca',
+  'green-black': 'Verde/Preta',
 };
 
 // ============================================

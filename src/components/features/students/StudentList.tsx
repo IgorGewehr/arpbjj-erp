@@ -113,12 +113,16 @@ const kidsBeltOptions: { value: KidsBeltColor | ''; label: string }[] = [
   { value: 'white', label: 'Branca' },
   { value: 'grey', label: 'Cinza' },
   { value: 'grey-white', label: 'Cinza/Branca' },
+  { value: 'grey-black', label: 'Cinza/Preta' },
   { value: 'yellow', label: 'Amarela' },
   { value: 'yellow-white', label: 'Amarela/Branca' },
+  { value: 'yellow-black', label: 'Amarela/Preta' },
   { value: 'orange', label: 'Laranja' },
   { value: 'orange-white', label: 'Laranja/Branca' },
+  { value: 'orange-black', label: 'Laranja/Preta' },
   { value: 'green', label: 'Verde' },
   { value: 'green-white', label: 'Verde/Branca' },
+  { value: 'green-black', label: 'Verde/Preta' },
 ];
 
 const allBeltOptions: { value: BeltColor | KidsBeltColor | ''; label: string }[] = [
@@ -132,12 +136,16 @@ const allBeltOptions: { value: BeltColor | KidsBeltColor | ''; label: string }[]
   // Kids belts
   { value: 'grey', label: 'Cinza' },
   { value: 'grey-white', label: 'Cinza/Branca' },
+  { value: 'grey-black', label: 'Cinza/Preta' },
   { value: 'yellow', label: 'Amarela' },
   { value: 'yellow-white', label: 'Amarela/Branca' },
+  { value: 'yellow-black', label: 'Amarela/Preta' },
   { value: 'orange', label: 'Laranja' },
   { value: 'orange-white', label: 'Laranja/Branca' },
+  { value: 'orange-black', label: 'Laranja/Preta' },
   { value: 'green', label: 'Verde' },
   { value: 'green-white', label: 'Verde/Branca' },
+  { value: 'green-black', label: 'Verde/Preta' },
 ];
 
 // ============================================

@@ -35,11 +35,15 @@ import {
   Save,
   Calendar,
   Award,
+  RefreshCw,
+  Wrench,
+  Trophy,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useAuth, useFeedback } from '@/components/providers';
 import { settingsService, AcademySettings } from '@/services/settingsService';
+import { attendanceService } from '@/services/attendanceService';
 
 // ============================================
 // Types
@@ -490,6 +494,125 @@ function NotificationsTab() {
 }
 
 // ============================================
+// System Tab (Maintenance)
+// ============================================
+function SystemTab() {
+  const { user } = useAuth();
+  const { success, error } = useFeedback();
+  const [recalculatingAchievements, setRecalculatingAchievements] = useState(false);
+  const [recalculationResult, setRecalculationResult] = useState<{
+    studentsProcessed: number;
+    totalAnniversaryCreated: number;
+    totalAttendanceCreated: number;
+    details: Array<{
+      studentId: string;
+      studentName: string;
+      anniversaryCreated: string[];
+      attendanceCreated: string[];
+    }>;
+  } | null>(null);
+
+  const handleRecalculateAchievements = useCallback(async () => {
+    if (!user?.id) {
+      error('Usuario nao autenticado');
+      return;
+    }
+
+    setRecalculatingAchievements(true);
+    setRecalculationResult(null);
+
+    try {
+      const result = await attendanceService.recalculateAllAchievements(user.id);
+      setRecalculationResult(result);
+      success(`Achievements recalculados! ${result.totalAnniversaryCreated + result.totalAttendanceCreated} conquistas criadas.`);
+    } catch (err) {
+      error('Erro ao recalcular achievements');
+      console.error(err);
+    } finally {
+      setRecalculatingAchievements(false);
+    }
+  }, [user, success, error]);
+
+  return (
+    <SettingsSection
+      title="Manutencao do Sistema"
+      description="Ferramentas de manutencao e correcao de dados"
+      icon={Wrench}
+    >
+      {/* Recalculate Achievements */}
+      <Box sx={{ mb: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Trophy size={20} color="#F59E0B" />
+          <Box>
+            <Typography variant="subtitle1" fontWeight={600}>
+              Recalcular Achievements
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Recalcula todos os marcos (aniversarios de treino e presenças) para todos os alunos ativos com as datas corretas.
+            </Typography>
+          </Box>
+        </Box>
+
+        <Button
+          variant="outlined"
+          color="warning"
+          startIcon={recalculatingAchievements ? <CircularProgress size={16} color="inherit" /> : <RefreshCw size={18} />}
+          onClick={handleRecalculateAchievements}
+          disabled={recalculatingAchievements}
+          sx={{ mb: 2 }}
+        >
+          {recalculatingAchievements ? 'Recalculando...' : 'Recalcular Achievements'}
+        </Button>
+
+        {recalculationResult && (
+          <Paper sx={{ p: 2, bgcolor: 'success.50', borderRadius: 2 }}>
+            <Typography variant="subtitle2" color="success.main" fontWeight={600}>
+              Recalculo Concluido
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 1 }}>
+              <strong>Alunos processados:</strong> {recalculationResult.studentsProcessed}
+            </Typography>
+            <Typography variant="body2">
+              <strong>Aniversarios criados:</strong> {recalculationResult.totalAnniversaryCreated}
+            </Typography>
+            <Typography variant="body2">
+              <strong>Marcos de presenca criados:</strong> {recalculationResult.totalAttendanceCreated}
+            </Typography>
+
+            {recalculationResult.details.length > 0 && (
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="subtitle2" fontWeight={600}>
+                  Detalhes:
+                </Typography>
+                <List dense>
+                  {recalculationResult.details.map((detail) => (
+                    <ListItem key={detail.studentId} sx={{ py: 0.5 }}>
+                      <ListItemText
+                        primary={detail.studentName}
+                        secondary={[
+                          ...detail.anniversaryCreated.map(a => `${a} de treino`),
+                          ...detail.attendanceCreated,
+                        ].join(', ')}
+                      />
+                    </ListItem>
+                  ))}
+                </List>
+              </Box>
+            )}
+          </Paper>
+        )}
+      </Box>
+
+      <Divider sx={{ my: 3 }} />
+
+      <Typography variant="body2" color="text.secondary">
+        Mais ferramentas de manutencao serao adicionadas conforme necessario.
+      </Typography>
+    </SettingsSection>
+  );
+}
+
+// ============================================
 // Main Component
 // ============================================
 export default function ConfiguracoesPage() {
@@ -499,6 +622,7 @@ export default function ConfiguracoesPage() {
     { label: 'Perfil', icon: User },
     { label: 'Academia', icon: Building2 },
     { label: 'Notificacoes', icon: Bell },
+    { label: 'Sistema', icon: Wrench },
   ];
 
   return (
@@ -555,6 +679,7 @@ export default function ConfiguracoesPage() {
               {tabValue === 0 && <ProfileTab />}
               {tabValue === 1 && <AcademyTab />}
               {tabValue === 2 && <NotificationsTab />}
+              {tabValue === 3 && <SystemTab />}
             </Grid>
           </Grid>
         </Box>

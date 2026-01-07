@@ -22,7 +22,7 @@ import {
   Button,
   CircularProgress,
 } from '@mui/material';
-import { Search, Grid, List, Users, Filter, ArrowUpDown } from 'lucide-react';
+import { Search, Grid, List, Users, Filter } from 'lucide-react';
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses, usePlans } from '@/hooks';
@@ -523,11 +523,6 @@ export function StudentList() {
           value={sortBy}
           onChange={handleSortChange}
           label="Ordenar por"
-          startAdornment={
-            <InputAdornment position="start">
-              <ArrowUpDown size={16} />
-            </InputAdornment>
-          }
         >
           {sortOptions.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>

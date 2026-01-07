@@ -236,9 +236,6 @@ export function BottomSheet({
       <Paper
         ref={sheetRef}
         elevation={16}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
         sx={{
           position: 'fixed',
           bottom: 0,
@@ -256,14 +253,18 @@ export function BottomSheet({
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
-        {/* Handle */}
+        {/* Handle - drag events only on handle area */}
         {showHandle && (
           <Box
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
             sx={{
               display: 'flex',
               justifyContent: 'center',
               pt: 1.5,
               pb: 1,
+              cursor: 'grab',
             }}
           >
             <Box

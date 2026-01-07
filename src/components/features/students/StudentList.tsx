@@ -431,6 +431,9 @@ export function StudentList() {
     setPlanFilter('');
   }, [clearFilters, clearSearch]);
 
+  // MenuProps for Selects inside BottomSheet (needs higher z-index)
+  const selectMenuProps = isMobile ? { sx: { zIndex: 1400 } } : undefined;
+
   // Filter content for both desktop and mobile
   const FilterContent = (
     <>
@@ -441,6 +444,7 @@ export function StudentList() {
           value={(filters.belt as string) || ''}
           onChange={handleBeltChange}
           label="Faixa"
+          MenuProps={selectMenuProps}
         >
           {currentBeltOptions.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>
@@ -457,6 +461,7 @@ export function StudentList() {
           value={(filters.status as string) || ''}
           onChange={handleStatusChange}
           label="Status"
+          MenuProps={selectMenuProps}
         >
           {statusOptions.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>
@@ -473,6 +478,7 @@ export function StudentList() {
           value={(filters.category as string) || ''}
           onChange={handleCategoryChange}
           label="Categoria"
+          MenuProps={selectMenuProps}
         >
           {categoryOptions.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>
@@ -489,6 +495,7 @@ export function StudentList() {
           value={classFilter}
           onChange={handleClassChange}
           label="Turma"
+          MenuProps={selectMenuProps}
         >
           <MenuItem value="">Todas as Turmas</MenuItem>
           {classes.map((cls) => (
@@ -506,6 +513,7 @@ export function StudentList() {
           value={planFilter}
           onChange={handlePlanChange}
           label="Plano"
+          MenuProps={selectMenuProps}
         >
           <MenuItem value="">Todos os Planos</MenuItem>
           {plans.map((plan) => (
@@ -523,6 +531,7 @@ export function StudentList() {
           value={sortBy}
           onChange={handleSortChange}
           label="Ordenar por"
+          MenuProps={selectMenuProps}
         >
           {sortOptions.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>

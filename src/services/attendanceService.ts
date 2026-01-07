@@ -264,6 +264,17 @@ export const attendanceService = {
 
     // Check if current total matches any milestone
     if (ATTENDANCE_MILESTONES.includes(totalCount)) {
+      // IMPORTANT: Only create achievement if the milestone was reached through
+      // system attendance records, not through initialAttendanceCount alone
+      // This ensures we have an accurate date for the achievement
+      //
+      // Example: if initialCount = 300, milestones 50, 100, 200 were already passed
+      // before the system, so we skip them. The first achievement would be 500.
+      if (initialCount >= totalCount) {
+        // This milestone was already reached before system records - skip
+        return;
+      }
+
       // Check if achievement already exists
       const existingAchievements = await achievementService.getByStudent(studentId);
       const alreadyHasMilestone = existingAchievements.some(
@@ -271,20 +282,15 @@ export const attendanceService = {
       );
 
       if (!alreadyHasMilestone) {
-        // Calculate the actual date when milestone was reached
-        // If initialCount >= milestone, we can't determine the exact date
-        // If system records reached the milestone, find the N-th attendance
-        let milestoneDate: Date | undefined;
+        // The milestone was reached in the system, find the exact attendance date
+        const targetSystemIndex = totalCount - initialCount; // Which system attendance hit the milestone
+        const allAttendance = await this.getByStudent(studentId, 10000);
+        // Sort by date ascending to find the N-th attendance
+        const sortedAsc = allAttendance.sort((a, b) => a.date.getTime() - b.date.getTime());
 
-        if (initialCount < totalCount) {
-          // The milestone was reached in the system, find the exact attendance date
-          const targetSystemIndex = totalCount - initialCount; // Which system attendance hit the milestone
-          const allAttendance = await this.getByStudent(studentId, 10000);
-          // Sort by date ascending to find the N-th attendance
-          const sortedAsc = allAttendance.sort((a, b) => a.date.getTime() - b.date.getTime());
-          if (sortedAsc.length >= targetSystemIndex) {
-            milestoneDate = sortedAsc[targetSystemIndex - 1].date;
-          }
+        let milestoneDate: Date | undefined;
+        if (sortedAsc.length >= targetSystemIndex) {
+          milestoneDate = sortedAsc[targetSystemIndex - 1].date;
         }
 
         await achievementService.createAttendanceMilestone(
@@ -521,6 +527,8 @@ export const attendanceService = {
 
   // ============================================
   // Recalculate All Achievements for a Student
+  // (Only anniversary milestones - attendance milestones are only created
+  // when reached through system attendance records, not initial counts)
   // ============================================
   async recalculateAchievementsForStudent(
     studentId: string,
@@ -536,57 +544,14 @@ export const attendanceService = {
     const student = await studentService.getById(studentId);
     if (!student) return result;
 
-    // Get all attendance records for this student, sorted by date ascending
-    const allAttendance = await this.getByStudent(studentId, 10000);
-    const sortedAttendance = allAttendance.sort((a, b) => a.date.getTime() - b.date.getTime());
-
-    const initialCount = student.initialAttendanceCount || 0;
-    const systemCount = sortedAttendance.length;
-    const totalCount = initialCount + systemCount;
-
     // Get existing achievements to avoid duplicates
     const existingAchievements = await achievementService.getByStudent(studentId);
 
-    // ========== ATTENDANCE MILESTONES ==========
-    for (const milestone of ATTENDANCE_MILESTONES) {
-      if (totalCount >= milestone) {
-        // Check if already exists
-        const alreadyExists = existingAchievements.some(
-          (a) => a.type === 'milestone' && a.milestone === `${milestone}_presencas`
-        );
-
-        if (!alreadyExists) {
-          // Calculate the date when milestone was reached
-          let milestoneDate: Date | undefined;
-
-          if (initialCount >= milestone) {
-            // Milestone was already reached before system records
-            // Use startDate as approximation
-            milestoneDate = student.startDate ? new Date(student.startDate) : undefined;
-          } else {
-            // Find the system attendance that reached this milestone
-            const targetSystemIndex = milestone - initialCount;
-            if (sortedAttendance.length >= targetSystemIndex) {
-              milestoneDate = sortedAttendance[targetSystemIndex - 1].date;
-            }
-          }
-
-          const created = await achievementService.createAttendanceMilestone(
-            studentId,
-            studentName,
-            milestone,
-            milestoneDate,
-            createdBy
-          );
-
-          if (created) {
-            result.attendanceCreated.push(`${milestone} presenças`);
-          }
-        }
-      }
-    }
-
-    // ========== ANNIVERSARY MILESTONES ==========
+    // ========== ANNIVERSARY MILESTONES ONLY ==========
+    // Attendance milestones are NOT created here because:
+    // - initialAttendanceCount doesn't have exact dates
+    // - They will be created automatically when the student reaches the milestone
+    //   through actual attendance records in the system
     if (student.startDate) {
       const startDate = new Date(student.startDate);
       const now = new Date();

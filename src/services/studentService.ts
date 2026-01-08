@@ -330,6 +330,16 @@ export const studentService = {
   },
 
   // ============================================
+  // Get All Students (for reports)
+  // ============================================
+  async getAll(): Promise<Student[]> {
+    const q = query(collection(db, COLLECTION));
+    const snapshot = await getDocs(q);
+    const students = snapshot.docs.map(docToStudent);
+    return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
+  },
+
+  // ============================================
   // Search Students by Name
   // ============================================
   async search(searchTerm: string): Promise<Student[]> {

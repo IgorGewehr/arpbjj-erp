@@ -1,5 +1,5 @@
 export { useAttendance } from './useAttendance';
-export { useStudents, useStudent } from './useStudents';
+export { useStudents, useStudent, useAllStudents } from './useStudents';
 export { useFinancial } from './useFinancial';
 export { useBeltProgression, useStudentProgression } from './useBeltProgression';
 export { useAssessment, useStudentAssessment } from './useAssessment';

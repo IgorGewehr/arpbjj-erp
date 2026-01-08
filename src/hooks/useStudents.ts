@@ -373,4 +373,27 @@ export function useStudent(studentId: string | null) {
   };
 }
 
+// ============================================
+// useAllStudents Hook (All students for reports)
+// ============================================
+export function useAllStudents() {
+  const {
+    data: students,
+    isLoading,
+    error,
+    refetch,
+  } = useQuery({
+    queryKey: ['allStudents'],
+    queryFn: () => studentService.getAll(),
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  return {
+    students: students || [],
+    isLoading,
+    error,
+    refresh: refetch,
+  };
+}
+
 export default useStudents;

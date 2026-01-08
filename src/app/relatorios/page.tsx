@@ -50,7 +50,7 @@ import {
 } from 'recharts';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
-import { useStudents, useFinancial, useAttendance, useClasses } from '@/hooks';
+import { useAllStudents, useFinancial, useAttendance, useClasses } from '@/hooks';
 import { BeltColor, KidsBeltColor, StudentCategory } from '@/types';
 
 // ============================================
@@ -387,7 +387,7 @@ interface ReportProps {
 
 function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps) {
   const { stats, isLoading } = useAttendance();
-  const { students: allStudents } = useStudents();
+  const { students: allStudents } = useAllStudents();
 
   // Filter students by class and category
   const students = useMemo(() => {
@@ -619,7 +619,7 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
 // ============================================
 function FinancialReport({ classFilter, categoryFilter, classes }: ReportProps) {
   const { stats, financials: allFinancials, pendingPayments: allPendingPayments, overduePayments: allOverduePayments, isLoading } = useFinancial();
-  const { students: allStudents } = useStudents();
+  const { students: allStudents } = useAllStudents();
 
   // Get student IDs filtered by category
   const filteredStudentIds = useMemo(() => {
@@ -902,7 +902,7 @@ function FinancialReport({ classFilter, categoryFilter, classes }: ReportProps) 
 // Students Report Tab
 // ============================================
 function StudentsReport({ classFilter, categoryFilter, classes }: ReportProps) {
-  const { students: allStudents, isLoading } = useStudents();
+  const { students: allStudents, isLoading } = useAllStudents();
 
   // Filter students
   const students = useMemo(() => {

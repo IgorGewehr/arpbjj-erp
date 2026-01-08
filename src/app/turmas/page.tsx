@@ -336,7 +336,12 @@ function ManageStudentsDialog({
     if (!classData) return [];
 
     // Filter by category and search
-    let filtered = students.filter((s) => s.category === classData.category && s.status === 'active');
+    // Allow kids students to be added to adult classes (teacher discretion)
+    let filtered = students.filter((s) => {
+      if (s.status !== 'active') return false;
+      if (classData.category === 'adult') return true; // Adult classes accept both kids and adult students
+      return s.category === classData.category; // Kids classes only accept kids students
+    });
 
     if (search) {
       const term = search.toLowerCase();

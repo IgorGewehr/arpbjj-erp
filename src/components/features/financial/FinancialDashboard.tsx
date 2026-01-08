@@ -413,14 +413,27 @@ function ManagePlanStudentsDialog({
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredStudents = useMemo(() => {
-    if (!searchTerm) return students;
-    const term = searchTerm.toLowerCase();
-    return students.filter(
-      (s) =>
-        s.fullName.toLowerCase().includes(term) ||
-        s.nickname?.toLowerCase().includes(term)
-    );
-  }, [students, searchTerm]);
+    let result = students;
+
+    // Filter by search term if provided
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.fullName.toLowerCase().includes(term) ||
+          s.nickname?.toLowerCase().includes(term)
+      );
+    }
+
+    // Sort: enrolled students first, then alphabetically
+    return result.sort((a, b) => {
+      const aInPlan = plan?.studentIds?.includes(a.id) || false;
+      const bInPlan = plan?.studentIds?.includes(b.id) || false;
+      if (aInPlan && !bInPlan) return -1;
+      if (!aInPlan && bInPlan) return 1;
+      return a.fullName.localeCompare(b.fullName);
+    });
+  }, [students, searchTerm, plan]);
 
   const enrolledCount = useMemo(() => {
     return students.filter((s) => plan?.studentIds?.includes(s.id)).length;

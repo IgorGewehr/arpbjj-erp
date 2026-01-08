@@ -41,10 +41,12 @@ import {
   Calendar,
   History,
   RefreshCw,
+  UserPlus,
 } from 'lucide-react';
 import { AttendanceCard, AttendanceCardSkeleton } from './AttendanceCard';
 import { MobileAttendanceList } from './MobileAttendanceList';
-import { useAttendance } from '@/hooks';
+import { QuickAddToClassDialog } from './QuickAddToClassDialog';
+import { useAttendance, useClasses } from '@/hooks';
 import { useConfirmDialog } from '@/components/providers';
 import {
   format,
@@ -442,10 +444,16 @@ export function AttendanceGrid({
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [mobileCalendarOpen, setMobileCalendarOpen] = useState(false);
+  const [quickAddDialogOpen, setQuickAddDialogOpen] = useState(false);
+  const [isAddingStudent, setIsAddingStudent] = useState(false);
   const { confirm } = useConfirmDialog();
+
+  // Hook for adding students to class
+  const { toggleStudent } = useClasses();
 
   const {
     students,
+    allActiveStudents,
     allClasses,
     classesForDate,
     selectedClass,
@@ -549,16 +557,52 @@ export function AttendanceGrid({
     }
   };
 
+  // Handle adding student to class and marking present
+  const handleAddAndMarkPresent = useCallback(
+    async (student: Student) => {
+      if (!selectedClassId || !selectedClass) return;
+
+      setIsAddingStudent(true);
+      try {
+        // 1. Add student to the class
+        await toggleStudent({ classId: selectedClassId, studentId: student.id });
+
+        // 2. Mark student as present
+        toggleAttendance(student);
+
+        // 3. Refresh data to show the student in the list
+        refresh();
+      } catch (err) {
+        console.error('Error adding student to class:', err);
+      } finally {
+        setIsAddingStudent(false);
+      }
+    },
+    [selectedClassId, selectedClass, toggleStudent, toggleAttendance, refresh]
+  );
+
+  // Get enrolled student IDs for the selected class
+  const enrolledStudentIds = useMemo(() => {
+    return selectedClass?.studentIds || [];
+  }, [selectedClass]);
+
   // Format selected date
   const formattedDate = useMemo(() => {
     return format(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR });
   }, [selectedDate]);
 
+  // Compact date label for mobile
+  const compactDateLabel = useMemo(() => {
+    if (isSelectedDateToday) return 'Hoje';
+    return format(selectedDate, 'dd/MM', { locale: ptBR });
+  }, [selectedDate, isSelectedDateToday]);
+
   // Loading skeletons
   if (isLoading) {
     return (
       <Box>
-        <Box sx={{ mb: 4 }}>
+        {/* Desktop header */}
+        <Box sx={{ mb: 4, display: { xs: 'none', sm: 'block' } }}>
           <Typography variant="h4" fontWeight={700} gutterBottom>
             Chamada
           </Typography>
@@ -567,15 +611,24 @@ export function AttendanceGrid({
           </Typography>
         </Box>
 
-        <Grid container spacing={2} sx={{ mb: 4 }}>
-          {[1, 2, 3, 4].map((i) => (
-            <Grid size={{ xs: 12, sm: 6, md: 3 }} key={i}>
+        {/* Desktop stats */}
+        <Grid container spacing={2} sx={{ mb: 4, display: { xs: 'none', sm: 'flex' } }}>
+          {[1, 2, 3].map((i) => (
+            <Grid size={{ sm: 6, md: 4 }} key={i}>
               <AttendanceCardSkeleton />
             </Grid>
           ))}
         </Grid>
 
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
+        {/* Mobile: Simple list skeletons */}
+        <Box sx={{ display: { xs: 'flex', sm: 'none' }, flexDirection: 'column', gap: 1 }}>
+          {[1, 2, 3, 4, 5].map((i) => (
+            <Paper key={i} sx={{ height: 72, borderRadius: 2.5, bgcolor: 'action.hover' }} />
+          ))}
+        </Box>
+
+        {/* Desktop: Grid skeletons */}
+        <Box sx={{ display: { xs: 'none', sm: 'grid' }, gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 2 }}>
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <AttendanceCardSkeleton key={i} />
           ))}
@@ -586,15 +639,15 @@ export function AttendanceGrid({
 
   return (
     <Box>
-      {/* Header */}
+      {/* Header - Desktop Only */}
       <Box
         sx={{
-          display: 'flex',
+          display: { xs: 'none', sm: 'flex' },
           alignItems: 'flex-start',
           justifyContent: 'space-between',
-          mb: { xs: 2, sm: 3 },
+          mb: 3,
           flexWrap: 'wrap',
-          gap: { xs: 1, sm: 2 },
+          gap: 2,
         }}
       >
         <Box>
@@ -602,7 +655,7 @@ export function AttendanceGrid({
             variant="h4"
             fontWeight={700}
             gutterBottom
-            sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
+            sx={{ fontSize: '2rem' }}
           >
             Chamada
           </Typography>
@@ -610,51 +663,51 @@ export function AttendanceGrid({
             <Typography
               variant="body1"
               color="text.secondary"
-              sx={{ textTransform: 'capitalize', fontSize: { xs: '0.8rem', sm: '1rem' } }}
+              sx={{ textTransform: 'capitalize' }}
             >
               {formattedDate}
             </Typography>
             {!isSelectedDateToday && (
               <Chip
-                icon={<History size={isMobile ? 12 : 14} />}
+                icon={<History size={14} />}
                 label="Historico"
                 size="small"
                 variant="outlined"
-                sx={{ height: isMobile ? 22 : 24, fontSize: isMobile ? '0.65rem' : '0.75rem', borderColor: '#525252', color: '#525252' }}
+                sx={{ height: 24, fontSize: '0.75rem', borderColor: '#525252', color: '#525252' }}
               />
             )}
             {isSelectedDateToday && (
               <Chip
-                icon={<Clock size={isMobile ? 12 : 14} />}
+                icon={<Clock size={14} />}
                 label={format(new Date(), 'HH:mm')}
                 size="small"
                 variant="outlined"
-                sx={{ height: isMobile ? 22 : 24, fontSize: isMobile ? '0.65rem' : '0.75rem' }}
+                sx={{ height: 24, fontSize: '0.75rem' }}
               />
             )}
           </Box>
         </Box>
 
-        {/* Quick Navigation */}
+        {/* Quick Navigation - Desktop Only */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <IconButton onClick={goToPreviousDay} size="small">
-            <ChevronLeft size={isMobile ? 18 : 20} />
+            <ChevronLeft size={20} />
           </IconButton>
           <Button
             variant={isSelectedDateToday ? 'contained' : 'outlined'}
             size="small"
             onClick={goToToday}
-            startIcon={!isMobile && <Calendar size={16} />}
-            sx={{ minWidth: isMobile ? 'auto' : undefined, px: isMobile ? 1.5 : 2 }}
+            startIcon={<Calendar size={16} />}
+            sx={{ px: 2 }}
           >
-            {isMobile ? <Calendar size={16} /> : 'Hoje'}
+            Hoje
           </Button>
           <IconButton
             onClick={goToNextDay}
             size="small"
             disabled={addDays(selectedDate, 1) > new Date()}
           >
-            <ChevronRight size={isMobile ? 18 : 20} />
+            <ChevronRight size={20} />
           </IconButton>
           <IconButton
             onClick={refresh}
@@ -662,7 +715,7 @@ export function AttendanceGrid({
             title="Atualizar dados"
             sx={{ ml: 0.5 }}
           >
-            <RefreshCw size={isMobile ? 16 : 18} />
+            <RefreshCw size={18} />
           </IconButton>
         </Box>
       </Box>
@@ -825,72 +878,73 @@ export function AttendanceGrid({
 
         {/* Right Side - Attendance */}
         <Grid size={{ xs: 12, md: 8, lg: 9 }}>
-          {/* Mobile Class Selector */}
-          <Box sx={{ display: { xs: 'block', md: 'none' }, mb: 2 }}>
-            <Paper sx={{ p: 2, borderRadius: 2 }}>
-              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-                <FormControl size="small" sx={{ flex: 1 }}>
-                  <InputLabel>Turma</InputLabel>
-                  <Select
-                    value={selectedClassId || ''}
-                    onChange={handleClassChange}
-                    label="Turma"
-                  >
-                    {classesForDate.length === 0 ? (
-                      <MenuItem value="" disabled>Sem aulas</MenuItem>
-                    ) : (
-                      classesForDate.map((cls) => (
-                        <MenuItem key={cls.id} value={cls.id}>{cls.name}</MenuItem>
-                      ))
-                    )}
-                  </Select>
-                </FormControl>
-                <IconButton
-                  onClick={() => setMobileCalendarOpen(true)}
-                  sx={{ bgcolor: 'action.hover', borderRadius: 2 }}
+          {/* Mobile Class Selector - Compact */}
+          <Box sx={{ display: { xs: 'block', md: 'none' }, mb: 1.5 }}>
+            <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+              <FormControl size="small" sx={{ flex: 1 }}>
+                <InputLabel>Turma</InputLabel>
+                <Select
+                  value={selectedClassId || ''}
+                  onChange={handleClassChange}
+                  label="Turma"
+                  sx={{ bgcolor: 'background.paper', borderRadius: 2 }}
                 >
-                  <Calendar size={20} />
-                </IconButton>
-              </Box>
-            </Paper>
+                  {classesForDate.length === 0 ? (
+                    <MenuItem value="" disabled>Sem aulas</MenuItem>
+                  ) : (
+                    classesForDate.map((cls) => (
+                      <MenuItem key={cls.id} value={cls.id}>{cls.name}</MenuItem>
+                    ))
+                  )}
+                </Select>
+              </FormControl>
+              <Chip
+                label={compactDateLabel}
+                onClick={() => setMobileCalendarOpen(true)}
+                icon={<Calendar size={14} />}
+                variant={isSelectedDateToday ? 'filled' : 'outlined'}
+                sx={{
+                  height: 40,
+                  borderRadius: 2,
+                  px: 0.5,
+                  bgcolor: isSelectedDateToday ? 'primary.main' : 'background.paper',
+                  color: isSelectedDateToday ? 'white' : 'text.primary',
+                  border: isSelectedDateToday ? 'none' : '1px solid',
+                  borderColor: 'divider',
+                  fontWeight: 600,
+                  fontSize: '0.85rem',
+                  '& .MuiChip-icon': {
+                    color: isSelectedDateToday ? 'white' : 'text.secondary',
+                  },
+                }}
+              />
+            </Box>
           </Box>
 
-          {/* Stats */}
-          <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: { xs: 2, sm: 3 } }}>
-            <Grid size={{ xs: 3, sm: 6, md: 3 }}>
+          {/* Stats - Desktop Only (3 cards) */}
+          <Grid container spacing={2} sx={{ mb: 3, display: { xs: 'none', sm: 'flex' } }}>
+            <Grid size={{ sm: 6, md: 4 }}>
               <StatCard
                 icon={Users}
-                label={isMobile ? "Total" : "Total de Alunos"}
+                label="Total de Alunos"
                 value={stats.totalStudents}
                 color="primary"
-                compact={isMobile}
               />
             </Grid>
-            <Grid size={{ xs: 3, sm: 6, md: 3 }}>
+            <Grid size={{ sm: 6, md: 4 }}>
               <StatCard
                 icon={CheckCircle}
                 label="Presentes"
                 value={stats.presentCount}
                 color="success"
-                compact={isMobile}
               />
             </Grid>
-            <Grid size={{ xs: 3, sm: 6, md: 3 }}>
+            <Grid size={{ sm: 6, md: 4 }}>
               <StatCard
                 icon={XCircle}
                 label="Ausentes"
                 value={stats.absentCount}
                 color="error"
-                compact={isMobile}
-              />
-            </Grid>
-            <Grid size={{ xs: 3, sm: 6, md: 3 }}>
-              <StatCard
-                icon={CheckCircle}
-                label={isMobile ? "Taxa" : "Taxa de Presenca"}
-                value={`${stats.attendanceRate}%`}
-                color="info"
-                compact={isMobile}
               />
             </Grid>
           </Grid>
@@ -1001,17 +1055,28 @@ export function AttendanceGrid({
           {selectedClassId && students.length === 0 && (
             <Paper
               sx={{
-                p: 4,
+                p: { xs: 3, sm: 4 },
                 textAlign: 'center',
                 borderRadius: 3,
               }}
             >
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                Nenhum aluno encontrado
+              <Typography variant="h6" color="text.secondary" gutterBottom sx={{ fontSize: { xs: '1rem', sm: '1.25rem' } }}>
+                Nenhum aluno na turma
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Nao ha alunos ativos para esta turma
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Adicione alunos para iniciar a chamada
               </Typography>
+              <Button
+                variant="contained"
+                startIcon={<UserPlus size={18} />}
+                onClick={() => setQuickAddDialogOpen(true)}
+                sx={{
+                  bgcolor: '#16a34a',
+                  '&:hover': { bgcolor: '#15803d' },
+                }}
+              >
+                Adicionar Aluno
+              </Button>
             </Paper>
           )}
 
@@ -1048,6 +1113,7 @@ export function AttendanceGrid({
               onToggle={toggleAttendance}
               onMarkAll={handleMarkAllPresent}
               onUnmarkAll={handleUnmarkAllPresent}
+              onAddStudent={() => setQuickAddDialogOpen(true)}
             />
           )}
 
@@ -1095,6 +1161,37 @@ export function AttendanceGrid({
           )}
         </Grid>
       </Grid>
+
+      {/* FAB to add student to class - Desktop/Tablet only (mobile has button in toolbar) */}
+      {selectedClassId && !isMobile && (
+        <Fab
+          color="primary"
+          onClick={() => setQuickAddDialogOpen(true)}
+          sx={{
+            position: 'fixed',
+            bottom: 24,
+            right: 24,
+            bgcolor: '#16a34a',
+            '&:hover': {
+              bgcolor: '#15803d',
+            },
+          }}
+          aria-label="Adicionar aluno a turma"
+        >
+          <UserPlus size={24} />
+        </Fab>
+      )}
+
+      {/* Quick Add to Class Dialog */}
+      <QuickAddToClassDialog
+        open={quickAddDialogOpen}
+        onClose={() => setQuickAddDialogOpen(false)}
+        selectedClass={selectedClass}
+        allStudents={allActiveStudents}
+        enrolledStudentIds={enrolledStudentIds}
+        onAddAndMarkPresent={handleAddAndMarkPresent}
+        isAdding={isAddingStudent}
+      />
     </Box>
   );
 }

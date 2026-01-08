@@ -73,6 +73,9 @@ export function usePlans() {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.plans] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activePlans] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.plan, updatedPlan.id] });
+      // Also invalidate students since their tuitionValue/tuitionDay may have been updated
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['student'] });
       success('Plano atualizado com sucesso!');
     },
     onError: () => {
@@ -107,6 +110,9 @@ export function usePlans() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.plans] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activePlans] });
+      // Also invalidate students since tuitionValue/tuitionDay are synced
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['student'] });
     },
     onError: () => {
       showError('Erro ao atualizar aluno no plano');

@@ -547,6 +547,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
   return {
     // Data
     students: filteredStudents,
+    allActiveStudents: students, // All active students (not filtered by class)
     allClasses,
     classesForDate,
     todayClasses: classesForDate, // Alias for backwards compatibility

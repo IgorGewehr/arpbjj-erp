@@ -13,7 +13,7 @@ import {
   Button,
   useTheme,
 } from '@mui/material';
-import { Search, X, CheckCircle, Circle, Filter, CheckCheck, XCircle } from 'lucide-react';
+import { Search, X, CheckCircle, Circle, Filter, CheckCheck, XCircle, UserPlus } from 'lucide-react';
 import { Student, BeltColor, KidsBeltColor } from '@/types';
 
 // ============================================
@@ -48,6 +48,7 @@ interface MobileAttendanceListProps {
   onToggle: (student: Student) => void;
   onMarkAll?: () => void;
   onUnmarkAll?: () => void;
+  onAddStudent?: () => void;
   isLoading?: boolean;
 }
 
@@ -193,6 +194,7 @@ export function MobileAttendanceList({
   onToggle,
   onMarkAll,
   onUnmarkAll,
+  onAddStudent,
   isLoading,
 }: MobileAttendanceListProps) {
   const theme = useTheme();
@@ -334,55 +336,75 @@ export function MobileAttendanceList({
           />
         </Box>
 
-        {/* Mark All / Unmark All Buttons */}
-        {(onMarkAll || onUnmarkAll) && (
-          <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
-            {onMarkAll && (
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<CheckCheck size={16} />}
-                onClick={onMarkAll}
-                sx={{
-                  flex: 1,
-                  borderRadius: 2,
-                  borderColor: 'success.main',
-                  color: 'success.main',
-                  fontSize: '0.75rem',
-                  py: 0.75,
-                  '&:hover': {
-                    borderColor: 'success.dark',
-                    bgcolor: 'success.50',
-                  },
-                }}
-              >
-                Marcar Todos
-              </Button>
-            )}
-            {onUnmarkAll && (
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<XCircle size={16} />}
-                onClick={onUnmarkAll}
-                sx={{
-                  flex: 1,
-                  borderRadius: 2,
-                  borderColor: 'grey.400',
-                  color: 'grey.600',
-                  fontSize: '0.75rem',
-                  py: 0.75,
-                  '&:hover': {
-                    borderColor: 'grey.600',
-                    bgcolor: 'grey.100',
-                  },
-                }}
-              >
-                Desmarcar Todos
-              </Button>
-            )}
-          </Box>
-        )}
+        {/* Action Buttons */}
+        <Box sx={{ display: 'flex', gap: 1, mt: 1.5 }}>
+          {/* Add Student Button - Always visible */}
+          {onAddStudent && (
+            <Button
+              variant="contained"
+              size="small"
+              startIcon={<UserPlus size={16} />}
+              onClick={onAddStudent}
+              sx={{
+                flex: 1,
+                borderRadius: 2,
+                bgcolor: '#16a34a',
+                color: 'white',
+                fontSize: '0.75rem',
+                py: 0.75,
+                '&:hover': {
+                  bgcolor: '#15803d',
+                },
+              }}
+            >
+              Adicionar
+            </Button>
+          )}
+          {onMarkAll && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<CheckCheck size={16} />}
+              onClick={onMarkAll}
+              sx={{
+                flex: 1,
+                borderRadius: 2,
+                borderColor: '#1a1a1a',
+                color: '#1a1a1a',
+                fontSize: '0.75rem',
+                py: 0.75,
+                '&:hover': {
+                  borderColor: '#1a1a1a',
+                  bgcolor: '#f5f5f5',
+                },
+              }}
+            >
+              Todos
+            </Button>
+          )}
+          {onUnmarkAll && (
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<XCircle size={16} />}
+              onClick={onUnmarkAll}
+              sx={{
+                flex: 1,
+                borderRadius: 2,
+                borderColor: 'grey.400',
+                color: 'grey.600',
+                fontSize: '0.75rem',
+                py: 0.75,
+                '&:hover': {
+                  borderColor: 'grey.600',
+                  bgcolor: 'grey.100',
+                },
+              }}
+            >
+              Limpar
+            </Button>
+          )}
+        </Box>
       </Box>
 
       {/* Students List */}

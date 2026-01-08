@@ -118,6 +118,9 @@ export const planService = {
   async update(id: string, data: Partial<Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Plan> {
     const docRef = doc(db, COLLECTION, id);
 
+    // Get current plan to check for students that need syncing
+    const currentPlan = await this.getById(id);
+
     const updateData: Record<string, unknown> = {
       updatedAt: Timestamp.fromDate(new Date()),
     };
@@ -132,6 +135,25 @@ export const planService = {
     if (data.studentIds !== undefined) updateData.studentIds = data.studentIds;
 
     await updateDoc(docRef, updateData);
+
+    // If monthlyValue or defaultDueDay changed, sync all enrolled students
+    if (currentPlan && currentPlan.studentIds.length > 0) {
+      const shouldSyncValue = data.monthlyValue !== undefined && data.monthlyValue !== currentPlan.monthlyValue;
+      const shouldSyncDay = data.defaultDueDay !== undefined && data.defaultDueDay !== currentPlan.defaultDueDay;
+
+      if (shouldSyncValue || shouldSyncDay) {
+        const now = Timestamp.fromDate(new Date());
+        const syncData: Record<string, unknown> = { updatedAt: now };
+        if (shouldSyncValue) syncData.tuitionValue = data.monthlyValue;
+        if (shouldSyncDay) syncData.tuitionDay = data.defaultDueDay;
+
+        // Update all enrolled students with new values
+        for (const studentId of currentPlan.studentIds) {
+          const studentDocRef = doc(db, 'students', studentId);
+          await updateDoc(studentDocRef, syncData);
+        }
+      }
+    }
 
     const updatedDoc = await getDoc(docRef);
     return docToPlan(updatedDoc);
@@ -203,17 +225,19 @@ export const planService = {
     // Sync student's planId and tuitionDay fields
     const studentDocRef = doc(db, 'students', studentId);
     if (isEnrolled) {
-      // Removing from plan - clear planId
+      // Removing from plan - clear planId and tuitionValue
       await updateDoc(studentDocRef, {
         planId: null,
+        tuitionValue: 0,
         updatedAt: Timestamp.fromDate(new Date()),
       });
     } else {
-      // Adding to plan - set planId and tuitionDay from plan's defaultDueDay
+      // Adding to plan - set planId, tuitionDay and tuitionValue from plan
+      // Use original plan values to ensure we have the correct monthlyValue
       await updateDoc(studentDocRef, {
         planId: planId,
-        tuitionDay: updatedPlan.defaultDueDay,
-        tuitionValue: updatedPlan.monthlyValue,
+        tuitionDay: plan.defaultDueDay,
+        tuitionValue: plan.monthlyValue,
         updatedAt: Timestamp.fromDate(new Date()),
       });
     }

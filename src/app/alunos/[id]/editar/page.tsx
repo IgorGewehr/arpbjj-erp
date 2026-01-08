@@ -208,7 +208,7 @@ export default function StudentEditPage() {
         currentStripes: student.currentStripes,
         status: student.status,
         statusNote: student.statusNote || '',
-        tuitionValue: student.tuitionValue?.toString() || '150',
+        tuitionValue: student.tuitionValue?.toString() || '0',
         tuitionDay: student.tuitionDay?.toString() || '10',
         weight: student.weight?.toString() || '',
         initialAttendanceCount: student.initialAttendanceCount?.toString() || '',
@@ -335,7 +335,7 @@ export default function StudentEditPage() {
         currentStripes: formData.currentStripes,
         status: formData.status,
         statusNote: formData.statusNote.trim() || undefined,
-        tuitionValue: parseFloat(formData.tuitionValue) || 150,
+        tuitionValue: parseFloat(formData.tuitionValue) || 0,
         tuitionDay: parseInt(formData.tuitionDay) || 10,
         weight: formData.weight ? parseFloat(formData.weight) : undefined,
         initialAttendanceCount: formData.initialAttendanceCount ? parseInt(formData.initialAttendanceCount) : undefined,
@@ -828,6 +828,15 @@ export default function StudentEditPage() {
                             }
                             if (newPlanId) {
                               await togglePlanStudent({ planId: newPlanId, studentId });
+                              // Atualizar o formulário com os valores do novo plano
+                              const selectedPlan = activePlans.find((p) => p.id === newPlanId);
+                              if (selectedPlan) {
+                                handleChange('tuitionValue', selectedPlan.monthlyValue.toString());
+                                handleChange('tuitionDay', selectedPlan.defaultDueDay.toString());
+                              }
+                            } else {
+                              // Sem plano - zerar valores
+                              handleChange('tuitionValue', '0');
                             }
                             setCurrentPlanId(newPlanId);
                           }}

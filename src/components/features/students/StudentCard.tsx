@@ -10,7 +10,7 @@ import {
   Chip,
   IconButton,
 } from '@mui/material';
-import { Phone, AlertCircle, ChevronRight } from 'lucide-react';
+import { Phone, AlertCircle, ChevronRight, Target } from 'lucide-react';
 import { Student } from '@/types';
 import { getBeltChipColor } from '@/lib/theme';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
@@ -23,6 +23,29 @@ interface StudentCardProps {
   onClick?: (student: Student) => void;
   onWhatsApp?: (student: Student) => void;
   compact?: boolean;
+}
+
+// ============================================
+// Attendance Count Display (Target icon)
+// ============================================
+function AttendanceCountBadge({ count, size = 'normal' }: { count: number; size?: 'small' | 'normal' }) {
+  const isSmall = size === 'small';
+  return (
+    <Chip
+      icon={<Target size={isSmall ? 10 : 12} />}
+      label={count}
+      size="small"
+      sx={{
+        fontSize: isSmall ? '0.6rem' : '0.65rem',
+        fontWeight: 700,
+        height: isSmall ? 18 : 22,
+        bgcolor: '#DCFCE7',
+        color: '#15803D',
+        '& .MuiChip-icon': { color: '#22C55E', ml: 0.5 },
+        '& .MuiChip-label': { px: isSmall ? 0.5 : 0.75 },
+      }}
+    />
+  );
 }
 
 // ============================================
@@ -67,6 +90,8 @@ export function StudentCard({
   onWhatsApp,
   compact = false,
 }: StudentCardProps) {
+  // Calculate total attendance count
+  const totalAttendance = (student.attendanceCount || 0) + (student.initialAttendanceCount || 0);
   const beltColor = getBeltChipColor(student.currentBelt);
   const status = statusConfig[student.status];
 
@@ -139,7 +164,7 @@ export function StudentCard({
               >
                 {student.fullName}
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                 <BeltDisplay
                   belt={student.currentBelt}
                   stripes={student.currentStripes}
@@ -150,19 +175,21 @@ export function StudentCard({
                   size="small"
                   color={status.color}
                   variant="outlined"
-                  sx={{ fontSize: '0.65rem', height: 20 }}
+                  sx={{ fontSize: '0.6rem', height: 18 }}
                 />
                 <Chip
                   label={student.category === 'kids' ? 'Kids' : 'Adulto'}
                   size="small"
                   variant="outlined"
-                  sx={{ fontSize: '0.65rem', height: 20 }}
+                  sx={{ fontSize: '0.6rem', height: 18 }}
                 />
+                {/* Attendance Count - next to tags */}
+                <AttendanceCountBadge count={totalAttendance} size="small" />
               </Box>
             </Box>
 
-            {/* Phone Info */}
-            <Box sx={{ display: { xs: 'none', sm: 'flex' }, alignItems: 'center', gap: 1, minWidth: 140 }}>
+            {/* Phone Info - Desktop only */}
+            <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 1, minWidth: 140 }}>
               <Phone size={14} style={{ color: '#9ca3af' }} />
               <Typography variant="body2" color="text.secondary">
                 {student.phone}
@@ -171,14 +198,14 @@ export function StudentCard({
           </Box>
         </CardActionArea>
 
-        {/* Actions - positioned outside CardActionArea to avoid nested buttons */}
+        {/* Actions - Desktop only (phone button and arrow) */}
         <Box
           sx={{
             position: 'absolute',
             right: 16,
             top: '50%',
             transform: 'translateY(-50%)',
-            display: 'flex',
+            display: { xs: 'none', md: 'flex' },
             alignItems: 'center',
             gap: 1,
             zIndex: 1,
@@ -273,21 +300,25 @@ export function StudentCard({
               />
             </Box>
 
-            {/* Tags */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Chip
-                label={status.label}
-                size="small"
-                color={status.color}
-                variant="outlined"
-                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
-              />
-              <Chip
-                label={student.category === 'kids' ? 'Kids' : 'Adulto'}
-                size="small"
-                variant="outlined"
-                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
-              />
+            {/* Tags + Attendance Count */}
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Chip
+                  label={status.label}
+                  size="small"
+                  color={status.color}
+                  variant="outlined"
+                  sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
+                />
+                <Chip
+                  label={student.category === 'kids' ? 'Kids' : 'Adulto'}
+                  size="small"
+                  variant="outlined"
+                  sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
+                />
+              </Box>
+              {/* Attendance Count */}
+              <AttendanceCountBadge count={totalAttendance} />
             </Box>
           </Box>
         </Box>

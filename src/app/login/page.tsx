@@ -18,10 +18,6 @@ import {
 } from '@mui/material';
 import { Mail, Lock, Eye, EyeOff, GraduationCap, Sparkles, Shield } from 'lucide-react';
 import { useAuth } from '@/components/providers';
-import { motion } from 'framer-motion';
-
-const MotionBox = motion.create(Box);
-const MotionPaper = motion.create(Paper);
 
 export default function LoginPage() {
   const router = useRouter();
@@ -132,10 +128,7 @@ export default function LoginPage() {
         }}
       />
 
-      <MotionPaper
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
+      <Paper
         elevation={0}
         sx={{
           width: '100%',
@@ -158,10 +151,7 @@ export default function LoginPage() {
         }}
       >
         {/* Modern Header */}
-        <MotionBox
-          initial={{ scale: 0.9, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ delay: 0.2, duration: 0.4 }}
+        <Box
           sx={{
             display: 'flex',
             flexDirection: 'column',
@@ -205,15 +195,11 @@ export default function LoginPage() {
           >
             Acesse sua conta para continuar
           </Typography>
-        </MotionBox>
+        </Box>
 
         {/* Error Alert */}
         {error && (
-          <MotionBox
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            sx={{ width: '100%', mb: 2 }}
-          >
+          <Box sx={{ width: '100%', mb: 2 }}>
             <Alert
               severity="error"
               sx={{
@@ -225,7 +211,7 @@ export default function LoginPage() {
             >
               {error}
             </Alert>
-          </MotionBox>
+          </Box>
         )}
 
         {/* Login Form */}
@@ -374,7 +360,7 @@ export default function LoginPage() {
         >
           Sistema de Gestão de Academia
         </Typography>
-      </MotionPaper>
+      </Paper>
     </Box>
   );
 }

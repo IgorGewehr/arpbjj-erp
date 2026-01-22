@@ -167,10 +167,10 @@ firestore/
 ## Próximos Passos (Pendentes)
 
 ### Refatorar Services Restantes:
-- [ ] `classService.ts`
-- [ ] `attendanceService.ts`
-- [ ] `financialService.ts`
-- [ ] `achievementService.ts`
+- [x] `classService.ts` ✅
+- [x] `attendanceService.ts` ✅
+- [x] `financialService.ts` ✅
+- [x] `achievementService.ts` ✅
 - [ ] `beltProgressionService.ts`
 - [ ] `planService.ts`
 - [ ] `linkCodeService.ts`

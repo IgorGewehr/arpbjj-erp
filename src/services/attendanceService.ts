@@ -1,26 +1,26 @@
 import {
-  collection,
-  doc,
   getDocs,
   getDoc,
   addDoc,
   deleteDoc,
   query,
   where,
-  serverTimestamp,
   Timestamp,
   DocumentSnapshot,
   writeBatch,
   updateDoc,
   increment,
+  CollectionReference,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { collections } from '@/lib/firebase/collections';
 import { Attendance, AttendanceFilters } from '@/types';
 import { startOfDay, endOfDay, format, differenceInYears, addYears } from 'date-fns';
-import { achievementService } from './achievementService';
-import { studentService } from './studentService';
+import { createAchievementService } from './achievementService';
+import { createStudentService } from './studentService';
 
-const COLLECTION = 'attendance';
+// Default academy for backwards compatibility
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // Attendance milestones for achievements
 const ATTENDANCE_MILESTONES = [50, 100, 200, 500, 1000];
@@ -55,9 +55,21 @@ const docToAttendance = (doc: DocumentSnapshot): Attendance => {
 };
 
 // ============================================
-// Attendance Service
+// Attendance Service (Multi-Tenant)
 // ============================================
-export const attendanceService = {
+export class AttendanceService {
+  private academyId: string;
+  private attendanceRef: CollectionReference;
+  private studentService: ReturnType<typeof createStudentService>;
+  private achievementService: ReturnType<typeof createAchievementService>;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+    this.attendanceRef = collections.attendance(academyId);
+    this.studentService = createStudentService(academyId);
+    this.achievementService = createAchievementService(academyId);
+  }
+
   // ============================================
   // Get Attendance by Date and Class
   // ============================================
@@ -68,7 +80,7 @@ export const attendanceService = {
     // Query by classId first, then filter by date in memory
     // This avoids needing a composite index
     const q = query(
-      collection(db, COLLECTION),
+      this.attendanceRef,
       where('classId', '==', classId)
     );
 
@@ -79,21 +91,21 @@ export const attendanceService = {
     return allAttendance
       .filter(a => a.date.getTime() >= start.getTime() && a.date.getTime() <= end.getTime())
       .sort((a, b) => b.date.getTime() - a.date.getTime());
-  },
+  }
 
   // ============================================
   // Get Today's Attendance for a Class
   // ============================================
   async getTodayByClass(classId: string): Promise<Attendance[]> {
     return this.getByDateAndClass(new Date(), classId);
-  },
+  }
 
   // ============================================
   // Get Attendance by Student
   // ============================================
   async getByStudent(studentId: string, limitCount = 50): Promise<Attendance[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.attendanceRef,
       where('studentId', '==', studentId)
     );
 
@@ -103,7 +115,7 @@ export const attendanceService = {
     return attendance
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .slice(0, limitCount);
-  },
+  }
 
   // ============================================
   // Get Attendance by Date Range
@@ -114,7 +126,7 @@ export const attendanceService = {
     filters?: AttendanceFilters
   ): Promise<Attendance[]> {
     // Fetch all attendance and filter in memory to avoid composite index
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.attendanceRef);
     let results = snapshot.docs.map(docToAttendance);
 
     const start = startOfDay(startDate);
@@ -133,7 +145,7 @@ export const attendanceService = {
 
     // Sort by date descending
     return results.sort((a, b) => b.date.getTime() - a.date.getTime());
-  },
+  }
 
   // ============================================
   // Check if Student is Present
@@ -144,7 +156,7 @@ export const attendanceService = {
 
     // Query by studentId only and filter in memory to avoid composite index
     const q = query(
-      collection(db, COLLECTION),
+      this.attendanceRef,
       where('studentId', '==', studentId)
     );
 
@@ -157,7 +169,7 @@ export const attendanceService = {
            a.date.getTime() >= start.getTime() &&
            a.date.getTime() <= end.getTime()
     );
-  },
+  }
 
   // ============================================
   // Get Present Students for a Class Today
@@ -165,7 +177,7 @@ export const attendanceService = {
   async getPresentStudentIds(classId: string, date: Date = new Date()): Promise<Set<string>> {
     const attendance = await this.getByDateAndClass(date, classId);
     return new Set(attendance.map((a) => a.studentId));
-  },
+  }
 
   // ============================================
   // Mark Attendance (Single Student)
@@ -207,10 +219,10 @@ export const attendanceService = {
       docData.notes = notes;
     }
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
+    const docRef = await addDoc(this.attendanceRef, docData);
 
     // Increment the student's attendanceCount (async, don't block main flow)
-    const studentDocRef = doc(db, 'students', studentId);
+    const studentDocRef = collections.student(this.academyId, studentId);
     updateDoc(studentDocRef, {
       attendanceCount: increment(1),
     }).catch(() => {
@@ -242,7 +254,7 @@ export const attendanceService = {
     });
 
     return attendance;
-  },
+  }
 
   // ============================================
   // Check Attendance Milestone
@@ -256,7 +268,7 @@ export const attendanceService = {
     const systemCount = await this.getStudentAttendanceCount(studentId);
 
     // Get student to access initialAttendanceCount (previous trainings)
-    const student = await studentService.getById(studentId);
+    const student = await this.studentService.getById(studentId);
     const initialCount = student?.initialAttendanceCount || 0;
 
     // Total count = system + previous trainings
@@ -276,7 +288,7 @@ export const attendanceService = {
       }
 
       // Check if achievement already exists
-      const existingAchievements = await achievementService.getByStudent(studentId);
+      const existingAchievements = await this.achievementService.getByStudent(studentId);
       const alreadyHasMilestone = existingAchievements.some(
         (a) => a.type === 'milestone' && a.milestone === `${totalCount}_presencas`
       );
@@ -293,7 +305,7 @@ export const attendanceService = {
           milestoneDate = sortedAsc[targetSystemIndex - 1].date;
         }
 
-        await achievementService.createAttendanceMilestone(
+        await this.achievementService.createAttendanceMilestone(
           studentId,
           studentName,
           totalCount,
@@ -302,7 +314,7 @@ export const attendanceService = {
         );
       }
     }
-  },
+  }
 
   // ============================================
   // Check Anniversary Milestone
@@ -313,7 +325,7 @@ export const attendanceService = {
     createdBy: string
   ): Promise<void> {
     // Get student to access startDate
-    const student = await studentService.getById(studentId);
+    const student = await this.studentService.getById(studentId);
     if (!student?.startDate) return;
 
     const startDate = new Date(student.startDate);
@@ -322,7 +334,7 @@ export const attendanceService = {
     // Check if current years matches any anniversary milestone
     if (ANNIVERSARY_MILESTONES.includes(yearsTraining)) {
       // Check if achievement already exists
-      const existingAchievements = await achievementService.getByStudent(studentId);
+      const existingAchievements = await this.achievementService.getByStudent(studentId);
       const alreadyHasMilestone = existingAchievements.some(
         (a) => a.type === 'milestone' && a.milestone === `${yearsTraining}_anos_treino`
       );
@@ -331,7 +343,7 @@ export const attendanceService = {
         // Calculate the actual anniversary date (startDate + years of training)
         const anniversaryDate = addYears(startDate, yearsTraining);
 
-        await achievementService.createAnniversaryMilestone(
+        await this.achievementService.createAnniversaryMilestone(
           studentId,
           studentName,
           yearsTraining,
@@ -340,7 +352,7 @@ export const attendanceService = {
         );
       }
     }
-  },
+  }
 
   // ============================================
   // Remove Attendance (Unmark)
@@ -354,7 +366,7 @@ export const attendanceService = {
 
     // Query by studentId only and filter in memory to avoid composite index
     const q = query(
-      collection(db, COLLECTION),
+      this.attendanceRef,
       where('studentId', '==', studentId)
     );
 
@@ -382,13 +394,13 @@ export const attendanceService = {
     await batch.commit();
 
     // Decrement the student's attendanceCount (async, don't block main flow)
-    const studentDocRef = doc(db, 'students', studentId);
+    const studentDocRef = collections.student(this.academyId, studentId);
     updateDoc(studentDocRef, {
       attendanceCount: increment(-matchingDocs.length),
     }).catch(() => {
       // Silently ignore errors
     });
-  },
+  }
 
   // ============================================
   // Bulk Mark Attendance
@@ -426,20 +438,20 @@ export const attendanceService = {
     }
 
     return results;
-  },
+  }
 
   // ============================================
   // Get Student Attendance Count (system only, without initial)
   // ============================================
   async getStudentAttendanceCount(studentId: string): Promise<number> {
     const q = query(
-      collection(db, COLLECTION),
+      this.attendanceRef,
       where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
     return snapshot.size;
-  },
+  }
 
   // ============================================
   // Get Total Student Attendance Count (including initial)
@@ -447,7 +459,7 @@ export const attendanceService = {
   async getTotalStudentAttendanceCount(studentId: string, initialCount: number = 0): Promise<number> {
     const systemCount = await this.getStudentAttendanceCount(studentId);
     return systemCount + initialCount;
-  },
+  }
 
   // ============================================
   // Get Monthly Attendance Stats
@@ -476,7 +488,7 @@ export const attendanceService = {
       uniqueStudents,
       attendanceByDay,
     };
-  },
+  }
 
   // ============================================
   // Get Today's Total Attendance
@@ -487,14 +499,14 @@ export const attendanceService = {
     const end = endOfDay(today);
 
     const q = query(
-      collection(db, COLLECTION),
+      this.attendanceRef,
       where('date', '>=', Timestamp.fromDate(start)),
       where('date', '<=', Timestamp.fromDate(end))
     );
 
     const snapshot = await getDocs(q);
     return snapshot.size;
-  },
+  }
 
   // ============================================
   // Get Attendance Rate for Student
@@ -505,7 +517,7 @@ export const attendanceService = {
     totalPossibleClasses: number
   ): Promise<number> {
     const q = query(
-      collection(db, COLLECTION),
+      this.attendanceRef,
       where('studentId', '==', studentId),
       where('date', '>=', Timestamp.fromDate(startDate))
     );
@@ -515,15 +527,15 @@ export const attendanceService = {
 
     if (totalPossibleClasses === 0) return 0;
     return (attended / totalPossibleClasses) * 100;
-  },
+  }
 
   // ============================================
   // Delete Attendance by ID
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.attendanceDoc(this.academyId, id);
     await deleteDoc(docRef);
-  },
+  }
 
   // ============================================
   // Recalculate All Achievements for a Student
@@ -541,11 +553,11 @@ export const attendanceService = {
     };
 
     // Get student data
-    const student = await studentService.getById(studentId);
+    const student = await this.studentService.getById(studentId);
     if (!student) return result;
 
     // Get existing achievements to avoid duplicates
-    const existingAchievements = await achievementService.getByStudent(studentId);
+    const existingAchievements = await this.achievementService.getByStudent(studentId);
 
     // ========== ANNIVERSARY MILESTONES ONLY ==========
     // Attendance milestones are NOT created here because:
@@ -568,7 +580,7 @@ export const attendanceService = {
             // Calculate the exact anniversary date
             const anniversaryDate = addYears(startDate, yearMilestone);
 
-            const created = await achievementService.createAnniversaryMilestone(
+            const created = await this.achievementService.createAnniversaryMilestone(
               studentId,
               studentName,
               yearMilestone,
@@ -585,7 +597,7 @@ export const attendanceService = {
     }
 
     return result;
-  },
+  }
 
   // ============================================
   // Recalculate All Achievements for All Students
@@ -616,7 +628,7 @@ export const attendanceService = {
     };
 
     // Get all active students
-    const activeStudents = await studentService.getByStatus('active');
+    const activeStudents = await this.studentService.getByStatus('active');
 
     for (const student of activeStudents) {
       const studentResult = await this.recalculateAchievementsForStudent(
@@ -639,7 +651,39 @@ export const attendanceService = {
     }
 
     return result;
-  },
+  }
+}
+
+// ============================================
+// Factory Function
+// ============================================
+export function createAttendanceService(academyId: string): AttendanceService {
+  return new AttendanceService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility)
+// ============================================
+export const attendanceService = {
+  getByDateAndClass: (date: Date, classId: string) => new AttendanceService(DEFAULT_ACADEMY_ID).getByDateAndClass(date, classId),
+  getTodayByClass: (classId: string) => new AttendanceService(DEFAULT_ACADEMY_ID).getTodayByClass(classId),
+  getByStudent: (studentId: string, limitCount = 50) => new AttendanceService(DEFAULT_ACADEMY_ID).getByStudent(studentId, limitCount),
+  getByDateRange: (startDate: Date, endDate: Date, filters?: AttendanceFilters) => new AttendanceService(DEFAULT_ACADEMY_ID).getByDateRange(startDate, endDate, filters),
+  isStudentPresent: (studentId: string, classId: string, date: Date) => new AttendanceService(DEFAULT_ACADEMY_ID).isStudentPresent(studentId, classId, date),
+  getPresentStudentIds: (classId: string, date: Date = new Date()) => new AttendanceService(DEFAULT_ACADEMY_ID).getPresentStudentIds(classId, date),
+  markPresent: (studentId: string, studentName: string, classId: string, className: string, verifiedBy: string, verifiedByName: string, date: Date = new Date(), notes?: string) => new AttendanceService(DEFAULT_ACADEMY_ID).markPresent(studentId, studentName, classId, className, verifiedBy, verifiedByName, date, notes),
+  checkAttendanceMilestone: (studentId: string, studentName: string, createdBy: string) => new AttendanceService(DEFAULT_ACADEMY_ID).checkAttendanceMilestone(studentId, studentName, createdBy),
+  checkAnniversaryMilestone: (studentId: string, studentName: string, createdBy: string) => new AttendanceService(DEFAULT_ACADEMY_ID).checkAnniversaryMilestone(studentId, studentName, createdBy),
+  unmarkPresent: (studentId: string, classId: string, date: Date) => new AttendanceService(DEFAULT_ACADEMY_ID).unmarkPresent(studentId, classId, date),
+  bulkMarkPresent: (students: Array<{ id: string; name: string }>, classId: string, className: string, verifiedBy: string, verifiedByName: string, date: Date = new Date()) => new AttendanceService(DEFAULT_ACADEMY_ID).bulkMarkPresent(students, classId, className, verifiedBy, verifiedByName, date),
+  getStudentAttendanceCount: (studentId: string) => new AttendanceService(DEFAULT_ACADEMY_ID).getStudentAttendanceCount(studentId),
+  getTotalStudentAttendanceCount: (studentId: string, initialCount: number = 0) => new AttendanceService(DEFAULT_ACADEMY_ID).getTotalStudentAttendanceCount(studentId, initialCount),
+  getMonthlyStats: (month: string) => new AttendanceService(DEFAULT_ACADEMY_ID).getMonthlyStats(month),
+  getTodayTotal: () => new AttendanceService(DEFAULT_ACADEMY_ID).getTodayTotal(),
+  getStudentAttendanceRate: (studentId: string, startDate: Date, totalPossibleClasses: number) => new AttendanceService(DEFAULT_ACADEMY_ID).getStudentAttendanceRate(studentId, startDate, totalPossibleClasses),
+  delete: (id: string) => new AttendanceService(DEFAULT_ACADEMY_ID).delete(id),
+  recalculateAchievementsForStudent: (studentId: string, studentName: string, createdBy: string) => new AttendanceService(DEFAULT_ACADEMY_ID).recalculateAchievementsForStudent(studentId, studentName, createdBy),
+  recalculateAllAchievements: (createdBy: string) => new AttendanceService(DEFAULT_ACADEMY_ID).recalculateAllAchievements(createdBy),
 };
 
 export default attendanceService;

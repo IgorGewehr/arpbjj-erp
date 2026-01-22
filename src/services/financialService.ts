@@ -1,6 +1,4 @@
 import {
-  collection,
-  doc,
   getDocs,
   getDoc,
   addDoc,
@@ -11,12 +9,15 @@ import {
   Timestamp,
   DocumentSnapshot,
   writeBatch,
+  CollectionReference,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { collections } from '@/lib/firebase/collections';
 import { Financial, FinancialFilters, PaymentMethod } from '@/types';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 
-const COLLECTION = 'financials';
+// Default academy for backwards compatibility
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
 // Helper: Convert Firestore document to Financial
@@ -45,15 +46,23 @@ const docToFinancial = (doc: DocumentSnapshot): Financial => {
 };
 
 // ============================================
-// Financial Service
+// Financial Service (Multi-Tenant)
 // ============================================
-export const financialService = {
+export class FinancialService {
+  private academyId: string;
+  private financialsRef: CollectionReference;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+    this.financialsRef = collections.financials(academyId);
+  }
+
   // ============================================
   // Get All Financials with Filters
   // ============================================
   async list(filters: FinancialFilters = {}): Promise<Financial[]> {
     // Fetch all and filter/sort client-side to avoid index issues
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.financialsRef);
     let results = snapshot.docs.map(docToFinancial);
 
     // Apply filters in memory
@@ -72,13 +81,13 @@ export const financialService = {
 
     // Sort by dueDate desc client-side
     return results.sort((a, b) => b.dueDate.getTime() - a.dueDate.getTime());
-  },
+  }
 
   // ============================================
   // Get Financial by ID
   // ============================================
   async getById(id: string): Promise<Financial | null> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.financial(this.academyId, id);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
@@ -86,14 +95,14 @@ export const financialService = {
     }
 
     return docToFinancial(docSnap);
-  },
+  }
 
   // ============================================
   // Get Financials by Student
   // ============================================
   async getByStudent(studentId: string): Promise<Financial[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.financialsRef,
       where('studentId', '==', studentId)
     );
 
@@ -101,31 +110,31 @@ export const financialService = {
     const financials = snapshot.docs.map(docToFinancial);
     // Sort by dueDate desc client-side
     return financials.sort((a, b) => b.dueDate.getTime() - a.dueDate.getTime());
-  },
+  }
 
   // ============================================
   // Get Pending Payments
   // ============================================
   async getPending(): Promise<Financial[]> {
     // Fetch all and filter/sort client-side to avoid composite index
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.financialsRef);
     const financials = snapshot.docs.map(docToFinancial);
     return financials
       .filter((f) => f.status === 'pending')
       .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
-  },
+  }
 
   // ============================================
   // Get Overdue Payments
   // ============================================
   async getOverdue(): Promise<Financial[]> {
     // Fetch all and filter/sort client-side to avoid composite index
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.financialsRef);
     const financials = snapshot.docs.map(docToFinancial);
     return financials
       .filter((f) => f.status === 'overdue')
       .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
-  },
+  }
 
   // ============================================
   // Get Paid This Month
@@ -136,7 +145,7 @@ export const financialService = {
     const end = endOfMonth(now);
 
     // Fetch all and filter client-side to avoid composite index
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.financialsRef);
     const financials = snapshot.docs.map(docToFinancial);
 
     return financials.filter((f) =>
@@ -145,7 +154,7 @@ export const financialService = {
       f.paymentDate.getTime() >= start.getTime() &&
       f.paymentDate.getTime() <= end.getTime()
     );
-  },
+  }
 
   // ============================================
   // Get Monthly Summary
@@ -189,7 +198,7 @@ export const financialService = {
     });
 
     return summary;
-  },
+  }
 
   // ============================================
   // Create Financial Record
@@ -220,7 +229,7 @@ export const financialService = {
     if (data.referenceMonth) docData.referenceMonth = data.referenceMonth;
     if (data.receiptUrl) docData.receiptUrl = data.receiptUrl;
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
+    const docRef = await addDoc(this.financialsRef, docData);
 
     // Return financial directly without re-fetching
     const financial: Financial = {
@@ -242,7 +251,7 @@ export const financialService = {
     };
 
     return financial;
-  },
+  }
 
   // ============================================
   // Generate Monthly Tuitions for All Active Students
@@ -287,7 +296,7 @@ export const financialService = {
     }
 
     return results;
-  },
+  }
 
   // ============================================
   // Mark as Paid (Baixa Manual)
@@ -297,7 +306,7 @@ export const financialService = {
     method: PaymentMethod,
     paymentDate: Date = new Date()
   ): Promise<Financial> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.financial(this.academyId, id);
 
     await updateDoc(docRef, {
       status: 'paid',
@@ -308,7 +317,7 @@ export const financialService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToFinancial(updatedDoc);
-  },
+  }
 
   // ============================================
   // Mark as Overdue (Batch update for cron job)
@@ -318,7 +327,7 @@ export const financialService = {
     today.setHours(0, 0, 0, 0);
 
     // Fetch all and filter client-side to avoid composite index
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.financialsRef);
     const financials = snapshot.docs.map(docToFinancial);
 
     const overdueFinancials = financials.filter(
@@ -331,7 +340,7 @@ export const financialService = {
     const now = Timestamp.fromDate(new Date());
 
     overdueFinancials.forEach((f) => {
-      const docRef = doc(db, COLLECTION, f.id);
+      const docRef = collections.financial(this.academyId, f.id);
       batch.update(docRef, {
         status: 'overdue',
         updatedAt: now,
@@ -340,13 +349,13 @@ export const financialService = {
 
     await batch.commit();
     return overdueFinancials.length;
-  },
+  }
 
   // ============================================
   // Cancel Payment
   // ============================================
   async cancel(id: string): Promise<Financial> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.financial(this.academyId, id);
 
     await updateDoc(docRef, {
       status: 'cancelled',
@@ -355,13 +364,13 @@ export const financialService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToFinancial(updatedDoc);
-  },
+  }
 
   // ============================================
   // Update Financial Record
   // ============================================
   async update(id: string, data: Partial<Financial>): Promise<Financial> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.financial(this.academyId, id);
 
     const updateData: Record<string, unknown> = {
       updatedAt: Timestamp.fromDate(new Date()),
@@ -387,15 +396,15 @@ export const financialService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToFinancial(updatedDoc);
-  },
+  }
 
   // ============================================
   // Delete Financial Record
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.financial(this.academyId, id);
     await deleteDoc(docRef);
-  },
+  }
 
   // ============================================
   // Get Revenue Stats
@@ -407,7 +416,7 @@ export const financialService = {
     byMonth: Array<{ month: string; paid: number; expected: number }>;
   }> {
     const q = query(
-      collection(db, COLLECTION),
+      this.financialsRef,
       where('dueDate', '>=', Timestamp.fromDate(startDate)),
       where('dueDate', '<=', Timestamp.fromDate(endDate))
     );
@@ -445,7 +454,7 @@ export const financialService = {
       collectionRate: expectedRevenue > 0 ? (totalRevenue / expectedRevenue) * 100 : 0,
       byMonth,
     };
-  },
+  }
 
   // ============================================
   // Get WhatsApp Reminder Link
@@ -461,7 +470,7 @@ export const financialService = {
     const formattedAmount = amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
     const message = encodeURIComponent(
-      `Olá! Este é um lembrete da mensalidade da academia MarcusJJ.\n\n` +
+      `Olá! Este é um lembrete da mensalidade da academia.\n\n` +
       `Aluno: ${studentName}\n` +
       `Valor: ${formattedAmount}\n` +
       `Vencimento: ${formattedDate}\n\n` +
@@ -469,7 +478,36 @@ export const financialService = {
     );
 
     return `https://wa.me/55${formattedPhone}?text=${message}`;
-  },
+  }
+}
+
+// ============================================
+// Factory Function
+// ============================================
+export function createFinancialService(academyId: string): FinancialService {
+  return new FinancialService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility)
+// ============================================
+export const financialService = {
+  list: (filters: FinancialFilters = {}) => new FinancialService(DEFAULT_ACADEMY_ID).list(filters),
+  getById: (id: string) => new FinancialService(DEFAULT_ACADEMY_ID).getById(id),
+  getByStudent: (studentId: string) => new FinancialService(DEFAULT_ACADEMY_ID).getByStudent(studentId),
+  getPending: () => new FinancialService(DEFAULT_ACADEMY_ID).getPending(),
+  getOverdue: () => new FinancialService(DEFAULT_ACADEMY_ID).getOverdue(),
+  getPaidThisMonth: () => new FinancialService(DEFAULT_ACADEMY_ID).getPaidThisMonth(),
+  getMonthlySummary: (month: string) => new FinancialService(DEFAULT_ACADEMY_ID).getMonthlySummary(month),
+  create: (data: Omit<Financial, 'id' | 'createdAt' | 'updatedAt'>, createdBy: string) => new FinancialService(DEFAULT_ACADEMY_ID).create(data, createdBy),
+  generateMonthlyTuitions: (students: Array<{ id: string; fullName: string; tuitionValue: number; tuitionDay: number }>, month: string, createdBy: string) => new FinancialService(DEFAULT_ACADEMY_ID).generateMonthlyTuitions(students, month, createdBy),
+  markAsPaid: (id: string, method: PaymentMethod, paymentDate: Date = new Date()) => new FinancialService(DEFAULT_ACADEMY_ID).markAsPaid(id, method, paymentDate),
+  markOverduePayments: () => new FinancialService(DEFAULT_ACADEMY_ID).markOverduePayments(),
+  cancel: (id: string) => new FinancialService(DEFAULT_ACADEMY_ID).cancel(id),
+  update: (id: string, data: Partial<Financial>) => new FinancialService(DEFAULT_ACADEMY_ID).update(id, data),
+  delete: (id: string) => new FinancialService(DEFAULT_ACADEMY_ID).delete(id),
+  getRevenueStats: (startDate: Date, endDate: Date) => new FinancialService(DEFAULT_ACADEMY_ID).getRevenueStats(startDate, endDate),
+  getWhatsAppReminderLink: (phone: string, studentName: string, amount: number, dueDate: Date) => new FinancialService(DEFAULT_ACADEMY_ID).getWhatsAppReminderLink(phone, studentName, amount, dueDate),
 };
 
 export default financialService;

@@ -1,6 +1,4 @@
 import {
-  collection,
-  doc,
   getDocs,
   getDoc,
   addDoc,
@@ -10,8 +8,9 @@ import {
   where,
   Timestamp,
   DocumentSnapshot,
+  CollectionReference,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collections } from '@/lib/firebase/collections';
 import {
   Achievement,
   AchievementType,
@@ -21,7 +20,8 @@ import {
   CompetitionPosition,
 } from '@/types';
 
-const COLLECTION = 'achievements';
+// Default academy for backwards compatibility
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
 // Helper: Convert Firestore document to Achievement
@@ -93,15 +93,23 @@ const getPositionText = (position: CompetitionPosition): string => {
 };
 
 // ============================================
-// Achievement Service
+// Achievement Service (Multi-Tenant)
 // ============================================
-export const achievementService = {
+export class AchievementService {
+  private academyId: string;
+  private achievementsRef: CollectionReference;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+    this.achievementsRef = collections.achievements(academyId);
+  }
+
   // ============================================
   // Get Achievements by Student
   // ============================================
   async getByStudent(studentId: string): Promise<Achievement[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.achievementsRef,
       where('studentId', '==', studentId)
     );
 
@@ -109,18 +117,18 @@ export const achievementService = {
     const achievements = snapshot.docs.map(docToAchievement);
     // Sort client-side to avoid composite index
     return achievements.sort((a, b) => b.date.getTime() - a.date.getTime());
-  },
+  }
 
   // Alias for getByStudent
   async getForStudent(studentId: string): Promise<Achievement[]> {
     return this.getByStudent(studentId);
-  },
+  }
 
   // ============================================
   // Get Achievement by ID
   // ============================================
   async getById(id: string): Promise<Achievement | null> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.achievement(this.academyId, id);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
@@ -128,7 +136,7 @@ export const achievementService = {
     }
 
     return docToAchievement(docSnap);
-  },
+  }
 
   // ============================================
   // Get Achievements by Type
@@ -136,7 +144,7 @@ export const achievementService = {
   async getByType(studentId: string, type: AchievementType): Promise<Achievement[]> {
     // Query by studentId only and filter by type client-side to avoid composite index
     const q = query(
-      collection(db, COLLECTION),
+      this.achievementsRef,
       where('studentId', '==', studentId)
     );
 
@@ -146,7 +154,7 @@ export const achievementService = {
     return achievements
       .filter((a) => a.type === type)
       .sort((a, b) => b.date.getTime() - a.date.getTime());
-  },
+  }
 
   // ============================================
   // Get Public Achievements (for sharing)
@@ -154,7 +162,7 @@ export const achievementService = {
   async getPublic(studentId: string): Promise<Achievement[]> {
     // Query by studentId only and filter by isPublic client-side to avoid composite index
     const q = query(
-      collection(db, COLLECTION),
+      this.achievementsRef,
       where('studentId', '==', studentId)
     );
 
@@ -164,27 +172,27 @@ export const achievementService = {
     return achievements
       .filter((a) => a.isPublic)
       .sort((a, b) => b.date.getTime() - a.date.getTime());
-  },
+  }
 
   // ============================================
   // Get Recent Achievements
   // ============================================
   async getRecent(limitCount = 10): Promise<Achievement[]> {
     // Fetch all and sort/limit client-side to avoid index issues
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.achievementsRef);
     const achievements = snapshot.docs.map(docToAchievement);
     // Sort by date desc and limit
     return achievements
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .slice(0, limitCount);
-  },
+  }
 
   // ============================================
   // Get Competitions by Student
   // ============================================
   async getCompetitions(studentId: string): Promise<Achievement[]> {
     return this.getByType(studentId, 'competition');
-  },
+  }
 
   // ============================================
   // Get Graduations by Student
@@ -195,14 +203,14 @@ export const achievementService = {
     return [...graduations, ...stripes].sort(
       (a, b) => b.date.getTime() - a.date.getTime()
     );
-  },
+  }
 
   // ============================================
   // Get Milestones by Student
   // ============================================
   async getMilestones(studentId: string): Promise<Achievement[]> {
     return this.getByType(studentId, 'milestone');
-  },
+  }
 
   // ============================================
   // Create Achievement (generic)
@@ -237,7 +245,7 @@ export const achievementService = {
     if (data.milestone) docData.milestone = data.milestone;
     if (data.photoUrl) docData.photoUrl = data.photoUrl;
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
+    const docRef = await addDoc(this.achievementsRef, docData);
 
     // Return the achievement object directly without re-fetching
     const achievement: Achievement = {
@@ -263,7 +271,7 @@ export const achievementService = {
     };
 
     return achievement;
-  },
+  }
 
   // ============================================
   // Create Graduation Achievement
@@ -300,7 +308,7 @@ export const achievementService = {
       },
       createdBy
     );
-  },
+  }
 
   // ============================================
   // Create Competition Achievement
@@ -336,7 +344,7 @@ export const achievementService = {
       },
       createdBy
     );
-  },
+  }
 
   // ============================================
   // Create Milestone Achievement
@@ -363,7 +371,7 @@ export const achievementService = {
       },
       createdBy
     );
-  },
+  }
 
   // ============================================
   // Create Attendance Milestone
@@ -399,7 +407,7 @@ export const achievementService = {
       milestoneDate, // Use the actual date when milestone was reached
       createdBy
     );
-  },
+  }
 
   // ============================================
   // Create Training Anniversary Milestone
@@ -437,13 +445,13 @@ export const achievementService = {
       anniversaryDate,
       createdBy
     );
-  },
+  }
 
   // ============================================
   // Update Achievement
   // ============================================
   async update(id: string, data: Partial<Achievement>): Promise<Achievement> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.achievement(this.academyId, id);
 
     const updateData: Record<string, unknown> = { ...data };
 
@@ -458,15 +466,15 @@ export const achievementService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToAchievement(updatedDoc);
-  },
+  }
 
   // ============================================
   // Delete Achievement
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.achievement(this.academyId, id);
     await deleteDoc(docRef);
-  },
+  }
 
   // ============================================
   // Toggle Public Visibility
@@ -478,7 +486,7 @@ export const achievementService = {
     }
 
     return this.update(id, { isPublic: !achievement.isPublic });
-  },
+  }
 
   // ============================================
   // Get Medal Count by Student
@@ -506,7 +514,7 @@ export const achievementService = {
 
     counts.total = counts.gold + counts.silver + counts.bronze;
     return counts;
-  },
+  }
 
   // ============================================
   // Get Achievements Count by Type
@@ -526,18 +534,49 @@ export const achievementService = {
     });
 
     return count;
-  },
+  }
 
   // ============================================
   // Get Timeline (all achievements sorted by date)
   // ============================================
   async getTimeline(studentId: string): Promise<Achievement[]> {
     return this.getByStudent(studentId);
-  },
+  }
+}
 
-  // ============================================
+// ============================================
+// Factory Function
+// ============================================
+export function createAchievementService(academyId: string): AchievementService {
+  return new AchievementService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility)
+// ============================================
+export const achievementService = {
+  getByStudent: (studentId: string) => new AchievementService(DEFAULT_ACADEMY_ID).getByStudent(studentId),
+  getForStudent: (studentId: string) => new AchievementService(DEFAULT_ACADEMY_ID).getForStudent(studentId),
+  getById: (id: string) => new AchievementService(DEFAULT_ACADEMY_ID).getById(id),
+  getByType: (studentId: string, type: AchievementType) => new AchievementService(DEFAULT_ACADEMY_ID).getByType(studentId, type),
+  getPublic: (studentId: string) => new AchievementService(DEFAULT_ACADEMY_ID).getPublic(studentId),
+  getRecent: (limitCount = 10) => new AchievementService(DEFAULT_ACADEMY_ID).getRecent(limitCount),
+  getCompetitions: (studentId: string) => new AchievementService(DEFAULT_ACADEMY_ID).getCompetitions(studentId),
+  getGraduations: (studentId: string) => new AchievementService(DEFAULT_ACADEMY_ID).getGraduations(studentId),
+  getMilestones: (studentId: string) => new AchievementService(DEFAULT_ACADEMY_ID).getMilestones(studentId),
+  create: (data: Omit<Achievement, 'id' | 'createdAt'>, createdBy?: string) => new AchievementService(DEFAULT_ACADEMY_ID).create(data, createdBy),
+  createGraduation: (studentId: string, studentName: string, fromBelt: BeltColor | KidsBeltColor, toBelt: BeltColor | KidsBeltColor, fromStripes: Stripes, toStripes: Stripes, createdBy?: string) => new AchievementService(DEFAULT_ACADEMY_ID).createGraduation(studentId, studentName, fromBelt, toBelt, fromStripes, toStripes, createdBy),
+  createCompetitionAchievement: (studentId: string, studentName: string, competitionId: string, competitionName: string, position: CompetitionPosition, date: Date, createdBy?: string) => new AchievementService(DEFAULT_ACADEMY_ID).createCompetitionAchievement(studentId, studentName, competitionId, competitionName, position, date, createdBy),
+  createMilestone: (studentId: string, studentName: string, milestone: string, title: string, description?: string, date?: Date, createdBy?: string) => new AchievementService(DEFAULT_ACADEMY_ID).createMilestone(studentId, studentName, milestone, title, description, date, createdBy),
+  createAttendanceMilestone: (studentId: string, studentName: string, attendanceCount: number, milestoneDate?: Date, createdBy?: string) => new AchievementService(DEFAULT_ACADEMY_ID).createAttendanceMilestone(studentId, studentName, attendanceCount, milestoneDate, createdBy),
+  createAnniversaryMilestone: (studentId: string, studentName: string, years: number, anniversaryDate: Date, createdBy?: string) => new AchievementService(DEFAULT_ACADEMY_ID).createAnniversaryMilestone(studentId, studentName, years, anniversaryDate, createdBy),
+  update: (id: string, data: Partial<Achievement>) => new AchievementService(DEFAULT_ACADEMY_ID).update(id, data),
+  delete: (id: string) => new AchievementService(DEFAULT_ACADEMY_ID).delete(id),
+  togglePublic: (id: string) => new AchievementService(DEFAULT_ACADEMY_ID).togglePublic(id),
+  getMedalCount: (studentId: string) => new AchievementService(DEFAULT_ACADEMY_ID).getMedalCount(studentId),
+  getCountByType: (studentId: string) => new AchievementService(DEFAULT_ACADEMY_ID).getCountByType(studentId),
+  getTimeline: (studentId: string) => new AchievementService(DEFAULT_ACADEMY_ID).getTimeline(studentId),
   // Helper exports
-  // ============================================
   getBeltName,
   getPositionText,
 };

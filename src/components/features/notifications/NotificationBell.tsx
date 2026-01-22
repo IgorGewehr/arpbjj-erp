@@ -16,11 +16,11 @@ import {
   Divider,
   CircularProgress,
   useTheme,
+  Theme,
 } from '@mui/material';
 import {
   Bell,
   BellOff,
-  Check,
   CheckCheck,
   CreditCard,
   Award,
@@ -28,16 +28,12 @@ import {
   Trophy,
   AlertCircle,
   Clock,
-  X,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { Notification, NotificationType } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-
-const MotionBox = motion.create(Box);
 
 // Get icon for notification type
 const getNotificationIcon = (type: NotificationType) => {
@@ -62,7 +58,7 @@ const getNotificationIcon = (type: NotificationType) => {
 };
 
 // Get color for notification type
-const getNotificationColor = (type: NotificationType, theme: ReturnType<typeof useTheme>) => {
+const getNotificationColor = (type: NotificationType, theme: Theme) => {
   switch (type) {
     case 'payment_received':
       return theme.palette.success.main;
@@ -335,25 +331,18 @@ export function NotificationBell() {
             </Box>
           ) : (
             <List disablePadding>
-              <AnimatePresence>
-                {notifications.map((notification, index) => (
-                  <MotionBox
-                    key={notification.id}
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                  >
-                    <NotificationItem
-                      notification={notification}
-                      onRead={() => handleNotificationRead(notification.id)}
-                      onNavigate={() => handleNavigate(notification)}
-                    />
-                    {index < notifications.length - 1 && (
-                      <Divider component="li" />
-                    )}
-                  </MotionBox>
-                ))}
-              </AnimatePresence>
+              {notifications.map((notification, index) => (
+                <Box key={notification.id}>
+                  <NotificationItem
+                    notification={notification}
+                    onRead={() => handleNotificationRead(notification.id)}
+                    onNavigate={() => handleNavigate(notification)}
+                  />
+                  {index < notifications.length - 1 && (
+                    <Divider component="li" />
+                  )}
+                </Box>
+              ))}
             </List>
           )}
         </Box>

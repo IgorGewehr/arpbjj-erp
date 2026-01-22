@@ -25,10 +25,7 @@ import {
   AlertCircle,
   CheckCircle2,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import { Financial, FinancialPaymentLink } from '@/types';
-
-const MotionBox = motion.create(Box);
 
 interface PaymentDialogProps {
   open: boolean;
@@ -248,9 +245,7 @@ export function PaymentDialog({
 
         {/* Already Paid State */}
         {financial.status === 'paid' && (
-          <MotionBox
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
+          <Box
             sx={{
               textAlign: 'center',
               py: 4,
@@ -277,7 +272,7 @@ export function PaymentDialog({
             <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
               Este pagamento já foi realizado
             </Typography>
-          </MotionBox>
+          </Box>
         )}
 
         {/* Loading State */}
@@ -292,127 +287,121 @@ export function PaymentDialog({
 
         {/* Payment Link Display */}
         {!isLoading && paymentLink && financial.status !== 'paid' && (
-          <AnimatePresence>
-            <MotionBox
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-            >
-              {/* QR Code */}
-              {paymentLink.qrCodeUrl && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    justifyContent: 'center',
-                    mb: 3,
-                  }}
-                >
-                  <Box
-                    sx={{
-                      p: 2,
-                      bgcolor: 'white',
-                      borderRadius: 2,
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-                    }}
-                  >
-                    <img
-                      src={paymentLink.qrCodeUrl}
-                      alt="QR Code PIX"
-                      style={{
-                        width: 200,
-                        height: 200,
-                        display: 'block',
-                      }}
-                    />
-                  </Box>
-                </Box>
-              )}
-
-              {/* Expiry Timer */}
-              {timeRemaining && timeRemaining !== 'Expirado' && (
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 0.5,
-                    mb: 2,
-                  }}
-                >
-                  <Clock size={14} color={theme.palette.text.secondary} />
-                  <Typography variant="caption" color="text.secondary">
-                    {timeRemaining}
-                  </Typography>
-                </Box>
-              )}
-
-              {/* PIX Code */}
+          <Box>
+            {/* QR Code */}
+            {paymentLink.qrCodeUrl && (
               <Box
                 sx={{
-                  p: 2,
-                  borderRadius: 2,
-                  border: '1px solid',
-                  borderColor: 'divider',
-                  bgcolor: 'background.paper',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  mb: 3,
                 }}
               >
                 <Box
                   sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    mb: 1,
+                    p: 2,
+                    bgcolor: 'white',
+                    borderRadius: 2,
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
                   }}
                 >
-                  <Typography variant="body2" fontWeight={600}>
-                    Código PIX Copia e Cola
-                  </Typography>
-                  <Tooltip title={copied ? 'Copiado!' : 'Copiar código'}>
-                    <IconButton
-                      onClick={handleCopyCode}
-                      size="small"
-                      color={copied ? 'success' : 'default'}
-                    >
-                      {copied ? <Check size={18} /> : <Copy size={18} />}
-                    </IconButton>
-                  </Tooltip>
+                  <img
+                    src={paymentLink.qrCodeUrl}
+                    alt="QR Code PIX"
+                    style={{
+                      width: 200,
+                      height: 200,
+                      display: 'block',
+                    }}
+                  />
                 </Box>
-                <Typography
-                  variant="body2"
-                  sx={{
-                    p: 1.5,
-                    bgcolor: 'action.hover',
-                    borderRadius: 1,
-                    fontFamily: 'monospace',
-                    fontSize: '0.75rem',
-                    wordBreak: 'break-all',
-                    maxHeight: 80,
-                    overflow: 'auto',
-                  }}
-                >
-                  {paymentLink.pixCode}
-                </Typography>
               </Box>
+            )}
 
-              {/* Copy Button */}
-              <Button
-                variant="contained"
-                fullWidth
-                size="large"
-                onClick={handleCopyCode}
-                startIcon={copied ? <Check size={18} /> : <Copy size={18} />}
+            {/* Expiry Timer */}
+            {timeRemaining && timeRemaining !== 'Expirado' && (
+              <Box
                 sx={{
-                  mt: 2,
-                  py: 1.5,
-                  borderRadius: 2,
-                  textTransform: 'none',
-                  fontWeight: 600,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 0.5,
+                  mb: 2,
                 }}
               >
-                {copied ? 'Código Copiado!' : 'Copiar Código PIX'}
-              </Button>
-            </MotionBox>
-          </AnimatePresence>
+                <Clock size={14} color={theme.palette.text.secondary} />
+                <Typography variant="caption" color="text.secondary">
+                  {timeRemaining}
+                </Typography>
+              </Box>
+            )}
+
+            {/* PIX Code */}
+            <Box
+              sx={{
+                p: 2,
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'divider',
+                bgcolor: 'background.paper',
+              }}
+            >
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  mb: 1,
+                }}
+              >
+                <Typography variant="body2" fontWeight={600}>
+                  Código PIX Copia e Cola
+                </Typography>
+                <Tooltip title={copied ? 'Copiado!' : 'Copiar código'}>
+                  <IconButton
+                    onClick={handleCopyCode}
+                    size="small"
+                    color={copied ? 'success' : 'default'}
+                  >
+                    {copied ? <Check size={18} /> : <Copy size={18} />}
+                  </IconButton>
+                </Tooltip>
+              </Box>
+              <Typography
+                variant="body2"
+                sx={{
+                  p: 1.5,
+                  bgcolor: 'action.hover',
+                  borderRadius: 1,
+                  fontFamily: 'monospace',
+                  fontSize: '0.75rem',
+                  wordBreak: 'break-all',
+                  maxHeight: 80,
+                  overflow: 'auto',
+                }}
+              >
+                {paymentLink.pixCode}
+              </Typography>
+            </Box>
+
+            {/* Copy Button */}
+            <Button
+              variant="contained"
+              fullWidth
+              size="large"
+              onClick={handleCopyCode}
+              startIcon={copied ? <Check size={18} /> : <Copy size={18} />}
+              sx={{
+                mt: 2,
+                py: 1.5,
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+              }}
+            >
+              {copied ? 'Código Copiado!' : 'Copiar Código PIX'}
+            </Button>
+          </Box>
         )}
 
         {/* Generate Link Button */}

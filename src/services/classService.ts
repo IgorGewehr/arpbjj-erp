@@ -1,6 +1,4 @@
 import {
-  collection,
-  doc,
   getDocs,
   getDoc,
   addDoc,
@@ -11,11 +9,13 @@ import {
   serverTimestamp,
   Timestamp,
   DocumentSnapshot,
+  CollectionReference,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collections } from '@/lib/firebase/collections';
 import { Class, StudentCategory } from '@/types';
 
-const COLLECTION = 'classes';
+// Default academy for backwards compatibility
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
 // Helper: Convert Firestore document to Class
@@ -43,15 +43,23 @@ const docToClass = (doc: DocumentSnapshot): Class => {
 };
 
 // ============================================
-// Class Service
+// Class Service (Multi-Tenant)
 // ============================================
-export const classService = {
+export class ClassService {
+  private academyId: string;
+  private classesRef: CollectionReference;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+    this.classesRef = collections.classes(academyId);
+  }
+
   // ============================================
   // List All Classes
   // ============================================
   async list(): Promise<Class[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.classesRef,
       where('isActive', '==', true)
     );
 
@@ -59,13 +67,13 @@ export const classService = {
     const classes = snapshot.docs.map(docToClass);
     // Sort client-side to avoid Firestore composite index requirement
     return classes.sort((a, b) => a.name.localeCompare(b.name));
-  },
+  }
 
   // ============================================
   // Get Class by ID
   // ============================================
   async getById(id: string): Promise<Class | null> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.class(this.academyId, id);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
@@ -73,7 +81,7 @@ export const classService = {
     }
 
     return docToClass(docSnap);
-  },
+  }
 
   // ============================================
   // Get Classes by Day of Week
@@ -84,7 +92,7 @@ export const classService = {
     return allClasses.filter((cls) =>
       cls.schedule.some((s) => s.dayOfWeek === dayOfWeek)
     );
-  },
+  }
 
   // ============================================
   // Get Current Class (based on day and time)
@@ -115,7 +123,7 @@ export const classService = {
     }
 
     return null;
-  },
+  }
 
   // ============================================
   // Get Today's Classes
@@ -123,7 +131,7 @@ export const classService = {
   async getTodayClasses(): Promise<Class[]> {
     const dayOfWeek = new Date().getDay();
     return this.getByDayOfWeek(dayOfWeek);
-  },
+  }
 
   // ============================================
   // Get Classes for a Specific Date
@@ -131,14 +139,14 @@ export const classService = {
   async getClassesForDate(date: Date): Promise<Class[]> {
     const dayOfWeek = date.getDay();
     return this.getByDayOfWeek(dayOfWeek);
-  },
+  }
 
   // ============================================
   // Get Classes by Category
   // ============================================
   async getByCategory(category: StudentCategory): Promise<Class[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.classesRef,
       where('category', '==', category),
       where('isActive', '==', true)
     );
@@ -147,7 +155,7 @@ export const classService = {
     const classes = snapshot.docs.map(docToClass);
     // Sort client-side to avoid Firestore composite index requirement
     return classes.sort((a, b) => a.name.localeCompare(b.name));
-  },
+  }
 
   // ============================================
   // Create Class
@@ -162,17 +170,17 @@ export const classService = {
       updatedAt: now,
     };
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
+    const docRef = await addDoc(this.classesRef, docData);
     const newDoc = await getDoc(docRef);
 
     return docToClass(newDoc);
-  },
+  }
 
   // ============================================
   // Update Class
   // ============================================
   async update(id: string, data: Partial<Class>): Promise<Class> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.class(this.academyId, id);
 
     const { id: _, createdAt, ...updateData } = data as Class & { id?: string };
 
@@ -183,26 +191,26 @@ export const classService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToClass(updatedDoc);
-  },
+  }
 
   // ============================================
   // Delete Class (Soft delete)
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.class(this.academyId, id);
     await updateDoc(docRef, {
       isActive: false,
       updatedAt: serverTimestamp(),
     });
-  },
+  }
 
   // ============================================
   // Hard Delete Class
   // ============================================
   async hardDelete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.class(this.academyId, id);
     await deleteDoc(docRef);
-  },
+  }
 
   // ============================================
   // Get Weekly Schedule
@@ -237,7 +245,7 @@ export const classService = {
     }
 
     return schedule;
-  },
+  }
 
   // ============================================
   // Add Student to Class
@@ -253,7 +261,7 @@ export const classService = {
     }
 
     return cls;
-  },
+  }
 
   // ============================================
   // Remove Student from Class
@@ -264,7 +272,7 @@ export const classService = {
 
     const studentIds = (cls.studentIds || []).filter((id) => id !== studentId);
     return this.update(classId, { studentIds });
-  },
+  }
 
   // ============================================
   // Toggle Student in Class
@@ -279,7 +287,35 @@ export const classService = {
     } else {
       return this.update(classId, { studentIds: [...studentIds, studentId] });
     }
-  },
+  }
+}
+
+// ============================================
+// Factory Function
+// ============================================
+export function createClassService(academyId: string): ClassService {
+  return new ClassService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility)
+// ============================================
+export const classService = {
+  list: () => new ClassService(DEFAULT_ACADEMY_ID).list(),
+  getById: (id: string) => new ClassService(DEFAULT_ACADEMY_ID).getById(id),
+  getByDayOfWeek: (dayOfWeek: number) => new ClassService(DEFAULT_ACADEMY_ID).getByDayOfWeek(dayOfWeek),
+  getCurrentClass: () => new ClassService(DEFAULT_ACADEMY_ID).getCurrentClass(),
+  getTodayClasses: () => new ClassService(DEFAULT_ACADEMY_ID).getTodayClasses(),
+  getClassesForDate: (date: Date) => new ClassService(DEFAULT_ACADEMY_ID).getClassesForDate(date),
+  getByCategory: (category: StudentCategory) => new ClassService(DEFAULT_ACADEMY_ID).getByCategory(category),
+  create: (classData: Omit<Class, 'id' | 'createdAt' | 'updatedAt'>) => new ClassService(DEFAULT_ACADEMY_ID).create(classData),
+  update: (id: string, data: Partial<Class>) => new ClassService(DEFAULT_ACADEMY_ID).update(id, data),
+  delete: (id: string) => new ClassService(DEFAULT_ACADEMY_ID).delete(id),
+  hardDelete: (id: string) => new ClassService(DEFAULT_ACADEMY_ID).hardDelete(id),
+  getWeeklySchedule: () => new ClassService(DEFAULT_ACADEMY_ID).getWeeklySchedule(),
+  addStudent: (classId: string, studentId: string) => new ClassService(DEFAULT_ACADEMY_ID).addStudent(classId, studentId),
+  removeStudent: (classId: string, studentId: string) => new ClassService(DEFAULT_ACADEMY_ID).removeStudent(classId, studentId),
+  toggleStudent: (classId: string, studentId: string) => new ClassService(DEFAULT_ACADEMY_ID).toggleStudent(classId, studentId),
 };
 
 export default classService;

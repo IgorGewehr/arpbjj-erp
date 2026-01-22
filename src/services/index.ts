@@ -1,10 +1,10 @@
 // Legacy exports (backwards compatible)
 export { studentService, createStudentService } from './studentService';
-export { classService } from './classService';
-export { attendanceService } from './attendanceService';
-export { financialService } from './financialService';
+export { classService, createClassService } from './classService';
+export { attendanceService, createAttendanceService } from './attendanceService';
+export { financialService, createFinancialService } from './financialService';
 export { assessmentService } from './assessmentService';
-export { achievementService } from './achievementService';
+export { achievementService, createAchievementService } from './achievementService';
 export { beltProgressionService } from './beltProgressionService';
 export { planService } from './planService';
 export { settingsService, createSettingsService } from './settingsService';

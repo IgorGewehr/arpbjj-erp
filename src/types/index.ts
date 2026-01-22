@@ -557,3 +557,201 @@ export interface PaginatedResponse<T> {
   pagination: Pagination;
   success: boolean;
 }
+
+// ============================================
+// Multi-Tenant Types
+// ============================================
+
+// Academy (Tenant)
+export interface Academy {
+  id: string;
+  name: string;
+  slug: string;                         // URL-friendly identifier (e.g., "tropa23")
+  logoUrl?: string;
+
+  // Contact Info
+  cnpj?: string;
+  email?: string;
+  phone?: string;
+
+  // Address
+  address?: string;
+  city?: string;
+  state?: string;
+  zipCode?: string;
+
+  // Financial Settings
+  pixKey?: string;
+  pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+
+  // AbacatePay Integration
+  abacatePayEnabled?: boolean;
+  abacatePayApiKey?: string;            // Encrypted API key
+
+  // Auto-graduation Settings
+  autoGraduationEnabled?: boolean;
+  autoGraduationAttendances?: number;   // Attendances required per stripe/belt
+
+  // Subscription
+  subscription?: {
+    plan: 'free' | 'basic' | 'premium' | 'enterprise';
+    status: 'active' | 'cancelled' | 'past_due' | 'trialing';
+    expiresAt?: Date;
+    trialEndsAt?: Date;
+  };
+
+  // Metadata
+  createdAt: Date;
+  updatedAt: Date;
+  ownerId: string;                      // Firebase UID of the academy owner
+}
+
+// User-Academy Mapping (for users in multiple academies)
+export interface UserAcademyMapping {
+  id: string;                           // Firebase UID
+  academyIds: string[];                 // List of academy IDs the user belongs to
+  primaryAcademyId: string;             // Default academy
+}
+
+// Academy User (user within an academy context)
+export interface AcademyUser {
+  id: string;                           // Firebase UID
+  email: string;
+  displayName: string;
+  photoUrl?: string;
+  role: UserRole;
+  phone?: string;
+
+  // Role-specific links
+  studentId?: string;
+  linkedStudentIds?: string[];
+  instructorId?: string;
+
+  // Account linking
+  pendingStudentLink?: string;
+  approvedAt?: Date;
+
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================
+// Notification Types
+// ============================================
+export type NotificationType =
+  | 'payment_received'        // Aluno pagou pela plataforma
+  | 'payment_pending'         // Lembrete de pagamento pendente
+  | 'payment_overdue'         // Pagamento atrasado
+  | 'graduation_eligible'     // Aluno elegível para graduação
+  | 'graduation_near'         // Aluno próximo da graduação automática
+  | 'new_student_linked'      // Novo aluno vinculou conta
+  | 'student_milestone'       // Aluno atingiu milestone de presença
+  | 'competition_reminder'    // Lembrete de competição
+  | 'system'                  // Notificação do sistema
+  | 'custom';                 // Personalizada
+
+export type NotificationPriority = 'low' | 'normal' | 'high' | 'urgent';
+
+export interface Notification {
+  id: string;
+  academyId: string;                    // Academy context
+
+  // Target
+  userId: string;                       // Target user Firebase UID
+  type: NotificationType;
+  priority: NotificationPriority;
+
+  // Content
+  title: string;
+  message: string;
+  imageUrl?: string;
+
+  // Action
+  actionUrl?: string;                   // Deep link within app
+  actionLabel?: string;                 // Button text
+
+  // Related entities
+  studentId?: string;
+  financialId?: string;
+  competitionId?: string;
+
+  // Status
+  read: boolean;
+  readAt?: Date;
+
+  // Delivery
+  channels: ('in_app' | 'push' | 'email')[];
+  sentVia?: ('in_app' | 'push' | 'email')[];
+
+  // Metadata
+  createdAt: Date;
+  expiresAt?: Date;                     // Auto-delete after this date
+}
+
+// ============================================
+// Wallet & Transactions (AbacatePay)
+// ============================================
+export type TransactionType = 'payment' | 'withdrawal' | 'refund' | 'fee';
+export type TransactionStatus = 'pending' | 'completed' | 'failed' | 'cancelled';
+
+export interface WalletTransaction {
+  id: string;
+  academyId: string;
+
+  // Transaction details
+  type: TransactionType;
+  amount: number;                       // In cents (BRL)
+  status: TransactionStatus;
+
+  // References
+  financialId?: string;                 // Link to Financial record
+  studentId?: string;
+  studentName?: string;
+
+  // AbacatePay data
+  abacatePayTransactionId?: string;
+  pixCode?: string;
+  qrCodeUrl?: string;
+
+  // For withdrawals
+  withdrawalPixKey?: string;
+  withdrawalPixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
+
+  // Metadata
+  description?: string;
+  createdAt: Date;
+  completedAt?: Date;
+}
+
+export interface AcademyWallet {
+  academyId: string;
+
+  // Balance (in cents)
+  availableBalance: number;
+  pendingBalance: number;
+  totalReceived: number;
+  totalWithdrawn: number;
+
+  // Stats
+  transactionCount: number;
+  lastTransactionAt?: Date;
+
+  updatedAt: Date;
+}
+
+// ============================================
+// Extended Financial for AbacatePay
+// ============================================
+export interface FinancialPaymentLink {
+  pixCode: string;
+  qrCodeUrl: string;
+  expiresAt: Date;
+  createdAt: Date;
+}
+
+// Extended Financial interface with payment link
+export interface FinancialWithPayment extends Financial {
+  paymentLink?: FinancialPaymentLink;
+  abacatePayTransactionId?: string;
+  paidViaAbacatePay?: boolean;
+}

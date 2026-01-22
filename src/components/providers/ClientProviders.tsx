@@ -7,6 +7,8 @@ import { AuthProvider } from './AuthProvider';
 import { FeedbackProvider } from './FeedbackProvider';
 import { ConfirmDialogProvider } from './ConfirmDialogProvider';
 import { PermissionProvider } from './PermissionProvider';
+import { AcademyProvider } from '@/contexts/AcademyContext';
+import { NotificationProvider } from '@/contexts/NotificationContext';
 
 interface ClientProvidersProps {
   children: ReactNode;
@@ -17,13 +19,17 @@ export function ClientProviders({ children }: ClientProvidersProps) {
     <QueryProvider>
       <ThemeProvider>
         <AuthProvider>
-          <PermissionProvider>
-            <FeedbackProvider>
-              <ConfirmDialogProvider>
-                {children}
-              </ConfirmDialogProvider>
-            </FeedbackProvider>
-          </PermissionProvider>
+          <AcademyProvider>
+            <NotificationProvider>
+              <PermissionProvider>
+                <FeedbackProvider>
+                  <ConfirmDialogProvider>
+                    {children}
+                  </ConfirmDialogProvider>
+                </FeedbackProvider>
+              </PermissionProvider>
+            </NotificationProvider>
+          </AcademyProvider>
         </AuthProvider>
       </ThemeProvider>
     </QueryProvider>

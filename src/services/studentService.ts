@@ -16,10 +16,8 @@ import {
   QueryConstraint,
   writeBatch,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { db, collections } from '@/lib/firebase';
 import { Student, StudentFilters, Pagination, PaginatedResponse } from '@/types';
-
-const COLLECTION = 'students';
 
 // ============================================
 // Helper: Convert Firestore document to Student
@@ -125,9 +123,23 @@ const studentToDoc = (student: Partial<Student>): Record<string, unknown> => {
 };
 
 // ============================================
-// Student Service
+// Student Service Class (Multi-Tenant)
 // ============================================
-export const studentService = {
+class StudentService {
+  private academyId: string;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+  }
+
+  private get studentsRef() {
+    return collections.students(this.academyId);
+  }
+
+  private get attendanceRef() {
+    return collections.attendance(this.academyId);
+  }
+
   // ============================================
   // List Students with Infinite Scroll Support
   // Sorted by total attendance (attendanceCount + initialAttendanceCount)
@@ -151,7 +163,7 @@ export const studentService = {
     }
 
     // Query with filters only (no limit) - we need all to sort by computed field
-    const q = query(collection(db, COLLECTION), ...filterConstraints);
+    const q = query(this.studentsRef, ...filterConstraints);
     const snapshot = await getDocs(q);
 
     let students = snapshot.docs.map(docToStudent);
@@ -195,7 +207,7 @@ export const studentService = {
       hasMore,
       lastId,
     };
-  },
+  }
 
   // ============================================
   // Search Students by Name (Direct database query)
@@ -216,7 +228,7 @@ export const studentService = {
 
     // Fetch all filtered students and search in memory
     // (Firestore doesn't support case-insensitive contains search)
-    const q = query(collection(db, COLLECTION), ...filterConstraints);
+    const q = query(this.studentsRef, ...filterConstraints);
     const snapshot = await getDocs(q);
 
     const students = snapshot.docs.map(docToStudent);
@@ -237,7 +249,7 @@ export const studentService = {
     });
 
     return matches;
-  },
+  }
 
   // ============================================
   // List Students with Pagination and Filters
@@ -268,7 +280,7 @@ export const studentService = {
     }
 
     // Query with filters + pagination
-    const q = query(collection(db, COLLECTION), ...filterConstraints, ...paginationConstraints);
+    const q = query(this.studentsRef, ...filterConstraints, ...paginationConstraints);
     const snapshot = await getDocs(q);
 
     const students = snapshot.docs.map(docToStudent);
@@ -276,7 +288,7 @@ export const studentService = {
     students.sort((a, b) => a.fullName.localeCompare(b.fullName));
 
     // Get total count (only filter constraints, no pagination)
-    const totalQuery = query(collection(db, COLLECTION), ...filterConstraints);
+    const totalQuery = query(this.studentsRef, ...filterConstraints);
     const totalSnapshot = await getDocs(totalQuery);
 
     const pagination: Pagination = {
@@ -291,13 +303,13 @@ export const studentService = {
       pagination,
       success: true,
     };
-  },
+  }
 
   // ============================================
   // Get Student by ID
   // ============================================
   async getById(id: string): Promise<Student | null> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.student(this.academyId, id);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
@@ -305,14 +317,14 @@ export const studentService = {
     }
 
     return docToStudent(docSnap);
-  },
+  }
 
   // ============================================
   // Get Students by Status
   // ============================================
   async getByStatus(status: Student['status']): Promise<Student[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.studentsRef,
       where('status', '==', status)
     );
 
@@ -320,31 +332,31 @@ export const studentService = {
     const students = snapshot.docs.map(docToStudent);
     // Sort client-side to avoid Firestore composite index requirement
     return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
-  },
+  }
 
   // ============================================
   // Get Active Students
   // ============================================
   async getActive(): Promise<Student[]> {
     return this.getByStatus('active');
-  },
+  }
 
   // ============================================
   // Get All Students (for reports)
   // ============================================
   async getAll(): Promise<Student[]> {
-    const q = query(collection(db, COLLECTION));
+    const q = query(this.studentsRef);
     const snapshot = await getDocs(q);
     const students = snapshot.docs.map(docToStudent);
     return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
-  },
+  }
 
   // ============================================
   // Search Students by Name
   // ============================================
   async search(searchTerm: string): Promise<Student[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.studentsRef,
       where('fullName', '>=', searchTerm),
       where('fullName', '<=', searchTerm + '\uf8ff'),
       limit(20)
@@ -352,7 +364,7 @@ export const studentService = {
 
     const snapshot = await getDocs(q);
     return snapshot.docs.map(docToStudent);
-  },
+  }
 
   // ============================================
   // Create Student
@@ -367,17 +379,17 @@ export const studentService = {
       updatedAt: now,
     };
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
+    const docRef = await addDoc(this.studentsRef, docData);
     const newDoc = await getDoc(docRef);
 
     return docToStudent(newDoc);
-  },
+  }
 
   // ============================================
   // Update Student
   // ============================================
   async update(id: string, data: Partial<Student>): Promise<Student> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.student(this.academyId, id);
 
     const updateData = {
       ...studentToDoc(data),
@@ -388,26 +400,26 @@ export const studentService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToStudent(updatedDoc);
-  },
+  }
 
   // ============================================
   // Delete Student (Soft delete - set status to inactive)
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.student(this.academyId, id);
     await updateDoc(docRef, {
       status: 'inactive',
       updatedAt: serverTimestamp(),
     });
-  },
+  }
 
   // ============================================
   // Hard Delete Student
   // ============================================
   async hardDelete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.student(this.academyId, id);
     await deleteDoc(docRef);
-  },
+  }
 
   // ============================================
   // Quick Create (Minimal data)
@@ -435,18 +447,18 @@ export const studentService = {
       updatedAt: now,
     };
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
+    const docRef = await addDoc(this.studentsRef, docData);
     const newDoc = await getDoc(docRef);
 
     return docToStudent(newDoc);
-  },
+  }
 
   // ============================================
   // Get Students by Belt
   // ============================================
   async getByBelt(belt: Student['currentBelt']): Promise<Student[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.studentsRef,
       where('currentBelt', '==', belt),
       where('status', '==', 'active')
     );
@@ -455,14 +467,14 @@ export const studentService = {
     const students = snapshot.docs.map(docToStudent);
     // Sort client-side to avoid Firestore composite index requirement
     return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
-  },
+  }
 
   // ============================================
   // Get Students by Category
   // ============================================
   async getByCategory(category: Student['category']): Promise<Student[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.studentsRef,
       where('category', '==', category),
       where('status', '==', 'active')
     );
@@ -471,7 +483,7 @@ export const studentService = {
     const students = snapshot.docs.map(docToStudent);
     // Sort client-side to avoid Firestore composite index requirement
     return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
-  },
+  }
 
   // ============================================
   // Get Students Count by Status
@@ -486,13 +498,13 @@ export const studentService = {
     };
 
     for (const status of statuses) {
-      const q = query(collection(db, COLLECTION), where('status', '==', status));
+      const q = query(this.studentsRef, where('status', '==', status));
       const snapshot = await getDocs(q);
       counts[status] = snapshot.size;
     }
 
     return counts;
-  },
+  }
 
   // ============================================
   // Get Dashboard Stats (Single query, optimized)
@@ -502,7 +514,7 @@ export const studentService = {
     byStatus: { active: number; injured: number; inactive: number; suspended: number };
     byCategory: { kids: number; adult: number };
   }> {
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.studentsRef);
 
     const stats = {
       total: 0,
@@ -532,7 +544,7 @@ export const studentService = {
       byStatus: { active: number; injured: number; inactive: number; suspended: number };
       byCategory: { kids: number; adult: number };
     };
-  },
+  }
 
   // ============================================
   // Update Belt/Stripes
@@ -546,7 +558,7 @@ export const studentService = {
       currentBelt: newBelt,
       currentStripes: newStripes,
     });
-  },
+  }
 
   // ============================================
   // Sync Attendance Counts for all students
@@ -556,10 +568,10 @@ export const studentService = {
     const result = { updated: 0, errors: 0 };
 
     // Get all students
-    const studentsSnapshot = await getDocs(collection(db, COLLECTION));
+    const studentsSnapshot = await getDocs(this.studentsRef);
 
     // Get all attendance records
-    const attendanceSnapshot = await getDocs(collection(db, 'attendance'));
+    const attendanceSnapshot = await getDocs(this.attendanceRef);
 
     // Count attendance per student
     const countByStudent: Record<string, number> = {};
@@ -590,7 +602,56 @@ export const studentService = {
     }
 
     return result;
-  },
+  }
+}
+
+// ============================================
+// Factory Function
+// ============================================
+export function createStudentService(academyId: string): StudentService {
+  return new StudentService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility during migration)
+// Uses a default academy ID that should be set via environment or context
+// ============================================
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
+
+export const studentService = {
+  listAll: (...args: Parameters<StudentService['listAll']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).listAll(...args),
+  searchByName: (...args: Parameters<StudentService['searchByName']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).searchByName(...args),
+  list: (...args: Parameters<StudentService['list']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).list(...args),
+  getById: (...args: Parameters<StudentService['getById']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).getById(...args),
+  getByStatus: (...args: Parameters<StudentService['getByStatus']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).getByStatus(...args),
+  getActive: () => new StudentService(DEFAULT_ACADEMY_ID).getActive(),
+  getAll: () => new StudentService(DEFAULT_ACADEMY_ID).getAll(),
+  search: (...args: Parameters<StudentService['search']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).search(...args),
+  create: (...args: Parameters<StudentService['create']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).create(...args),
+  update: (...args: Parameters<StudentService['update']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).update(...args),
+  delete: (...args: Parameters<StudentService['delete']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).delete(...args),
+  hardDelete: (...args: Parameters<StudentService['hardDelete']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).hardDelete(...args),
+  quickCreate: (...args: Parameters<StudentService['quickCreate']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).quickCreate(...args),
+  getByBelt: (...args: Parameters<StudentService['getByBelt']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).getByBelt(...args),
+  getByCategory: (...args: Parameters<StudentService['getByCategory']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).getByCategory(...args),
+  getCountByStatus: () => new StudentService(DEFAULT_ACADEMY_ID).getCountByStatus(),
+  getDashboardStats: () => new StudentService(DEFAULT_ACADEMY_ID).getDashboardStats(),
+  updateBelt: (...args: Parameters<StudentService['updateBelt']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).updateBelt(...args),
+  syncAttendanceCounts: () => new StudentService(DEFAULT_ACADEMY_ID).syncAttendanceCounts(),
 };
 
 export default studentService;

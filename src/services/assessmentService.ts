@@ -1,6 +1,4 @@
 import {
-  collection,
-  doc,
   getDocs,
   getDoc,
   addDoc,
@@ -10,11 +8,13 @@ import {
   where,
   Timestamp,
   DocumentSnapshot,
+  CollectionReference,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collections } from '@/lib/firebase/collections';
 import { Assessment } from '@/types';
 
-const COLLECTION = 'assessments';
+// Default academy for backwards compatibility
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
 // Helper: Convert Firestore document to Assessment
@@ -43,15 +43,23 @@ const docToAssessment = (doc: DocumentSnapshot): Assessment => {
 };
 
 // ============================================
-// Assessment Service
+// Assessment Service (Multi-Tenant)
 // ============================================
-export const assessmentService = {
+export class AssessmentService {
+  private academyId: string;
+  private assessmentsRef: CollectionReference;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+    this.assessmentsRef = collections.assessments(academyId);
+  }
+
   // ============================================
   // Get Assessments by Student
   // ============================================
   async getByStudent(studentId: string, limitCount = 10): Promise<Assessment[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.assessmentsRef,
       where('studentId', '==', studentId)
     );
 
@@ -61,7 +69,7 @@ export const assessmentService = {
     return assessments
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .slice(0, limitCount);
-  },
+  }
 
   // ============================================
   // Get Latest Assessment for Student
@@ -69,13 +77,13 @@ export const assessmentService = {
   async getLatest(studentId: string): Promise<Assessment | null> {
     const assessments = await this.getByStudent(studentId, 1);
     return assessments[0] || null;
-  },
+  }
 
   // ============================================
   // Get Assessment by ID
   // ============================================
   async getById(id: string): Promise<Assessment | null> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.assessment(this.academyId, id);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
@@ -83,7 +91,7 @@ export const assessmentService = {
     }
 
     return docToAssessment(docSnap);
-  },
+  }
 
   // ============================================
   // Create Assessment
@@ -107,7 +115,7 @@ export const assessmentService = {
     // Only add notes if it has a value
     if (data.notes) docData.notes = data.notes;
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
+    const docRef = await addDoc(this.assessmentsRef, docData);
 
     // Return assessment directly without re-fetching
     const assessment: Assessment = {
@@ -123,13 +131,13 @@ export const assessmentService = {
     };
 
     return assessment;
-  },
+  }
 
   // ============================================
   // Update Assessment
   // ============================================
   async update(id: string, data: Partial<Assessment>): Promise<Assessment> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.assessment(this.academyId, id);
 
     const updateData: Record<string, unknown> = { ...data };
 
@@ -144,15 +152,15 @@ export const assessmentService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToAssessment(updatedDoc);
-  },
+  }
 
   // ============================================
   // Delete Assessment
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.assessment(this.academyId, id);
     await deleteDoc(docRef);
-  },
+  }
 
   // ============================================
   // Get Evolution Data (for radar chart)
@@ -216,20 +224,20 @@ export const assessmentService = {
       datasets,
       averages,
     };
-  },
+  }
 
   // ============================================
   // Get Recent Assessments (all students)
   // ============================================
   async getRecent(limitCount = 20): Promise<Assessment[]> {
     // Fetch all and sort/limit client-side to avoid index issues
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.assessmentsRef);
     const assessments = snapshot.docs.map(docToAssessment);
     // Sort by date desc and limit
     return assessments
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .slice(0, limitCount);
-  },
+  }
 
   // ============================================
   // Calculate Overall Score
@@ -238,7 +246,7 @@ export const assessmentService = {
     const { respeito, disciplina, pontualidade, tecnica, esforco } = scores;
     const total = respeito + disciplina + pontualidade + tecnica + esforco;
     return Math.round((total / 5) * 10) / 10;
-  },
+  }
 
   // ============================================
   // Get Performance Level
@@ -261,7 +269,30 @@ export const assessmentService = {
       return { level: 'regular', label: 'Regular', color: '#F97316' };
     }
     return { level: 'precisa_melhorar', label: 'Precisa Melhorar', color: '#EF4444' };
-  },
+  }
+}
+
+// ============================================
+// Factory Function
+// ============================================
+export function createAssessmentService(academyId: string): AssessmentService {
+  return new AssessmentService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility)
+// ============================================
+export const assessmentService = {
+  getByStudent: (studentId: string, limitCount = 10) => new AssessmentService(DEFAULT_ACADEMY_ID).getByStudent(studentId, limitCount),
+  getLatest: (studentId: string) => new AssessmentService(DEFAULT_ACADEMY_ID).getLatest(studentId),
+  getById: (id: string) => new AssessmentService(DEFAULT_ACADEMY_ID).getById(id),
+  create: (data: Omit<Assessment, 'id' | 'createdAt'>) => new AssessmentService(DEFAULT_ACADEMY_ID).create(data),
+  update: (id: string, data: Partial<Assessment>) => new AssessmentService(DEFAULT_ACADEMY_ID).update(id, data),
+  delete: (id: string) => new AssessmentService(DEFAULT_ACADEMY_ID).delete(id),
+  getEvolution: (studentId: string, count = 5) => new AssessmentService(DEFAULT_ACADEMY_ID).getEvolution(studentId, count),
+  getRecent: (limitCount = 20) => new AssessmentService(DEFAULT_ACADEMY_ID).getRecent(limitCount),
+  calculateOverallScore: (scores: Assessment['scores']) => new AssessmentService(DEFAULT_ACADEMY_ID).calculateOverallScore(scores),
+  getPerformanceLevel: (overallScore: number) => new AssessmentService(DEFAULT_ACADEMY_ID).getPerformanceLevel(overallScore),
 };
 
 export default assessmentService;

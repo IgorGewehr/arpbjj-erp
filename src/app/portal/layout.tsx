@@ -30,13 +30,17 @@ import {
   MoreHorizontal,
   Star,
   ChevronRight,
+  ShoppingBag,
+  Users,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth, usePermissions } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { StudentPortalGuard } from '@/components/common';
 import { studentService, planService } from '@/services';
 import { BottomSheet, ScaleOnPress } from '@/components/mobile';
+import { useIsMonitor } from '@/hooks';
 
 const DRAWER_WIDTH = 220;
 
@@ -46,6 +50,8 @@ interface NavItem {
   path: string;
   requiresPlan?: boolean;
   requiresKids?: boolean;
+  requiresStore?: boolean;
+  requiresMonitor?: boolean;
   showInBottomNav?: boolean;
 }
 
@@ -56,6 +62,9 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Competições', icon: Trophy, path: '/portal/competicoes', showInBottomNav: true },
   { label: 'Mais', icon: MoreHorizontal, path: '', showInBottomNav: true },
   // Items below will appear in "Mais" menu
+  { label: 'Chamada', icon: ClipboardCheck, path: '/portal/chamada', requiresMonitor: true },
+  { label: 'Alunos', icon: Users, path: '/portal/alunos', requiresMonitor: true },
+  { label: 'Loja', icon: ShoppingBag, path: '/portal/loja', requiresStore: true },
   { label: 'Horários', icon: Calendar, path: '/portal/horarios' },
   { label: 'Histórico', icon: History, path: '/portal/linha-do-tempo' },
   { label: 'Comportamento', icon: Star, path: '/portal/comportamento', requiresKids: true },
@@ -74,7 +83,9 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
 
   const { user, signOut } = useAuth();
+  const { academy } = useAcademy();
   const { linkedStudentIds } = usePermissions();
+  const isMonitor = useIsMonitor();
 
   const studentId = linkedStudentIds[0];
 
@@ -98,9 +109,11 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
     return NAV_ITEMS.filter((item) => {
       if (item.requiresPlan && !hasValidPlan) return false;
       if (item.requiresKids && student?.category !== 'kids') return false;
+      if (item.requiresStore && !academy?.storePublished) return false;
+      if (item.requiresMonitor && !isMonitor) return false;
       return true;
     });
-  }, [hasValidPlan, student?.category]);
+  }, [hasValidPlan, student?.category, academy?.storePublished, isMonitor]);
 
   const bottomNavItems = useMemo(() => {
     return navItems.filter((item) => item.showInBottomNav);
@@ -133,7 +146,10 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
     return pathname.startsWith('/portal/horarios') ||
            pathname.startsWith('/portal/linha-do-tempo') ||
            pathname.startsWith('/portal/comportamento') ||
-           pathname.startsWith('/portal/financeiro');
+           pathname.startsWith('/portal/financeiro') ||
+           pathname.startsWith('/portal/loja') ||
+           pathname.startsWith('/portal/chamada') ||
+           pathname.startsWith('/portal/alunos');
   };
 
   const displayName = student?.nickname || student?.fullName?.split(' ')[0] || user?.displayName || 'Aluno';
@@ -218,7 +234,17 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#fafafa' }}>
+    <Box sx={{
+      display: 'flex',
+      minHeight: '100vh',
+      bgcolor: '#fafafa',
+      ...(academy?.portalBackgroundUrl && {
+        backgroundImage: `url(${academy.portalBackgroundUrl})`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundAttachment: 'fixed',
+      }),
+    }}>
       {/* Desktop Sidebar */}
       {!isMobile && (
         <Box component="nav" sx={{ width: DRAWER_WIDTH, flexShrink: 0 }}>
@@ -262,8 +288,8 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
                 }}
               >
                 <Image
-                  src="/logo_conteudo.png"
-                  alt="T23"
+                  src={academy?.sidebarLogoUrl || academy?.logoUrl || '/logo_conteudo.png'}
+                  alt={academy?.name || 'Academia'}
                   fill
                   style={{ objectFit: 'contain' }}
                 />
@@ -276,7 +302,7 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
                   fontSize: '0.9rem',
                 }}
               >
-                T23 JJ - Vamos avante, ombro a ombro
+                {academy?.name || 'Academia'}{academy?.portalSlogan ? ` - ${academy.portalSlogan}` : ''}
               </Typography>
             </Box>
           </Toolbar>

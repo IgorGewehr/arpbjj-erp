@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { classService } from '@/services';
+import { createClassService } from '@/services';
 import { useFeedback } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { Class } from '@/types';
 
 // ============================================
@@ -21,8 +22,11 @@ const QUERY_KEYS = {
 // useClasses Hook
 // ============================================
 export function useClasses() {
+  const { academyId } = useAcademy();
   const { success, error: showError } = useFeedback();
   const queryClient = useQueryClient();
+
+  const classService = useMemo(() => createClassService(academyId || 'default'), [academyId]);
 
   // ============================================
   // Fetch All Classes
@@ -33,7 +37,7 @@ export function useClasses() {
     error,
     refetch,
   } = useQuery({
-    queryKey: [QUERY_KEYS.classes],
+    queryKey: [QUERY_KEYS.classes, academyId],
     queryFn: () => classService.list(),
     staleTime: 1000 * 60 * 10,
   });
@@ -42,7 +46,7 @@ export function useClasses() {
   // Fetch Today's Classes
   // ============================================
   const { data: todayClasses = [] } = useQuery({
-    queryKey: [QUERY_KEYS.todayClasses],
+    queryKey: [QUERY_KEYS.todayClasses, academyId],
     queryFn: () => classService.getTodayClasses(),
     staleTime: 1000 * 60 * 5,
   });
@@ -51,7 +55,7 @@ export function useClasses() {
   // Fetch Weekly Schedule
   // ============================================
   const { data: weeklySchedule } = useQuery({
-    queryKey: [QUERY_KEYS.weeklySchedule],
+    queryKey: [QUERY_KEYS.weeklySchedule, academyId],
     queryFn: () => classService.getWeeklySchedule(),
     staleTime: 1000 * 60 * 10,
   });
@@ -60,7 +64,7 @@ export function useClasses() {
   // Fetch Current Class
   // ============================================
   const { data: currentClass } = useQuery({
-    queryKey: [QUERY_KEYS.currentClass],
+    queryKey: [QUERY_KEYS.currentClass, academyId],
     queryFn: () => classService.getCurrentClass(),
     staleTime: 1000 * 60 * 1,
     refetchInterval: 1000 * 60 * 1, // Refetch every minute

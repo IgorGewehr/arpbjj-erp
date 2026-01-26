@@ -4,6 +4,8 @@ import {
   setDoc,
   updateDoc,
   serverTimestamp,
+  arrayUnion,
+  arrayRemove,
 } from 'firebase/firestore';
 import { db, collections, getAcademyRef } from '@/lib/firebase';
 import { Academy } from '@/types';
@@ -27,6 +29,11 @@ export interface AcademySettings {
 
   // Branding
   logoUrl?: string;
+  portalSlogan?: string;              // Frase exibida na TopAppBar do portal (ex: "Vamos avante, ombro a ombro")
+  sidebarLogoUrl?: string;            // Logo alternativo para sidebar (se diferente do logoUrl)
+  portalBackgroundUrl?: string;       // Background do portal do aluno
+  adminBackgroundUrl?: string;        // Background do painel admin/professor
+  sidebarBackgroundUrl?: string;      // Background da sidebar
 
   // Financial
   pixKey?: string;
@@ -39,6 +46,15 @@ export interface AcademySettings {
   // Auto-graduation Settings
   autoGraduationEnabled?: boolean;
   autoGraduationAttendances?: number;
+
+  // Store Settings
+  storeEnabled?: boolean;
+  storePublished?: boolean;
+  storeWelcomeMessage?: string;
+  storeMinOrderAmount?: number;
+
+  // Monitors
+  monitorIds?: string[];
 
   updatedAt?: Date;
 }
@@ -77,12 +93,22 @@ class SettingsService {
           state: data.state,
           zipCode: data.zipCode,
           logoUrl: data.logoUrl,
+          portalSlogan: data.portalSlogan,
+          sidebarLogoUrl: data.sidebarLogoUrl,
+          portalBackgroundUrl: data.portalBackgroundUrl,
+          adminBackgroundUrl: data.adminBackgroundUrl,
+          sidebarBackgroundUrl: data.sidebarBackgroundUrl,
           pixKey: data.pixKey,
           pixKeyType: data.pixKeyType,
           abacatePayEnabled: data.abacatePayEnabled || false,
           abacatePayApiKey: data.abacatePayApiKey,
           autoGraduationEnabled: data.autoGraduationEnabled || false,
           autoGraduationAttendances: data.autoGraduationAttendances,
+          storeEnabled: data.storeEnabled || false,
+          storePublished: data.storePublished || false,
+          storeWelcomeMessage: data.storeWelcomeMessage,
+          storeMinOrderAmount: data.storeMinOrderAmount,
+          monitorIds: data.monitorIds || [],
           updatedAt: data.updatedAt?.toDate(),
         };
       }
@@ -117,12 +143,21 @@ class SettingsService {
       if (settings.state !== undefined) settingsData.state = settings.state;
       if (settings.zipCode !== undefined) settingsData.zipCode = settings.zipCode;
       if (settings.logoUrl !== undefined) settingsData.logoUrl = settings.logoUrl;
+      if (settings.portalSlogan !== undefined) settingsData.portalSlogan = settings.portalSlogan;
+      if (settings.sidebarLogoUrl !== undefined) settingsData.sidebarLogoUrl = settings.sidebarLogoUrl;
+      if (settings.portalBackgroundUrl !== undefined) settingsData.portalBackgroundUrl = settings.portalBackgroundUrl;
+      if (settings.adminBackgroundUrl !== undefined) settingsData.adminBackgroundUrl = settings.adminBackgroundUrl;
+      if (settings.sidebarBackgroundUrl !== undefined) settingsData.sidebarBackgroundUrl = settings.sidebarBackgroundUrl;
       if (settings.pixKey !== undefined) settingsData.pixKey = settings.pixKey;
       if (settings.pixKeyType !== undefined) settingsData.pixKeyType = settings.pixKeyType;
       if (settings.abacatePayEnabled !== undefined) settingsData.abacatePayEnabled = settings.abacatePayEnabled;
       if (settings.abacatePayApiKey !== undefined) settingsData.abacatePayApiKey = settings.abacatePayApiKey;
       if (settings.autoGraduationEnabled !== undefined) settingsData.autoGraduationEnabled = settings.autoGraduationEnabled;
       if (settings.autoGraduationAttendances !== undefined) settingsData.autoGraduationAttendances = settings.autoGraduationAttendances;
+      if (settings.storeEnabled !== undefined) settingsData.storeEnabled = settings.storeEnabled;
+      if (settings.storePublished !== undefined) settingsData.storePublished = settings.storePublished;
+      if (settings.storeWelcomeMessage !== undefined) settingsData.storeWelcomeMessage = settings.storeWelcomeMessage;
+      if (settings.storeMinOrderAmount !== undefined) settingsData.storeMinOrderAmount = settings.storeMinOrderAmount;
 
       await setDoc(this.academyRef, settingsData, { merge: true });
     } catch (error) {
@@ -174,6 +209,36 @@ class SettingsService {
   }
 
   // ============================================
+  // Monitor Management
+  // ============================================
+  async getMonitors(): Promise<string[]> {
+    try {
+      const docSnap = await getDoc(this.academyRef);
+      if (docSnap.exists()) {
+        return docSnap.data().monitorIds || [];
+      }
+      return [];
+    } catch (error) {
+      console.error('Error fetching monitors:', error);
+      return [];
+    }
+  }
+
+  async addMonitor(studentId: string): Promise<void> {
+    await updateDoc(this.academyRef, {
+      monitorIds: arrayUnion(studentId),
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  async removeMonitor(studentId: string): Promise<void> {
+    await updateDoc(this.academyRef, {
+      monitorIds: arrayRemove(studentId),
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  // ============================================
   // Get Full Academy Data
   // ============================================
   async getAcademy(): Promise<Academy | null> {
@@ -190,6 +255,13 @@ class SettingsService {
         name: data.name || '',
         slug: data.slug || '',
         logoUrl: data.logoUrl,
+        // Branding
+        portalSlogan: data.portalSlogan,
+        sidebarLogoUrl: data.sidebarLogoUrl,
+        portalBackgroundUrl: data.portalBackgroundUrl,
+        adminBackgroundUrl: data.adminBackgroundUrl,
+        sidebarBackgroundUrl: data.sidebarBackgroundUrl,
+        // Contact
         cnpj: data.cnpj,
         email: data.email,
         phone: data.phone,
@@ -197,12 +269,22 @@ class SettingsService {
         city: data.city,
         state: data.state,
         zipCode: data.zipCode,
+        // Financial
         pixKey: data.pixKey,
         pixKeyType: data.pixKeyType,
         abacatePayEnabled: data.abacatePayEnabled || false,
         abacatePayApiKey: data.abacatePayApiKey,
+        // Auto-graduation
         autoGraduationEnabled: data.autoGraduationEnabled || false,
         autoGraduationAttendances: data.autoGraduationAttendances,
+        // Store
+        storeEnabled: data.storeEnabled || false,
+        storePublished: data.storePublished || false,
+        storeWelcomeMessage: data.storeWelcomeMessage,
+        storeMinOrderAmount: data.storeMinOrderAmount,
+        // Monitors
+        monitorIds: data.monitorIds || [],
+        // Subscription & Metadata
         subscription: data.subscription,
         createdAt: data.createdAt?.toDate() || new Date(),
         updatedAt: data.updatedAt?.toDate() || new Date(),
@@ -246,6 +328,11 @@ export const settingsService = {
           state: data.state,
           zipCode: data.zipCode,
           logoUrl: data.logoUrl,
+          portalSlogan: data.portalSlogan,
+          sidebarLogoUrl: data.sidebarLogoUrl,
+          portalBackgroundUrl: data.portalBackgroundUrl,
+          adminBackgroundUrl: data.adminBackgroundUrl,
+          sidebarBackgroundUrl: data.sidebarBackgroundUrl,
           pixKey: data.pixKey,
           pixKeyType: data.pixKeyType,
           abacatePayEnabled: data.abacatePayEnabled || false,
@@ -279,6 +366,11 @@ export const settingsService = {
       if (settings.state) settingsData.state = settings.state;
       if (settings.zipCode) settingsData.zipCode = settings.zipCode;
       if (settings.logoUrl) settingsData.logoUrl = settings.logoUrl;
+      if (settings.portalSlogan !== undefined) settingsData.portalSlogan = settings.portalSlogan;
+      if (settings.sidebarLogoUrl !== undefined) settingsData.sidebarLogoUrl = settings.sidebarLogoUrl;
+      if (settings.portalBackgroundUrl !== undefined) settingsData.portalBackgroundUrl = settings.portalBackgroundUrl;
+      if (settings.adminBackgroundUrl !== undefined) settingsData.adminBackgroundUrl = settings.adminBackgroundUrl;
+      if (settings.sidebarBackgroundUrl !== undefined) settingsData.sidebarBackgroundUrl = settings.sidebarBackgroundUrl;
       if (settings.pixKey !== undefined) settingsData.pixKey = settings.pixKey;
       if (settings.pixKeyType !== undefined) settingsData.pixKeyType = settings.pixKeyType;
       if (settings.abacatePayEnabled !== undefined) settingsData.abacatePayEnabled = settings.abacatePayEnabled;

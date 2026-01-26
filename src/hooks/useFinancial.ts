@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { financialService } from '@/services';
+import { createFinancialService } from '@/services';
 import { useAuth, useFeedback } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { Financial, FinancialFilters, PaymentMethod } from '@/types';
 import { format, startOfMonth, endOfMonth, subMonths } from 'date-fns';
 
@@ -34,8 +35,11 @@ export function useFinancial(options: UseFinancialOptions = {}) {
   const { autoLoad = true, initialFilters = {} } = options;
 
   const { user } = useAuth();
+  const { academyId } = useAcademy();
   const { success, error: showError } = useFeedback();
   const queryClient = useQueryClient();
+
+  const financialService = useMemo(() => createFinancialService(academyId || 'default'), [academyId]);
 
   // Current month for default view
   const currentMonth = format(new Date(), 'yyyy-MM');
@@ -55,7 +59,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
     error,
     refetch,
   } = useQuery({
-    queryKey: [QUERY_KEYS.financials, filters],
+    queryKey: [QUERY_KEYS.financials, academyId, filters],
     queryFn: () => financialService.list(filters),
     enabled: autoLoad,
     staleTime: 1000 * 60 * 2, // 2 minutes
@@ -65,7 +69,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
   // Fetch Pending Payments
   // ============================================
   const { data: pendingPayments = [] } = useQuery({
-    queryKey: [QUERY_KEYS.pending],
+    queryKey: [QUERY_KEYS.pending, academyId],
     queryFn: () => financialService.getPending(),
     staleTime: 1000 * 60 * 2,
   });
@@ -74,7 +78,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
   // Fetch Overdue Payments
   // ============================================
   const { data: overduePayments = [] } = useQuery({
-    queryKey: [QUERY_KEYS.overdue],
+    queryKey: [QUERY_KEYS.overdue, academyId],
     queryFn: () => financialService.getOverdue(),
     staleTime: 1000 * 60 * 2,
   });
@@ -83,7 +87,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
   // Fetch Monthly Summary
   // ============================================
   const { data: monthlySummary } = useQuery({
-    queryKey: [QUERY_KEYS.summary, filters.month || currentMonth],
+    queryKey: [QUERY_KEYS.summary, filters.month || currentMonth, academyId],
     queryFn: () => financialService.getMonthlySummary(filters.month || currentMonth),
     staleTime: 1000 * 60 * 2,
   });
@@ -92,7 +96,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
   // Fetch Revenue Stats (last 6 months)
   // ============================================
   const { data: revenueStats } = useQuery({
-    queryKey: [QUERY_KEYS.revenue],
+    queryKey: [QUERY_KEYS.revenue, academyId],
     queryFn: () => {
       const endDate = endOfMonth(new Date());
       const startDate = startOfMonth(subMonths(new Date(), 5));

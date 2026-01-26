@@ -12,9 +12,9 @@ import {
   sendPasswordResetEmail,
   updateProfile,
 } from 'firebase/auth';
-import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
-import { User, UserRole } from '@/types';
+import { auth } from '@/lib/firebase';
+import { User, UserRole, GlobalUser, AccountType } from '@/types';
+import { globalUserService } from '@/services';
 
 // ============================================
 // Auth Context Types
@@ -22,6 +22,7 @@ import { User, UserRole } from '@/types';
 interface AuthContextType {
   // User state
   user: User | null;
+  globalUser: GlobalUser | null;
   firebaseUser: FirebaseUser | null;
   loading: boolean;
   error: string | null;
@@ -30,6 +31,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isAdmin: boolean;
   isInstructor: boolean;
+  isFreeUser: boolean;
 
   // Auth methods
   signIn: (email: string, password: string) => Promise<void>;
@@ -38,6 +40,7 @@ interface AuthContextType {
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
   updateUserProfile: (data: Partial<User>) => Promise<void>;
+  updateGlobalUserProfile: (data: Partial<Omit<GlobalUser, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
 
   // Utility
   refreshUser: () => Promise<void>;
@@ -56,6 +59,7 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [globalUser, setGlobalUser] = useState<GlobalUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,11 +75,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       if (firebaseUser) {
         setFirebaseUser(firebaseUser);
-        const userData = await fetchUserData(firebaseUser);
+        const { userData, globalUserData } = await fetchUserData(firebaseUser);
         setUser(userData);
+        setGlobalUser(globalUserData);
       } else {
         setFirebaseUser(null);
         setUser(null);
+        setGlobalUser(null);
       }
 
       setLoading(false);
@@ -85,59 +91,44 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   // ============================================
-  // Fetch user data from Firestore
+  // Fetch user data from Firestore (Global User)
   // ============================================
-  const fetchUserData = useCallback(async (firebaseUser: FirebaseUser): Promise<User | null> => {
+  const fetchUserData = useCallback(async (firebaseUser: FirebaseUser): Promise<{
+    userData: User | null;
+    globalUserData: GlobalUser | null;
+  }> => {
     try {
-      const userRef = doc(db, 'users', firebaseUser.uid);
-      const userSnap = await getDoc(userRef);
+      // Get or create global user using globalUserService
+      let globalUserData = await globalUserService.getGlobalUser(firebaseUser.uid);
 
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        return {
-          id: firebaseUser.uid,
+      if (!globalUserData) {
+        // Create new global user if doesn't exist
+        globalUserData = await globalUserService.createGlobalUser(firebaseUser.uid, {
           email: firebaseUser.email || '',
-          displayName: data.displayName || firebaseUser.displayName || '',
-          photoUrl: data.photoUrl || firebaseUser.photoURL || undefined,
-          role: data.role || 'student',
-          phone: data.phone,
-          // Role-specific links (critical for student/guardian portal access)
-          studentId: data.studentId,
-          linkedStudentIds: data.linkedStudentIds,
-          instructorId: data.instructorId,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-        };
+          displayName: firebaseUser.displayName || '',
+          photoUrl: firebaseUser.photoURL || undefined,
+          accountType: 'free', // New users start as free
+        });
       }
 
-      // Create new user document if doesn't exist
-      const newUserData: Record<string, unknown> = {
-        email: firebaseUser.email || '',
-        displayName: firebaseUser.displayName || '',
-        role: 'admin' as UserRole, // First user is admin by default
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      // Convert GlobalUser to User for backwards compatibility
+      // Note: role, studentId, linkedStudentIds, instructorId will come from AcademyContext
+      const userData: User = {
+        id: globalUserData.id,
+        email: globalUserData.email,
+        displayName: globalUserData.displayName,
+        photoUrl: globalUserData.photoUrl,
+        role: 'student' as UserRole, // Default role, will be overridden by AcademyContext
+        phone: globalUserData.phone,
+        accountType: globalUserData.accountType,
+        createdAt: globalUserData.createdAt,
+        updatedAt: globalUserData.updatedAt,
       };
 
-      // Only add photoUrl if it exists (Firestore doesn't accept undefined)
-      if (firebaseUser.photoURL) {
-        newUserData.photoUrl = firebaseUser.photoURL;
-      }
-
-      await setDoc(userRef, newUserData);
-
-      return {
-        id: firebaseUser.uid,
-        email: firebaseUser.email || '',
-        displayName: firebaseUser.displayName || '',
-        photoUrl: firebaseUser.photoURL || undefined,
-        role: 'admin' as UserRole,
-        createdAt: new Date(),
-        updatedAt: new Date(),
-      } as User;
+      return { userData, globalUserData };
     } catch (err) {
       console.error('Error fetching user data:', err);
-      return null;
+      return { userData: null, globalUserData: null };
     }
   }, []);
 
@@ -184,17 +175,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setError(null);
       const result = await createUserWithEmailAndPassword(auth, email, password);
 
-      // Update display name
+      // Update display name in Firebase Auth
       await updateProfile(result.user, { displayName });
 
-      // Create user document
-      const userRef = doc(db, 'users', result.user.uid);
-      await setDoc(userRef, {
+      // Create global user document using globalUserService
+      // This also creates the empty userAcademyMapping
+      await globalUserService.createGlobalUser(result.user.uid, {
         email,
         displayName,
-        role: 'admin',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+        accountType: 'free', // New users start as free
       });
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao criar conta';
@@ -214,6 +203,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setError(null);
       await firebaseSignOut(auth);
       setUser(null);
+      setGlobalUser(null);
       setFirebaseUser(null);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao sair';
@@ -242,7 +232,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   // ============================================
-  // Update User Profile
+  // Update User Profile (backwards compatible)
   // ============================================
   const updateUserProfile = useCallback(async (data: Partial<User>) => {
     if (!firebaseUser || !user) {
@@ -253,12 +243,12 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLoading(true);
       setError(null);
 
-      // Update Firestore
-      const userRef = doc(db, 'users', firebaseUser.uid);
-      await setDoc(userRef, {
-        ...data,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
+      // Update global user in Firestore
+      await globalUserService.updateGlobalUser(firebaseUser.uid, {
+        displayName: data.displayName,
+        photoUrl: data.photoUrl,
+        phone: data.phone,
+      });
 
       // Update Firebase Auth profile if display name or photo changed
       if (data.displayName || data.photoUrl) {
@@ -270,6 +260,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
       // Refresh user data
       setUser({ ...user, ...data, updatedAt: new Date() });
+      if (globalUser) {
+        setGlobalUser({
+          ...globalUser,
+          displayName: data.displayName || globalUser.displayName,
+          photoUrl: data.photoUrl || globalUser.photoUrl,
+          phone: data.phone || globalUser.phone,
+          updatedAt: new Date(),
+        });
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Erro ao atualizar perfil';
       setError(message);
@@ -277,15 +276,67 @@ export function AuthProvider({ children }: AuthProviderProps) {
     } finally {
       setLoading(false);
     }
-  }, [firebaseUser, user]);
+  }, [firebaseUser, user, globalUser]);
+
+  // ============================================
+  // Update Global User Profile (new - for fighter profile)
+  // ============================================
+  const updateGlobalUserProfile = useCallback(async (
+    data: Partial<Omit<GlobalUser, 'id' | 'createdAt' | 'updatedAt'>>
+  ) => {
+    if (!firebaseUser || !globalUser) {
+      throw new Error('User not authenticated');
+    }
+
+    try {
+      setLoading(true);
+      setError(null);
+
+      // Update global user in Firestore
+      await globalUserService.updateGlobalUser(firebaseUser.uid, data);
+
+      // Update Firebase Auth profile if display name or photo changed
+      if (data.displayName || data.photoUrl) {
+        await updateProfile(firebaseUser, {
+          displayName: data.displayName || firebaseUser.displayName,
+          photoURL: data.photoUrl || firebaseUser.photoURL,
+        });
+      }
+
+      // Refresh global user state
+      setGlobalUser({
+        ...globalUser,
+        ...data,
+        updatedAt: new Date(),
+      });
+
+      // Also update user for backwards compatibility
+      if (user) {
+        setUser({
+          ...user,
+          displayName: data.displayName || user.displayName,
+          photoUrl: data.photoUrl || user.photoUrl,
+          phone: data.phone || user.phone,
+          updatedAt: new Date(),
+        });
+      }
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Erro ao atualizar perfil';
+      setError(message);
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, [firebaseUser, user, globalUser]);
 
   // ============================================
   // Refresh User Data
   // ============================================
   const refreshUser = useCallback(async () => {
     if (firebaseUser) {
-      const userData = await fetchUserData(firebaseUser);
+      const { userData, globalUserData } = await fetchUserData(firebaseUser);
       setUser(userData);
+      setGlobalUser(globalUserData);
     }
   }, [firebaseUser, fetchUserData]);
 
@@ -302,6 +353,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const isAuthenticated = useMemo(() => !!user, [user]);
   const isAdmin = useMemo(() => user?.role === 'admin', [user]);
   const isInstructor = useMemo(() => user?.role === 'instructor' || user?.role === 'admin', [user]);
+  const isFreeUser = useMemo(() => globalUser?.accountType === 'free', [globalUser]);
 
   // ============================================
   // Context Value
@@ -309,35 +361,41 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const contextValue = useMemo<AuthContextType>(
     () => ({
       user,
+      globalUser,
       firebaseUser,
       loading,
       error,
       isAuthenticated,
       isAdmin,
       isInstructor,
+      isFreeUser,
       signIn,
       signInWithGoogle,
       signUp,
       signOut,
       resetPassword,
       updateUserProfile,
+      updateGlobalUserProfile,
       refreshUser,
       clearError,
     }),
     [
       user,
+      globalUser,
       firebaseUser,
       loading,
       error,
       isAuthenticated,
       isAdmin,
       isInstructor,
+      isFreeUser,
       signIn,
       signInWithGoogle,
       signUp,
       signOut,
       resetPassword,
       updateUserProfile,
+      updateGlobalUserProfile,
       refreshUser,
       clearError,
     ]

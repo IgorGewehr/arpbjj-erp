@@ -1,6 +1,4 @@
 import {
-  collection,
-  doc,
   getDocs,
   getDoc,
   addDoc,
@@ -8,11 +6,13 @@ import {
   deleteDoc,
   Timestamp,
   DocumentSnapshot,
+  CollectionReference,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collections } from '@/lib/firebase/collections';
 import { Plan } from '@/types';
 
-const COLLECTION = 'plans';
+// Default academy for backwards compatibility
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
 // Helper: Convert Firestore document to Plan
@@ -36,19 +36,27 @@ const docToPlan = (doc: DocumentSnapshot): Plan => {
 };
 
 // ============================================
-// Plan Service
+// Plan Service (Multi-Tenant)
 // ============================================
-export const planService = {
+export class PlanService {
+  private academyId: string;
+  private plansRef: CollectionReference;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+    this.plansRef = collections.plans(academyId);
+  }
+
   // ============================================
   // Get All Plans
   // ============================================
   async list(): Promise<Plan[]> {
     // Fetch all and sort client-side to avoid index issues
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.plansRef);
     const plans = snapshot.docs.map(docToPlan);
     // Sort by monthlyValue asc
     return plans.sort((a, b) => a.monthlyValue - b.monthlyValue);
-  },
+  }
 
   // ============================================
   // Get Active Plans
@@ -56,13 +64,13 @@ export const planService = {
   async getActive(): Promise<Plan[]> {
     const plans = await this.list();
     return plans.filter((p) => p.isActive);
-  },
+  }
 
   // ============================================
   // Get Plan by ID
   // ============================================
   async getById(id: string): Promise<Plan | null> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.plan(this.academyId, id);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
@@ -70,7 +78,7 @@ export const planService = {
     }
 
     return docToPlan(docSnap);
-  },
+  }
 
   // ============================================
   // Create Plan
@@ -93,7 +101,7 @@ export const planService = {
     // Only add description if it has a value
     if (data.description) docData.description = data.description;
 
-    const docRef = await addDoc(collection(db, COLLECTION), docData);
+    const docRef = await addDoc(this.plansRef, docData);
 
     // Return plan directly without re-fetching
     const plan: Plan = {
@@ -110,13 +118,13 @@ export const planService = {
     };
 
     return plan;
-  },
+  }
 
   // ============================================
   // Update Plan
   // ============================================
   async update(id: string, data: Partial<Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Plan> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.plan(this.academyId, id);
 
     // Get current plan to check for students that need syncing
     const currentPlan = await this.getById(id);
@@ -149,7 +157,7 @@ export const planService = {
 
         // Update all enrolled students with new values
         for (const studentId of currentPlan.studentIds) {
-          const studentDocRef = doc(db, 'students', studentId);
+          const studentDocRef = collections.student(this.academyId, studentId);
           await updateDoc(studentDocRef, syncData);
         }
       }
@@ -157,15 +165,15 @@ export const planService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToPlan(updatedDoc);
-  },
+  }
 
   // ============================================
   // Delete Plan
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.plan(this.academyId, id);
     await deleteDoc(docRef);
-  },
+  }
 
   // ============================================
   // Add Student to Plan
@@ -181,7 +189,7 @@ export const planService = {
     return this.update(planId, {
       studentIds: [...plan.studentIds, studentId],
     });
-  },
+  }
 
   // ============================================
   // Remove Student from Plan
@@ -193,7 +201,7 @@ export const planService = {
     return this.update(planId, {
       studentIds: plan.studentIds.filter((id) => id !== studentId),
     });
-  },
+  }
 
   // ============================================
   // Toggle Student in Plan
@@ -223,7 +231,7 @@ export const planService = {
     });
 
     // Sync student's planId and tuitionDay fields
-    const studentDocRef = doc(db, 'students', studentId);
+    const studentDocRef = collections.student(this.academyId, studentId);
     if (isEnrolled) {
       // Removing from plan - clear planId and tuitionValue
       await updateDoc(studentDocRef, {
@@ -243,7 +251,7 @@ export const planService = {
     }
 
     return updatedPlan;
-  },
+  }
 
   // ============================================
   // Get Students by Plan
@@ -251,7 +259,7 @@ export const planService = {
   async getStudentsByPlan(planId: string): Promise<string[]> {
     const plan = await this.getById(planId);
     return plan?.studentIds || [];
-  },
+  }
 
   // ============================================
   // Get Plan for Student
@@ -259,7 +267,31 @@ export const planService = {
   async getPlanForStudent(studentId: string): Promise<Plan | null> {
     const plans = await this.list();
     return plans.find((p) => p.studentIds.includes(studentId)) || null;
-  },
+  }
+}
+
+// ============================================
+// Factory Function
+// ============================================
+export function createPlanService(academyId: string): PlanService {
+  return new PlanService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility)
+// ============================================
+export const planService = {
+  list: () => new PlanService(DEFAULT_ACADEMY_ID).list(),
+  getActive: () => new PlanService(DEFAULT_ACADEMY_ID).getActive(),
+  getById: (id: string) => new PlanService(DEFAULT_ACADEMY_ID).getById(id),
+  create: (data: Omit<Plan, 'id' | 'createdAt' | 'updatedAt' | 'studentIds'>) => new PlanService(DEFAULT_ACADEMY_ID).create(data),
+  update: (id: string, data: Partial<Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>>) => new PlanService(DEFAULT_ACADEMY_ID).update(id, data),
+  delete: (id: string) => new PlanService(DEFAULT_ACADEMY_ID).delete(id),
+  addStudent: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).addStudent(planId, studentId),
+  removeStudent: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).removeStudent(planId, studentId),
+  toggleStudent: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).toggleStudent(planId, studentId),
+  getStudentsByPlan: (planId: string) => new PlanService(DEFAULT_ACADEMY_ID).getStudentsByPlan(planId),
+  getPlanForStudent: (studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).getPlanForStudent(studentId),
 };
 
 export default planService;

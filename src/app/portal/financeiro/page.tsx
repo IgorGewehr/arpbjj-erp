@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -20,14 +20,21 @@ import {
   Alert,
   useTheme,
   useMediaQuery,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  CircularProgress,
 } from '@mui/material';
-import { DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Copy, Calendar } from 'lucide-react';
+import { DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Copy, Calendar, QrCode } from 'lucide-react';
 import { usePermissions, useFeedback } from '@/components/providers';
-import { useQuery } from '@tanstack/react-query';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { financialService, studentService, settingsService, planService } from '@/services';
+import { createAbacatePayService } from '@/services/abacatePayService';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { PaymentStatus } from '@/types';
+import { PaymentStatus, FinancialPaymentLink, Financial } from '@/types';
+import QRCode from 'qrcode';
 
 // ============================================
 // Status Config
@@ -40,14 +47,152 @@ const STATUS_CONFIG: Record<PaymentStatus, { label: string; color: 'success' | '
 };
 
 // ============================================
+// Payment Dialog Component
+// ============================================
+interface PaymentDialogProps {
+  open: boolean;
+  onClose: () => void;
+  payment: Financial | null;
+  paymentLink: FinancialPaymentLink | null;
+  isLoading: boolean;
+}
+
+function PaymentDialog({ open, onClose, payment, paymentLink, isLoading }: PaymentDialogProps) {
+  const { success } = useFeedback();
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (paymentLink?.pixCode) {
+      QRCode.toDataURL(paymentLink.pixCode, { width: 256 })
+        .then(setQrCodeUrl)
+        .catch(console.error);
+    }
+  }, [paymentLink?.pixCode]);
+
+  const handleCopyCode = () => {
+    if (paymentLink?.pixCode) {
+      navigator.clipboard.writeText(paymentLink.pixCode);
+      setCopied(true);
+      success('Codigo PIX copiado!');
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  const formatCurrency = (value: number) => {
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+    }).format(value);
+  };
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>
+        <Box sx={{ textAlign: 'center' }}>
+          <Typography variant="h6" fontWeight={600}>
+            Pagar com PIX
+          </Typography>
+          {payment && (
+            <Typography variant="body2" color="text.secondary">
+              {payment.description || 'Mensalidade'} - {formatCurrency(payment.amount)}
+            </Typography>
+          )}
+        </Box>
+      </DialogTitle>
+      <DialogContent>
+        {isLoading ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+            <CircularProgress />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              Gerando QR Code...
+            </Typography>
+          </Box>
+        ) : paymentLink?.pixCode ? (
+          <Box sx={{ textAlign: 'center' }}>
+            {qrCodeUrl ? (
+              <Box
+                sx={{
+                  p: 2,
+                  bgcolor: 'white',
+                  borderRadius: 2,
+                  display: 'inline-block',
+                  mb: 2,
+                  border: '1px solid',
+                  borderColor: 'grey.200',
+                }}
+              >
+                <img src={qrCodeUrl} alt="QR Code PIX" style={{ display: 'block' }} />
+              </Box>
+            ) : (
+              <Skeleton variant="rectangular" width={256} height={256} sx={{ mx: 'auto', mb: 2 }} />
+            )}
+
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Escaneie o QR Code ou copie o codigo PIX
+            </Typography>
+
+            <Button
+              variant="outlined"
+              fullWidth
+              startIcon={copied ? <CheckCircle size={18} /> : <Copy size={18} />}
+              onClick={handleCopyCode}
+              color={copied ? 'success' : 'primary'}
+            >
+              {copied ? 'Copiado!' : 'Copiar Codigo PIX'}
+            </Button>
+
+            <Alert severity="info" sx={{ mt: 2, textAlign: 'left' }}>
+              Apos o pagamento, seu status sera atualizado automaticamente.
+            </Alert>
+          </Box>
+        ) : (
+          <Alert severity="error">
+            Erro ao gerar pagamento. Tente novamente.
+          </Alert>
+        )}
+
+        <Button
+          variant="text"
+          fullWidth
+          onClick={onClose}
+          sx={{ mt: 2 }}
+        >
+          Fechar
+        </Button>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================
 // Main Component
 // ============================================
 export default function PortalFinanceiroPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { linkedStudentIds } = usePermissions();
-  const { success } = useFeedback();
+  const { success, error: showError } = useFeedback();
+  const { academy } = useAcademy();
+  const queryClient = useQueryClient();
   const studentId = linkedStudentIds[0];
+
+  // Payment dialog state
+  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<Financial | null>(null);
+  const [paymentLink, setPaymentLink] = useState<FinancialPaymentLink | null>(null);
+  const [isGeneratingPayment, setIsGeneratingPayment] = useState(false);
+
+  // Check if AbacatePay is enabled
+  const { data: abacatePayEnabled = false } = useQuery({
+    queryKey: ['abacatePayEnabled', academy?.id],
+    queryFn: async () => {
+      if (!academy?.id) return false;
+      const service = createAbacatePayService(academy.id);
+      return service.isEnabled();
+    },
+    enabled: !!academy?.id,
+  });
 
   // Fetch student data
   const { data: student } = useQuery({
@@ -108,6 +253,32 @@ export default function PortalFinanceiroPage() {
     if (pixKey) {
       navigator.clipboard.writeText(pixKey);
       success('Chave PIX copiada!');
+    }
+  };
+
+  const handlePayPix = async (payment: Financial) => {
+    if (!academy?.id || !student) return;
+
+    setSelectedPayment(payment);
+    setPaymentLink(null);
+    setPaymentDialogOpen(true);
+    setIsGeneratingPayment(true);
+
+    try {
+      const service = createAbacatePayService(academy.id);
+      const link = await service.createPixPayment(
+        payment.amount,
+        payment.description || `Mensalidade - ${payment.referenceMonth || ''}`,
+        payment.id,
+        studentId,
+        student.fullName || student.nickname || 'Aluno'
+      );
+      setPaymentLink(link);
+    } catch (err) {
+      console.error('Error generating PIX payment:', err);
+      showError('Erro ao gerar pagamento PIX');
+    } finally {
+      setIsGeneratingPayment(false);
     }
   };
 
@@ -200,6 +371,21 @@ export default function PortalFinanceiroPage() {
                   {formatCurrency(payment.amount)}
                 </Typography>
               </Box>
+              {/* PIX Payment Button */}
+              {abacatePayEnabled && (payment.status === 'pending' || payment.status === 'overdue') && (
+                <Box sx={{ mt: 1.5, pt: 1.5, borderTop: '1px solid', borderColor: 'grey.100' }}>
+                  <Button
+                    size="small"
+                    variant="contained"
+                    startIcon={<QrCode size={16} />}
+                    onClick={() => handlePayPix(payment)}
+                    fullWidth
+                    sx={{ fontSize: '0.75rem' }}
+                  >
+                    Pagar com PIX
+                  </Button>
+                </Box>
+              )}
             </Box>
           );
         })
@@ -222,7 +408,8 @@ export default function PortalFinanceiroPage() {
               <TableCell>Descricao</TableCell>
               <TableCell>Vencimento</TableCell>
               <TableCell>Valor</TableCell>
-              <TableCell align="right">Status</TableCell>
+              <TableCell>Status</TableCell>
+              {abacatePayEnabled && <TableCell align="right">Ação</TableCell>}
             </TableRow>
           </TableHead>
           <TableBody>
@@ -232,12 +419,13 @@ export default function PortalFinanceiroPage() {
                   <TableCell><Skeleton variant="text" /></TableCell>
                   <TableCell><Skeleton variant="text" /></TableCell>
                   <TableCell><Skeleton variant="text" /></TableCell>
-                  <TableCell align="right"><Skeleton variant="text" width={80} /></TableCell>
+                  <TableCell><Skeleton variant="text" width={80} /></TableCell>
+                  {abacatePayEnabled && <TableCell align="right"><Skeleton variant="text" width={60} /></TableCell>}
                 </TableRow>
               ))
             ) : payments.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} align="center" sx={{ py: 4 }}>
+                <TableCell colSpan={abacatePayEnabled ? 5 : 4} align="center" sx={{ py: 4 }}>
                   <Typography color="text.secondary">
                     Nenhum pagamento registrado
                   </Typography>
@@ -266,7 +454,7 @@ export default function PortalFinanceiroPage() {
                         {formatCurrency(payment.amount)}
                       </Typography>
                     </TableCell>
-                    <TableCell align="right">
+                    <TableCell>
                       <Chip
                         label={config.label}
                         size="small"
@@ -274,6 +462,20 @@ export default function PortalFinanceiroPage() {
                         variant={payment.status === 'paid' ? 'filled' : 'outlined'}
                       />
                     </TableCell>
+                    {abacatePayEnabled && (
+                      <TableCell align="right">
+                        {(payment.status === 'pending' || payment.status === 'overdue') && (
+                          <Button
+                            size="small"
+                            variant="contained"
+                            startIcon={<QrCode size={14} />}
+                            onClick={() => handlePayPix(payment)}
+                          >
+                            Pagar PIX
+                          </Button>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 );
               })
@@ -567,6 +769,15 @@ export default function PortalFinanceiroPage() {
       ) : (
         renderDesktopTable()
       )}
+
+      {/* Payment Dialog */}
+      <PaymentDialog
+        open={paymentDialogOpen}
+        onClose={() => setPaymentDialogOpen(false)}
+        payment={selectedPayment}
+        paymentLink={paymentLink}
+        isLoading={isGeneratingPayment}
+      />
     </Box>
   );
 }

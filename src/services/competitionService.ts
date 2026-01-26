@@ -1,6 +1,4 @@
 import {
-  collection,
-  doc,
   getDocs,
   getDoc,
   addDoc,
@@ -10,8 +8,9 @@ import {
   where,
   Timestamp,
   DocumentSnapshot,
+  CollectionReference,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collections } from '@/lib/firebase/collections';
 import {
   Competition,
   CompetitionResult,
@@ -23,8 +22,8 @@ import {
   KidsBeltColor,
 } from '@/types';
 
-const COMPETITIONS_COLLECTION = 'competitions';
-const RESULTS_COLLECTION = 'competitionResults';
+// Default academy for backwards compatibility
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
 // Helper: Convert Firestore document to Competition
@@ -84,48 +83,58 @@ const docToResult = (doc: DocumentSnapshot): CompetitionResult => {
 };
 
 // ============================================
-// Competition Service
+// Competition Service (Multi-Tenant)
 // ============================================
-export const competitionService = {
+export class CompetitionService {
+  private academyId: string;
+  private competitionsRef: CollectionReference;
+  private resultsRef: CollectionReference;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+    this.competitionsRef = collections.competitions(academyId);
+    this.resultsRef = collections.competitionResults(academyId);
+  }
+
   // ============================================
   // List All Competitions
   // ============================================
   async list(): Promise<Competition[]> {
-    const snapshot = await getDocs(collection(db, COMPETITIONS_COLLECTION));
+    const snapshot = await getDocs(this.competitionsRef);
     const competitions = snapshot.docs.map(docToCompetition);
     // Sort client-side to avoid index issues
     return competitions.sort((a, b) => b.date.getTime() - a.date.getTime());
-  },
+  }
 
   // ============================================
   // Get Upcoming Competitions
   // ============================================
   async getUpcoming(): Promise<Competition[]> {
     // Fetch all and filter/sort client-side to avoid composite index
-    const snapshot = await getDocs(collection(db, COMPETITIONS_COLLECTION));
+    const snapshot = await getDocs(this.competitionsRef);
     const competitions = snapshot.docs.map(docToCompetition);
     return competitions
       .filter((c) => c.status === 'upcoming')
       .sort((a, b) => a.date.getTime() - b.date.getTime());
-  },
+  }
 
   // ============================================
   // Get Completed Competitions
   // ============================================
   async getCompleted(): Promise<Competition[]> {
     // Fetch all and filter/sort client-side to avoid composite index
-    const snapshot = await getDocs(collection(db, COMPETITIONS_COLLECTION));
+    const snapshot = await getDocs(this.competitionsRef);
     const competitions = snapshot.docs.map(docToCompetition);
     return competitions
       .filter((c) => c.status === 'completed')
       .sort((a, b) => b.date.getTime() - a.date.getTime());
-  },
+  }
 
   // ============================================
   // Get Competition by ID
   // ============================================
   async getById(id: string): Promise<Competition | null> {
-    const docRef = doc(db, COMPETITIONS_COLLECTION, id);
+    const docRef = collections.competition(this.academyId, id);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
@@ -133,7 +142,7 @@ export const competitionService = {
     }
 
     return docToCompetition(docSnap);
-  },
+  }
 
   // ============================================
   // Create Competition
@@ -170,7 +179,7 @@ export const competitionService = {
       docData.customWeightCategories = data.customWeightCategories;
     }
 
-    const docRef = await addDoc(collection(db, COMPETITIONS_COLLECTION), docData);
+    const docRef = await addDoc(this.competitionsRef, docData);
 
     // Return competition directly without re-fetching
     const competition: Competition = {
@@ -192,13 +201,13 @@ export const competitionService = {
     };
 
     return competition;
-  },
+  }
 
   // ============================================
   // Update Competition
   // ============================================
   async update(id: string, data: Partial<Competition>): Promise<Competition> {
-    const docRef = doc(db, COMPETITIONS_COLLECTION, id);
+    const docRef = collections.competition(this.academyId, id);
 
     const updateData: Record<string, unknown> = {
       updatedAt: Timestamp.fromDate(new Date()),
@@ -227,7 +236,7 @@ export const competitionService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToCompetition(updatedDoc);
-  },
+  }
 
   // ============================================
   // Update Transport Status
@@ -243,7 +252,7 @@ export const competitionService = {
       transportNotes: notes,
       transportCapacity: capacity,
     });
-  },
+  }
 
   // ============================================
   // Add Custom Weight Category
@@ -260,7 +269,7 @@ export const competitionService = {
     return this.update(id, {
       customWeightCategories: [...currentCategories, category],
     });
-  },
+  }
 
   // ============================================
   // Remove Custom Weight Category
@@ -272,25 +281,25 @@ export const competitionService = {
     return this.update(id, {
       customWeightCategories: (competition.customWeightCategories || []).filter((c) => c !== category),
     });
-  },
+  }
 
   // ============================================
   // Delete Competition
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = doc(db, COMPETITIONS_COLLECTION, id);
+    const docRef = collections.competition(this.academyId, id);
     await deleteDoc(docRef);
 
     // Also delete all results for this competition
     const resultsQuery = query(
-      collection(db, RESULTS_COLLECTION),
+      this.resultsRef,
       where('competitionId', '==', id)
     );
     const resultsSnapshot = await getDocs(resultsQuery);
     for (const resultDoc of resultsSnapshot.docs) {
       await deleteDoc(resultDoc.ref);
     }
-  },
+  }
 
   // ============================================
   // Enroll Student in Competition
@@ -306,7 +315,7 @@ export const competitionService = {
     return this.update(competitionId, {
       enrolledStudentIds: [...competition.enrolledStudentIds, studentId],
     });
-  },
+  }
 
   // ============================================
   // Unenroll Student from Competition
@@ -318,7 +327,7 @@ export const competitionService = {
     return this.update(competitionId, {
       enrolledStudentIds: competition.enrolledStudentIds.filter((id) => id !== studentId),
     });
-  },
+  }
 
   // ============================================
   // Toggle Student Enrollment
@@ -334,14 +343,14 @@ export const competitionService = {
         ? competition.enrolledStudentIds.filter((id) => id !== studentId)
         : [...competition.enrolledStudentIds, studentId],
     });
-  },
+  }
 
   // ============================================
   // Update Competition Status
   // ============================================
   async updateStatus(id: string, status: CompetitionStatus): Promise<Competition> {
     return this.update(id, { status });
-  },
+  }
 
   // ============================================
   // Get Competitions for Student
@@ -349,7 +358,7 @@ export const competitionService = {
   async getForStudent(studentId: string): Promise<Competition[]> {
     const allCompetitions = await this.list();
     return allCompetitions.filter((c) => c.enrolledStudentIds.includes(studentId));
-  },
+  }
 
   // ============================================
   // RESULTS METHODS
@@ -383,7 +392,7 @@ export const competitionService = {
     if (data.weightCategory) docData.weightCategory = data.weightCategory;
     if (data.notes) docData.notes = data.notes;
 
-    const docRef = await addDoc(collection(db, RESULTS_COLLECTION), docData);
+    const docRef = await addDoc(this.resultsRef, docData);
 
     // Return result directly without re-fetching
     const result: CompetitionResult = {
@@ -404,14 +413,14 @@ export const competitionService = {
     };
 
     return result;
-  },
+  }
 
   // ============================================
   // Get Results for Competition
   // ============================================
   async getResultsForCompetition(competitionId: string): Promise<CompetitionResult[]> {
     const q = query(
-      collection(db, RESULTS_COLLECTION),
+      this.resultsRef,
       where('competitionId', '==', competitionId)
     );
 
@@ -423,14 +432,14 @@ export const competitionService = {
     return results.sort((a, b) =>
       (positionOrder[a.position] || 5) - (positionOrder[b.position] || 5)
     );
-  },
+  }
 
   // ============================================
   // Get Results for Student
   // ============================================
   async getResultsForStudent(studentId: string): Promise<CompetitionResult[]> {
     const q = query(
-      collection(db, RESULTS_COLLECTION),
+      this.resultsRef,
       where('studentId', '==', studentId)
     );
 
@@ -438,7 +447,7 @@ export const competitionService = {
     const results = snapshot.docs.map(docToResult);
     // Sort by date desc client-side
     return results.sort((a, b) => b.date.getTime() - a.date.getTime());
-  },
+  }
 
   // ============================================
   // Get Medal Count for Student
@@ -466,13 +475,13 @@ export const competitionService = {
 
     count.total = count.gold + count.silver + count.bronze;
     return count;
-  },
+  }
 
   // ============================================
   // Update Result
   // ============================================
   async updateResult(id: string, data: Partial<CompetitionResult>): Promise<CompetitionResult> {
-    const docRef = doc(db, RESULTS_COLLECTION, id);
+    const docRef = collections.competitionResult(this.academyId, id);
 
     const updateData: Record<string, unknown> = {
       updatedAt: Timestamp.fromDate(new Date()),
@@ -494,21 +503,21 @@ export const competitionService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToResult(updatedDoc);
-  },
+  }
 
   // ============================================
   // Delete Result
   // ============================================
   async deleteResult(id: string): Promise<void> {
-    const docRef = doc(db, RESULTS_COLLECTION, id);
+    const docRef = collections.competitionResult(this.academyId, id);
     await deleteDoc(docRef);
-  },
+  }
 
   // ============================================
   // Get Result by ID
   // ============================================
   async getResultById(id: string): Promise<CompetitionResult | null> {
-    const docRef = doc(db, RESULTS_COLLECTION, id);
+    const docRef = collections.competitionResult(this.academyId, id);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
@@ -516,7 +525,42 @@ export const competitionService = {
     }
 
     return docToResult(docSnap);
-  },
+  }
+}
+
+// ============================================
+// Factory Function
+// ============================================
+export function createCompetitionService(academyId: string): CompetitionService {
+  return new CompetitionService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility)
+// ============================================
+export const competitionService = {
+  list: () => new CompetitionService(DEFAULT_ACADEMY_ID).list(),
+  getUpcoming: () => new CompetitionService(DEFAULT_ACADEMY_ID).getUpcoming(),
+  getCompleted: () => new CompetitionService(DEFAULT_ACADEMY_ID).getCompleted(),
+  getById: (id: string) => new CompetitionService(DEFAULT_ACADEMY_ID).getById(id),
+  create: (data: Omit<Competition, 'id' | 'createdAt' | 'updatedAt' | 'enrolledStudentIds'>, createdBy: string) => new CompetitionService(DEFAULT_ACADEMY_ID).create(data, createdBy),
+  update: (id: string, data: Partial<Competition>) => new CompetitionService(DEFAULT_ACADEMY_ID).update(id, data),
+  updateTransportStatus: (id: string, status: CompetitionTransportStatus, notes?: string, capacity?: number) => new CompetitionService(DEFAULT_ACADEMY_ID).updateTransportStatus(id, status, notes, capacity),
+  addCustomWeightCategory: (id: string, category: string) => new CompetitionService(DEFAULT_ACADEMY_ID).addCustomWeightCategory(id, category),
+  removeCustomWeightCategory: (id: string, category: string) => new CompetitionService(DEFAULT_ACADEMY_ID).removeCustomWeightCategory(id, category),
+  delete: (id: string) => new CompetitionService(DEFAULT_ACADEMY_ID).delete(id),
+  enrollStudent: (competitionId: string, studentId: string) => new CompetitionService(DEFAULT_ACADEMY_ID).enrollStudent(competitionId, studentId),
+  unenrollStudent: (competitionId: string, studentId: string) => new CompetitionService(DEFAULT_ACADEMY_ID).unenrollStudent(competitionId, studentId),
+  toggleEnrollment: (competitionId: string, studentId: string) => new CompetitionService(DEFAULT_ACADEMY_ID).toggleEnrollment(competitionId, studentId),
+  updateStatus: (id: string, status: CompetitionStatus) => new CompetitionService(DEFAULT_ACADEMY_ID).updateStatus(id, status),
+  getForStudent: (studentId: string) => new CompetitionService(DEFAULT_ACADEMY_ID).getForStudent(studentId),
+  addResult: (data: Omit<CompetitionResult, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>, createdBy: string) => new CompetitionService(DEFAULT_ACADEMY_ID).addResult(data, createdBy),
+  getResultsForCompetition: (competitionId: string) => new CompetitionService(DEFAULT_ACADEMY_ID).getResultsForCompetition(competitionId),
+  getResultsForStudent: (studentId: string) => new CompetitionService(DEFAULT_ACADEMY_ID).getResultsForStudent(studentId),
+  getMedalCount: (studentId: string) => new CompetitionService(DEFAULT_ACADEMY_ID).getMedalCount(studentId),
+  updateResult: (id: string, data: Partial<CompetitionResult>) => new CompetitionService(DEFAULT_ACADEMY_ID).updateResult(id, data),
+  deleteResult: (id: string) => new CompetitionService(DEFAULT_ACADEMY_ID).deleteResult(id),
+  getResultById: (id: string) => new CompetitionService(DEFAULT_ACADEMY_ID).getResultById(id),
 };
 
 export default competitionService;

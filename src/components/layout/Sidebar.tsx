@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Drawer,
@@ -32,9 +32,12 @@ import {
   GraduationCap,
   Trophy,
   X,
+  Store,
+  Wallet,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 
 // ============================================
 // Constants
@@ -52,7 +55,7 @@ interface NavItem {
   badge?: number;
 }
 
-const mainNavItems: NavItem[] = [
+const baseNavItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Chamada', icon: ClipboardCheck, path: '/chamada' },
   { label: 'Alunos', icon: Users, path: '/alunos' },
@@ -61,6 +64,9 @@ const mainNavItems: NavItem[] = [
   { label: 'Financeiro', icon: DollarSign, path: '/financeiro' },
   { label: 'Relatórios', icon: BarChart3, path: '/relatorios' },
 ];
+
+const storeNavItem: NavItem = { label: 'Loja', icon: Store, path: '/loja' };
+const walletNavItem: NavItem = { label: 'Carteira', icon: Wallet, path: '/carteira' };
 
 const bottomNavItems: NavItem[] = [
   { label: 'Configurações', icon: Settings, path: '/configuracoes' },
@@ -83,6 +89,26 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user, signOut } = useAuth();
+  const { academy } = useAcademy();
+
+  // Compute nav items based on academy settings
+  const mainNavItems = useMemo(() => {
+    const items = [...baseNavItems];
+    let insertIndex = 6; // After Financeiro
+
+    // Add Carteira after Financeiro if AbacatePay is enabled
+    if (academy?.abacatePayEnabled) {
+      items.splice(insertIndex, 0, walletNavItem);
+      insertIndex++;
+    }
+
+    // Add Store after Carteira/Financeiro if store is enabled
+    if (academy?.storeEnabled) {
+      items.splice(insertIndex, 0, storeNavItem);
+    }
+
+    return items;
+  }, [academy?.storeEnabled, academy?.abacatePayEnabled]);
 
   const handleScroll = useCallback(() => {
     setIsScrolling(true);
@@ -145,6 +171,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         flexDirection: 'column',
         height: '100%',
         bgcolor: 'background.paper',
+        ...(academy?.sidebarBackgroundUrl && {
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)), url(${academy.sidebarBackgroundUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }),
       }}
     >
       {/* Logo/Brand */}
@@ -171,8 +202,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
               }}
             >
               <Image
-                src="/logo_conteudo.png"
-                alt="T23"
+                src={academy?.sidebarLogoUrl || academy?.logoUrl || '/logo_conteudo.png'}
+                alt={academy?.name || 'Academia'}
                 fill
                 style={{ objectFit: 'cover' }}
               />
@@ -187,19 +218,21 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                   fontSize: '0.85rem',
                 }}
               >
-                Tropa Jiu-Jitsu
+                {academy?.name || 'Academia'}
               </Typography>
-              <Typography
-                variant="subtitle2"
-                sx={{
-                  fontWeight: 700,
-                  color: 'text.primary',
-                  lineHeight: 1.3,
-                  fontSize: '0.85rem',
-                }}
-              >
-                - Vamos avante, ombro a ombro
-              </Typography>
+              {academy?.portalSlogan && (
+                <Typography
+                  variant="subtitle2"
+                  sx={{
+                    fontWeight: 700,
+                    color: 'text.primary',
+                    lineHeight: 1.3,
+                    fontSize: '0.85rem',
+                  }}
+                >
+                  - {academy.portalSlogan}
+                </Typography>
+              )}
             </Box>
           </Box>
         )}
@@ -215,8 +248,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             }}
           >
             <Image
-              src="/logo_conteudo.png"
-              alt="T23"
+              src={academy?.sidebarLogoUrl || academy?.logoUrl || '/logo_conteudo.png'}
+              alt={academy?.name || 'Academia'}
               fill
               style={{ objectFit: 'cover' }}
             />
@@ -404,6 +437,11 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         flexDirection: 'column',
         height: '100%',
         bgcolor: 'background.paper',
+        ...(academy?.sidebarBackgroundUrl && {
+          backgroundImage: `linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)), url(${academy.sidebarBackgroundUrl})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }),
       }}
     >
       {/* Mobile Header with Close Button */}
@@ -428,8 +466,8 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             }}
           >
             <Image
-              src="/logo_conteudo.png"
-              alt="T23"
+              src={academy?.sidebarLogoUrl || academy?.logoUrl || '/logo_conteudo.png'}
+              alt={academy?.name || 'Academia'}
               fill
               style={{ objectFit: 'cover' }}
             />
@@ -444,14 +482,16 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                 fontSize: '1rem',
               }}
             >
-              Tropa 23
+              {academy?.name || 'Academia'}
             </Typography>
-            <Typography
-              variant="caption"
-              sx={{ color: 'text.secondary', lineHeight: 1, fontSize: '0.7rem' }}
-            >
-              Jiu-Jitsu
-            </Typography>
+            {academy?.portalSlogan && (
+              <Typography
+                variant="caption"
+                sx={{ color: 'text.secondary', lineHeight: 1, fontSize: '0.7rem' }}
+              >
+                {academy.portalSlogan}
+              </Typography>
+            )}
           </Box>
         </Box>
 

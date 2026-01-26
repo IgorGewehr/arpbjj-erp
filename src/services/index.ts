@@ -1,19 +1,23 @@
-// Legacy exports (backwards compatible)
+// Legacy exports (backwards compatible) + Factory functions
 export { studentService, createStudentService } from './studentService';
 export { classService, createClassService } from './classService';
 export { attendanceService, createAttendanceService } from './attendanceService';
 export { financialService, createFinancialService } from './financialService';
-export { assessmentService } from './assessmentService';
+export { assessmentService, createAssessmentService } from './assessmentService';
 export { achievementService, createAchievementService } from './achievementService';
-export { beltProgressionService } from './beltProgressionService';
-export { planService } from './planService';
+export { beltProgressionService, createBeltProgressionService } from './beltProgressionService';
+export { planService, createPlanService } from './planService';
 export { settingsService, createSettingsService } from './settingsService';
-export { linkCodeService } from './linkCodeService';
-export { competitionService } from './competitionService';
+export { linkCodeService, createLinkCodeService } from './linkCodeService';
+export { competitionService, createCompetitionService } from './competitionService';
+export { competitionEnrollmentService, createCompetitionEnrollmentService } from './competitionEnrollmentService';
 
-// Multi-tenant services (factory functions)
+// Multi-tenant services (factory functions only)
 export { createNotificationService } from './notificationService';
 export { createAbacatePayService } from './abacatePayService';
+
+// Global services (ROOT level, not per-academy)
+export { globalUserService } from './globalUserService';
 
 // Type exports
 export type { AcademySettings } from './settingsService';

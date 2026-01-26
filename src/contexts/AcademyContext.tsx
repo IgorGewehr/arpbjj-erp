@@ -123,6 +123,13 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           name: data.name || '',
           slug: data.slug || '',
           logoUrl: data.logoUrl,
+          // Branding
+          portalSlogan: data.portalSlogan,
+          sidebarLogoUrl: data.sidebarLogoUrl,
+          portalBackgroundUrl: data.portalBackgroundUrl,
+          adminBackgroundUrl: data.adminBackgroundUrl,
+          sidebarBackgroundUrl: data.sidebarBackgroundUrl,
+          // Contact
           cnpj: data.cnpj,
           email: data.email,
           phone: data.phone,
@@ -130,11 +137,21 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           city: data.city,
           state: data.state,
           zipCode: data.zipCode,
+          // Financial
           pixKey: data.pixKey,
           pixKeyType: data.pixKeyType,
           abacatePayEnabled: data.abacatePayEnabled || false,
+          // Auto-graduation
           autoGraduationEnabled: data.autoGraduationEnabled || false,
           autoGraduationAttendances: data.autoGraduationAttendances,
+          // Store
+          storeEnabled: data.storeEnabled || false,
+          storePublished: data.storePublished || false,
+          storeWelcomeMessage: data.storeWelcomeMessage,
+          storeMinOrderAmount: data.storeMinOrderAmount,
+          // Monitors
+          monitorIds: data.monitorIds || [],
+          // Subscription & Metadata
           subscription: data.subscription,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),
@@ -233,6 +250,13 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           name: data.name || '',
           slug: data.slug || '',
           logoUrl: data.logoUrl,
+          // Branding
+          portalSlogan: data.portalSlogan,
+          sidebarLogoUrl: data.sidebarLogoUrl,
+          portalBackgroundUrl: data.portalBackgroundUrl,
+          adminBackgroundUrl: data.adminBackgroundUrl,
+          sidebarBackgroundUrl: data.sidebarBackgroundUrl,
+          // Contact
           cnpj: data.cnpj,
           email: data.email,
           phone: data.phone,
@@ -240,11 +264,21 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           city: data.city,
           state: data.state,
           zipCode: data.zipCode,
+          // Financial
           pixKey: data.pixKey,
           pixKeyType: data.pixKeyType,
           abacatePayEnabled: data.abacatePayEnabled || false,
+          // Auto-graduation
           autoGraduationEnabled: data.autoGraduationEnabled || false,
           autoGraduationAttendances: data.autoGraduationAttendances,
+          // Store
+          storeEnabled: data.storeEnabled || false,
+          storePublished: data.storePublished || false,
+          storeWelcomeMessage: data.storeWelcomeMessage,
+          storeMinOrderAmount: data.storeMinOrderAmount,
+          // Monitors
+          monitorIds: data.monitorIds || [],
+          // Subscription & Metadata
           subscription: data.subscription,
           createdAt: data.createdAt?.toDate() || new Date(),
           updatedAt: data.updatedAt?.toDate() || new Date(),

@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient, useInfiniteQuery } from '@tanstack/react-query';
-import { studentService } from '@/services';
+import { createStudentService } from '@/services';
 import { useAuth, useFeedback } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { Student, StudentFilters, StudentStatus, StudentCategory, BeltColor, KidsBeltColor, Stripes } from '@/types';
 
 // ============================================
@@ -32,8 +33,11 @@ export function useStudents(options: UseStudentsOptions = {}) {
   const { autoLoad = true, initialFilters = {} } = options;
 
   const { user } = useAuth();
+  const { academyId } = useAcademy();
   const { success, error: showError } = useFeedback();
   const queryClient = useQueryClient();
+
+  const studentService = useMemo(() => createStudentService(academyId || 'default'), [academyId]);
 
   // Filter state
   const [filters, setFilters] = useState<StudentFilters>(initialFilters);
@@ -55,7 +59,7 @@ export function useStudents(options: UseStudentsOptions = {}) {
     hasNextPage,
     isFetchingNextPage,
   } = useInfiniteQuery({
-    queryKey: [QUERY_KEYS.students, filters],
+    queryKey: [QUERY_KEYS.students, academyId, filters],
     queryFn: ({ pageParam }) => studentService.listAll(filters, 30, pageParam as string | undefined),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastId : undefined,
@@ -108,7 +112,7 @@ export function useStudents(options: UseStudentsOptions = {}) {
   // Fetch Active Students
   // ============================================
   const { data: activeStudents = [] } = useQuery({
-    queryKey: [QUERY_KEYS.activeStudents],
+    queryKey: [QUERY_KEYS.activeStudents, academyId],
     queryFn: () => studentService.getActive(),
     staleTime: 1000 * 60 * 5,
   });
@@ -348,12 +352,15 @@ export function useStudents(options: UseStudentsOptions = {}) {
 export function useStudent(studentId: string | null) {
   const queryClient = useQueryClient();
 
+  const { academyId } = useAcademy();
+  const studentService = useMemo(() => createStudentService(academyId || 'default'), [academyId]);
+
   const {
     data: student,
     isLoading,
     error,
   } = useQuery({
-    queryKey: [QUERY_KEYS.student, studentId],
+    queryKey: [QUERY_KEYS.student, studentId, academyId],
     queryFn: () => (studentId ? studentService.getById(studentId) : null),
     enabled: !!studentId,
     staleTime: 1000 * 60 * 5,
@@ -377,13 +384,16 @@ export function useStudent(studentId: string | null) {
 // useAllStudents Hook (All students for reports)
 // ============================================
 export function useAllStudents() {
+  const { academyId } = useAcademy();
+  const studentService = useMemo(() => createStudentService(academyId || 'default'), [academyId]);
+
   const {
     data: students,
     isLoading,
     error,
     refetch,
   } = useQuery({
-    queryKey: ['allStudents'],
+    queryKey: ['allStudents', academyId],
     queryFn: () => studentService.getAll(),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });

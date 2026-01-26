@@ -1,6 +1,4 @@
 import {
-  collection,
-  doc,
   getDocs,
   getDoc,
   addDoc,
@@ -10,15 +8,16 @@ import {
   where,
   Timestamp,
   DocumentSnapshot,
+  CollectionReference,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collections } from '@/lib/firebase/collections';
 import {
   CompetitionEnrollment,
   AgeCategory,
-  StudentTransportPreference,
 } from '@/types';
 
-const ENROLLMENTS_COLLECTION = 'competitionEnrollments';
+// Default academy for backwards compatibility
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
 // Helper: Convert Firestore document to CompetitionEnrollment
@@ -42,9 +41,17 @@ const docToEnrollment = (doc: DocumentSnapshot): CompetitionEnrollment => {
 };
 
 // ============================================
-// Competition Enrollment Service
+// Competition Enrollment Service (Multi-Tenant)
 // ============================================
-export const competitionEnrollmentService = {
+export class CompetitionEnrollmentService {
+  private academyId: string;
+  private enrollmentsRef: CollectionReference;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+    this.enrollmentsRef = collections.competitionEnrollments(academyId);
+  }
+
   // ============================================
   // Enroll Student in Competition
   // ============================================
@@ -75,7 +82,7 @@ export const competitionEnrollmentService = {
       docData.enrolledBy = enrolledBy;
     }
 
-    const docRef = await addDoc(collection(db, ENROLLMENTS_COLLECTION), docData);
+    const docRef = await addDoc(this.enrollmentsRef, docData);
 
     return {
       id: docRef.id,
@@ -89,7 +96,7 @@ export const competitionEnrollmentService = {
       enrolledAt: now,
       enrolledBy,
     };
-  },
+  }
 
   // ============================================
   // Get Enrollment by Competition and Student
@@ -99,7 +106,7 @@ export const competitionEnrollmentService = {
     studentId: string
   ): Promise<CompetitionEnrollment | null> {
     const q = query(
-      collection(db, ENROLLMENTS_COLLECTION),
+      this.enrollmentsRef,
       where('competitionId', '==', competitionId),
       where('studentId', '==', studentId)
     );
@@ -110,14 +117,14 @@ export const competitionEnrollmentService = {
     }
 
     return docToEnrollment(snapshot.docs[0]);
-  },
+  }
 
   // ============================================
   // Get All Enrollments for a Competition
   // ============================================
   async getByCompetition(competitionId: string): Promise<CompetitionEnrollment[]> {
     const q = query(
-      collection(db, ENROLLMENTS_COLLECTION),
+      this.enrollmentsRef,
       where('competitionId', '==', competitionId)
     );
 
@@ -126,14 +133,14 @@ export const competitionEnrollmentService = {
 
     // Sort by enrollment date
     return enrollments.sort((a, b) => a.enrolledAt.getTime() - b.enrolledAt.getTime());
-  },
+  }
 
   // ============================================
   // Get All Enrollments for a Student (History)
   // ============================================
   async getByStudent(studentId: string): Promise<CompetitionEnrollment[]> {
     const q = query(
-      collection(db, ENROLLMENTS_COLLECTION),
+      this.enrollmentsRef,
       where('studentId', '==', studentId)
     );
 
@@ -142,7 +149,7 @@ export const competitionEnrollmentService = {
 
     // Sort by enrollment date descending (most recent first)
     return enrollments.sort((a, b) => b.enrolledAt.getTime() - a.enrolledAt.getTime());
-  },
+  }
 
   // ============================================
   // Update Enrollment
@@ -151,7 +158,7 @@ export const competitionEnrollmentService = {
     id: string,
     data: Partial<Pick<CompetitionEnrollment, 'ageCategory' | 'weightCategory' | 'transportPreference'>>
   ): Promise<CompetitionEnrollment> {
-    const docRef = doc(db, ENROLLMENTS_COLLECTION, id);
+    const docRef = collections.competitionEnrollment(this.academyId, id);
 
     const updateData: Record<string, unknown> = {};
 
@@ -163,15 +170,15 @@ export const competitionEnrollmentService = {
 
     const updatedDoc = await getDoc(docRef);
     return docToEnrollment(updatedDoc);
-  },
+  }
 
   // ============================================
   // Delete Enrollment (Unenroll)
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = doc(db, ENROLLMENTS_COLLECTION, id);
+    const docRef = collections.competitionEnrollment(this.academyId, id);
     await deleteDoc(docRef);
-  },
+  }
 
   // ============================================
   // Delete All Enrollments for a Competition
@@ -181,7 +188,7 @@ export const competitionEnrollmentService = {
     for (const enrollment of enrollments) {
       await this.delete(enrollment.id);
     }
-  },
+  }
 
   // ============================================
   // Get Transport List (students who need transport)
@@ -189,7 +196,7 @@ export const competitionEnrollmentService = {
   async getTransportList(competitionId: string): Promise<CompetitionEnrollment[]> {
     const enrollments = await this.getByCompetition(competitionId);
     return enrollments.filter((e) => e.transportPreference === 'need_transport');
-  },
+  }
 
   // ============================================
   // Get Transport Stats
@@ -224,7 +231,7 @@ export const competitionEnrollmentService = {
     });
 
     return stats;
-  },
+  }
 
   // ============================================
   // Get Enrollments by Category
@@ -241,7 +248,7 @@ export const competitionEnrollmentService = {
       if (weightCategory && e.weightCategory !== weightCategory) return false;
       return true;
     });
-  },
+  }
 
   // ============================================
   // Check if Student is Enrolled
@@ -249,7 +256,7 @@ export const competitionEnrollmentService = {
   async isEnrolled(competitionId: string, studentId: string): Promise<boolean> {
     const enrollment = await this.getByCompetitionAndStudent(competitionId, studentId);
     return enrollment !== null;
-  },
+  }
 
   // ============================================
   // Get Enrollment Count for Competition
@@ -257,7 +264,32 @@ export const competitionEnrollmentService = {
   async getCount(competitionId: string): Promise<number> {
     const enrollments = await this.getByCompetition(competitionId);
     return enrollments.length;
-  },
+  }
+}
+
+// ============================================
+// Factory Function
+// ============================================
+export function createCompetitionEnrollmentService(academyId: string): CompetitionEnrollmentService {
+  return new CompetitionEnrollmentService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility)
+// ============================================
+export const competitionEnrollmentService = {
+  enroll: (data: Omit<CompetitionEnrollment, 'id' | 'enrolledAt'>, enrolledBy?: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).enroll(data, enrolledBy),
+  getByCompetitionAndStudent: (competitionId: string, studentId: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).getByCompetitionAndStudent(competitionId, studentId),
+  getByCompetition: (competitionId: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).getByCompetition(competitionId),
+  getByStudent: (studentId: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).getByStudent(studentId),
+  update: (id: string, data: Partial<Pick<CompetitionEnrollment, 'ageCategory' | 'weightCategory' | 'transportPreference'>>) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).update(id, data),
+  delete: (id: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).delete(id),
+  deleteByCompetition: (competitionId: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).deleteByCompetition(competitionId),
+  getTransportList: (competitionId: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).getTransportList(competitionId),
+  getTransportStats: (competitionId: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).getTransportStats(competitionId),
+  getByCategory: (competitionId: string, ageCategory?: AgeCategory, weightCategory?: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).getByCategory(competitionId, ageCategory, weightCategory),
+  isEnrolled: (competitionId: string, studentId: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).isEnrolled(competitionId, studentId),
+  getCount: (competitionId: string) => new CompetitionEnrollmentService(DEFAULT_ACADEMY_ID).getCount(competitionId),
 };
 
 export default competitionEnrollmentService;

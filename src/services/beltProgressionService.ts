@@ -1,6 +1,4 @@
 import {
-  collection,
-  doc,
   getDocs,
   getDoc,
   addDoc,
@@ -8,14 +6,16 @@ import {
   where,
   Timestamp,
   DocumentSnapshot,
+  CollectionReference,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { collections } from '@/lib/firebase/collections';
 import { BeltProgression, BeltColor, Stripes, Student } from '@/types';
-import { studentService } from './studentService';
-import { achievementService } from './achievementService';
-import { attendanceService } from './attendanceService';
+import { createStudentService } from './studentService';
+import { createAchievementService } from './achievementService';
+import { createAttendanceService } from './attendanceService';
 
-const COLLECTION = 'beltProgressions';
+// Default academy for backwards compatibility
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
 // Belt Progression Requirements
@@ -29,14 +29,6 @@ const STRIPE_REQUIREMENTS: Record<BeltColor, number[]> = {
 };
 
 const BELT_ORDER: BeltColor[] = ['white', 'blue', 'purple', 'brown', 'black'];
-
-const MINIMUM_TIME_FOR_BELT: Record<BeltColor, number> = {
-  white: 0,      // months
-  blue: 24,      // 2 years minimum on blue
-  purple: 18,    // 1.5 years minimum on purple
-  brown: 12,     // 1 year minimum on brown
-  black: 36,     // 3 years minimum on black (for degrees)
-};
 
 // ============================================
 // Helper: Convert Firestore document to BeltProgression
@@ -62,15 +54,29 @@ const docToBeltProgression = (doc: DocumentSnapshot): BeltProgression => {
 };
 
 // ============================================
-// Belt Progression Service
+// Belt Progression Service (Multi-Tenant)
 // ============================================
-export const beltProgressionService = {
+export class BeltProgressionService {
+  private academyId: string;
+  private progressionsRef: CollectionReference;
+  private studentService: ReturnType<typeof createStudentService>;
+  private achievementService: ReturnType<typeof createAchievementService>;
+  private attendanceService: ReturnType<typeof createAttendanceService>;
+
+  constructor(academyId: string) {
+    this.academyId = academyId;
+    this.progressionsRef = collections.beltProgressions(academyId);
+    this.studentService = createStudentService(academyId);
+    this.achievementService = createAchievementService(academyId);
+    this.attendanceService = createAttendanceService(academyId);
+  }
+
   // ============================================
   // Get Progression History by Student
   // ============================================
   async getByStudent(studentId: string): Promise<BeltProgression[]> {
     const q = query(
-      collection(db, COLLECTION),
+      this.progressionsRef,
       where('studentId', '==', studentId)
     );
 
@@ -78,13 +84,13 @@ export const beltProgressionService = {
     const progressions = snapshot.docs.map(docToBeltProgression);
     // Sort by promotionDate desc client-side
     return progressions.sort((a, b) => b.promotionDate.getTime() - a.promotionDate.getTime());
-  },
+  }
 
   // ============================================
   // Get Progression by ID
   // ============================================
   async getById(id: string): Promise<BeltProgression | null> {
-    const docRef = doc(db, COLLECTION, id);
+    const docRef = collections.beltProgression(this.academyId, id);
     const docSnap = await getDoc(docRef);
 
     if (!docSnap.exists()) {
@@ -92,7 +98,7 @@ export const beltProgressionService = {
     }
 
     return docToBeltProgression(docSnap);
-  },
+  }
 
   // ============================================
   // Check Eligibility for Promotion
@@ -108,7 +114,7 @@ export const beltProgressionService = {
     missingClasses: number;
     message: string;
   }> {
-    const student = await studentService.getById(studentId);
+    const student = await this.studentService.getById(studentId);
     if (!student) {
       return {
         eligible: false,
@@ -120,7 +126,7 @@ export const beltProgressionService = {
       };
     }
 
-    const totalClasses = await attendanceService.getStudentAttendanceCount(studentId);
+    const totalClasses = await this.attendanceService.getStudentAttendanceCount(studentId);
     const currentBelt = student.currentBelt as BeltColor;
     const currentStripes = student.currentStripes;
 
@@ -176,7 +182,7 @@ export const beltProgressionService = {
       missingClasses,
       message,
     };
-  },
+  }
 
   // ============================================
   // Get All Eligible Students
@@ -186,7 +192,7 @@ export const beltProgressionService = {
     nextPromotion: { belt: BeltColor; stripes: Stripes };
     totalClasses: number;
   }>> {
-    const activeStudents = await studentService.getActive();
+    const activeStudents = await this.studentService.getActive();
     const eligible: Array<{
       student: Student;
       nextPromotion: { belt: BeltColor; stripes: Stripes };
@@ -205,7 +211,7 @@ export const beltProgressionService = {
     }
 
     return eligible;
-  },
+  }
 
   // ============================================
   // Promote Student
@@ -218,12 +224,12 @@ export const beltProgressionService = {
     promotedByName: string,
     notes?: string
   ): Promise<BeltProgression> {
-    const student = await studentService.getById(studentId);
+    const student = await this.studentService.getById(studentId);
     if (!student) {
       throw new Error('Aluno não encontrado');
     }
 
-    const totalClasses = await attendanceService.getStudentAttendanceCount(studentId);
+    const totalClasses = await this.attendanceService.getStudentAttendanceCount(studentId);
     const now = new Date();
 
     // Build progression data carefully to avoid undefined values
@@ -243,13 +249,13 @@ export const beltProgressionService = {
     // Only add notes if it has a value
     if (notes) progressionData.notes = notes;
 
-    const docRef = await addDoc(collection(db, COLLECTION), progressionData);
+    const docRef = await addDoc(this.progressionsRef, progressionData);
 
     // Update student's belt
-    await studentService.updateBelt(studentId, newBelt, newStripes);
+    await this.studentService.updateBelt(studentId, newBelt, newStripes);
 
     // Create achievement record
-    await achievementService.createGraduation(
+    await this.achievementService.createGraduation(
       studentId,
       student.fullName,
       student.currentBelt,
@@ -261,7 +267,7 @@ export const beltProgressionService = {
 
     const newDoc = await getDoc(docRef);
     return docToBeltProgression(newDoc);
-  },
+  }
 
   // ============================================
   // Add Stripe
@@ -272,7 +278,7 @@ export const beltProgressionService = {
     promotedByName: string,
     notes?: string
   ): Promise<BeltProgression> {
-    const student = await studentService.getById(studentId);
+    const student = await this.studentService.getById(studentId);
     if (!student) {
       throw new Error('Aluno não encontrado');
     }
@@ -291,7 +297,7 @@ export const beltProgressionService = {
       promotedByName,
       notes
     );
-  },
+  }
 
   // ============================================
   // Change Belt
@@ -311,13 +317,13 @@ export const beltProgressionService = {
       promotedByName,
       notes
     );
-  },
+  }
 
   // ============================================
   // Get Belt Distribution
   // ============================================
   async getBeltDistribution(): Promise<Record<BeltColor, number>> {
-    const students = await studentService.getActive();
+    const students = await this.studentService.getActive();
 
     const distribution: Record<BeltColor, number> = {
       white: 0,
@@ -335,20 +341,20 @@ export const beltProgressionService = {
     });
 
     return distribution;
-  },
+  }
 
   // ============================================
   // Get Recent Promotions
   // ============================================
   async getRecentPromotions(limitCount = 10): Promise<BeltProgression[]> {
     // Fetch all and sort/limit client-side to avoid index issues
-    const snapshot = await getDocs(collection(db, COLLECTION));
+    const snapshot = await getDocs(this.progressionsRef);
     const progressions = snapshot.docs.map(docToBeltProgression);
     // Sort by promotionDate desc and limit
     return progressions
       .sort((a, b) => b.promotionDate.getTime() - a.promotionDate.getTime())
       .slice(0, limitCount);
-  },
+  }
 
   // ============================================
   // Get Student Journey (timeline of all progressions)
@@ -365,13 +371,13 @@ export const beltProgressionService = {
       classesNeeded: number;
     } | null;
   }> {
-    const student = await studentService.getById(studentId);
+    const student = await this.studentService.getById(studentId);
     if (!student) {
       throw new Error('Aluno não encontrado');
     }
 
     const progressions = await this.getByStudent(studentId);
-    const totalClasses = await attendanceService.getStudentAttendanceCount(studentId);
+    const totalClasses = await this.attendanceService.getStudentAttendanceCount(studentId);
     const eligibility = await this.checkEligibility(studentId);
 
     return {
@@ -387,7 +393,7 @@ export const beltProgressionService = {
           }
         : null,
     };
-  },
+  }
 
   // ============================================
   // Helper: Get Belt Label
@@ -401,7 +407,7 @@ export const beltProgressionService = {
       black: 'Preta',
     };
     return labels[belt] || belt;
-  },
+  }
 
   // ============================================
   // Helper: Get Belt Color Hex
@@ -415,7 +421,32 @@ export const beltProgressionService = {
       black: '#171717',
     };
     return colors[belt] || '#F5F5F5';
-  },
+  }
+}
+
+// ============================================
+// Factory Function
+// ============================================
+export function createBeltProgressionService(academyId: string): BeltProgressionService {
+  return new BeltProgressionService(academyId);
+}
+
+// ============================================
+// Legacy Export (for backwards compatibility)
+// ============================================
+export const beltProgressionService = {
+  getByStudent: (studentId: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getByStudent(studentId),
+  getById: (id: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getById(id),
+  checkEligibility: (studentId: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).checkEligibility(studentId),
+  getEligibleStudents: () => new BeltProgressionService(DEFAULT_ACADEMY_ID).getEligibleStudents(),
+  promote: (studentId: string, newBelt: BeltColor, newStripes: Stripes, promotedBy: string, promotedByName: string, notes?: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).promote(studentId, newBelt, newStripes, promotedBy, promotedByName, notes),
+  addStripe: (studentId: string, promotedBy: string, promotedByName: string, notes?: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).addStripe(studentId, promotedBy, promotedByName, notes),
+  changeBelt: (studentId: string, newBelt: BeltColor, promotedBy: string, promotedByName: string, notes?: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).changeBelt(studentId, newBelt, promotedBy, promotedByName, notes),
+  getBeltDistribution: () => new BeltProgressionService(DEFAULT_ACADEMY_ID).getBeltDistribution(),
+  getRecentPromotions: (limitCount = 10) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getRecentPromotions(limitCount),
+  getStudentJourney: (studentId: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getStudentJourney(studentId),
+  getBeltLabel: (belt: BeltColor) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getBeltLabel(belt),
+  getBeltColorHex: (belt: BeltColor) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getBeltColorHex(belt),
 };
 
 export default beltProgressionService;

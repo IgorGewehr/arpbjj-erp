@@ -6,6 +6,7 @@ import { Sidebar, SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from './Sidebar';
 import { TopBar } from './TopBar';
 import { MobileBottomNav } from './MobileBottomNav';
 import { useFinancial, useSwipeNavigation } from '@/hooks';
+import { useAcademy } from '@/contexts/AcademyContext';
 
 // ============================================
 // Props Interface
@@ -22,6 +23,9 @@ export function AppLayout({ children, title }: AppLayoutProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Get academy settings for branding
+  const { academy } = useAcademy();
 
   // Get overdue payments count for BottomNav badge
   const { overduePayments } = useFinancial();
@@ -76,6 +80,13 @@ export function AppLayout({ children, title }: AppLayoutProps) {
             transform: isSwiping ? `translateX(${swipeOffset * 0.3}px)` : 'none',
             transition: isSwiping ? 'none' : 'transform 0.2s ease-out',
             touchAction: 'pan-y', // Allow vertical scrolling, handle horizontal
+            // Custom background from academy settings
+            ...(academy?.adminBackgroundUrl && {
+              backgroundImage: `linear-gradient(rgba(250,250,250,0.9), rgba(250,250,250,0.9)), url(${academy.adminBackgroundUrl})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              backgroundAttachment: 'fixed',
+            }),
           }}
         >
           {children}

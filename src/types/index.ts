@@ -97,7 +97,42 @@ export const TRANSPORT_PREFERENCE_LABELS: Record<StudentTransportPreference, str
 };
 
 // ============================================
-// User Interface
+// Global User Interface (ROOT /users/{uid})
+// This is the user's global identity, independent of any academy
+// ============================================
+export type AccountType = 'free' | 'linked';
+
+export interface GlobalUser {
+  id: string;
+  email: string;
+  displayName: string;
+  photoUrl?: string;
+  phone?: string;
+
+  // Account type
+  accountType: AccountType;              // 'free' = no academy, 'linked' = has academy(s)
+
+  // Personal info (for fighter profile)
+  birthDate?: Date;
+  cpf?: string;
+  weight?: number;
+
+  // Global jiu-jitsu info (highest achieved, synced from academies)
+  jiujitsuStartDate?: Date;              // When started training jiu-jitsu (any academy)
+  highestBelt?: BeltColor | KidsBeltColor;  // Highest belt achieved
+  highestStripes?: Stripes;              // Stripes at highest belt
+
+  // Profile visibility
+  isProfilePublic?: boolean;             // Visible to others for competitions
+
+  // Timestamps
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================
+// User Interface (Legacy alias for GlobalUser + AcademyUser combined)
+// Kept for backwards compatibility
 // ============================================
 export interface User {
   id: string;
@@ -107,7 +142,16 @@ export interface User {
   role: UserRole;
   phone?: string;
 
-  // Role-specific links
+  // Account type (new)
+  accountType?: AccountType;
+
+  // Global jiu-jitsu info (new)
+  jiujitsuStartDate?: Date;
+  highestBelt?: BeltColor | KidsBeltColor;
+  highestStripes?: Stripes;
+  isProfilePublic?: boolean;
+
+  // Role-specific links (from AcademyUser context)
   studentId?: string;        // For 'student' role - links to their student record
   linkedStudentIds?: string[]; // For 'guardian' role - links to their children's records
   instructorId?: string;     // For 'instructor' role - links to instructor record
@@ -569,6 +613,13 @@ export interface Academy {
   slug: string;                         // URL-friendly identifier (e.g., "tropa23")
   logoUrl?: string;
 
+  // Branding
+  portalSlogan?: string;                // Frase exibida na TopAppBar do portal
+  sidebarLogoUrl?: string;              // Logo alternativo para sidebar
+  portalBackgroundUrl?: string;         // Background do portal do aluno
+  adminBackgroundUrl?: string;          // Background do painel admin
+  sidebarBackgroundUrl?: string;        // Background da sidebar
+
   // Contact Info
   cnpj?: string;
   email?: string;
@@ -592,6 +643,15 @@ export interface Academy {
   autoGraduationEnabled?: boolean;
   autoGraduationAttendances?: number;   // Attendances required per stripe/belt
 
+  // Store Settings
+  storeEnabled?: boolean;
+  storePublished?: boolean;
+  storeWelcomeMessage?: string;
+  storeMinOrderAmount?: number;
+
+  // Monitors (students with additional permissions)
+  monitorIds?: string[];                // Array of studentIds that are monitors
+
   // Subscription
   subscription?: {
     plan: 'free' | 'basic' | 'premium' | 'enterprise';
@@ -610,26 +670,43 @@ export interface Academy {
 export interface UserAcademyMapping {
   id: string;                           // Firebase UID
   academyIds: string[];                 // List of academy IDs the user belongs to
-  primaryAcademyId: string;             // Default academy
+  primaryAcademyId?: string;            // Default academy (null if no academies)
+
+  // Detailed info per academy
+  academyDetails?: {
+    [academyId: string]: {
+      studentId?: string;               // Student record ID at this academy
+      role: UserRole;                   // Role at this academy
+      joinedAt: Date;                   // When joined this academy
+      status: 'active' | 'inactive' | 'pending';  // Status at this academy
+    };
+  };
+
+  updatedAt?: Date;
 }
 
-// Academy User (user within an academy context)
+// Academy User (user within an academy context - /academies/{academyId}/users/{uid})
+// This represents the user's permissions and links WITHIN a specific academy
 export interface AcademyUser {
-  id: string;                           // Firebase UID
+  id: string;                           // Firebase UID (same as GlobalUser.id)
   email: string;
   displayName: string;
   photoUrl?: string;
-  role: UserRole;
+  role: UserRole;                       // Role within THIS academy
   phone?: string;
 
-  // Role-specific links
-  studentId?: string;
-  linkedStudentIds?: string[];
-  instructorId?: string;
+  // Role-specific links within THIS academy
+  studentId?: string;                   // Student record at THIS academy
+  linkedStudentIds?: string[];          // Children at THIS academy (for guardians)
+  instructorId?: string;                // Instructor record at THIS academy
 
   // Account linking
   pendingStudentLink?: string;
   approvedAt?: Date;
+
+  // Status at this academy
+  status?: 'active' | 'inactive' | 'pending';
+  joinedAt?: Date;
 
   createdAt: Date;
   updatedAt: Date;
@@ -755,3 +832,90 @@ export interface FinancialWithPayment extends Financial {
   abacatePayTransactionId?: string;
   paidViaAbacatePay?: boolean;
 }
+
+// ============================================
+// Store Types
+// ============================================
+export type StoreProductCategory = 'uniform' | 'equipment' | 'accessory' | 'other';
+export type StoreStockType = 'in_stock' | 'on_demand';
+export type StoreOrderStatus = 'pending_payment' | 'paid' | 'preparing' | 'ready' | 'delivered' | 'cancelled';
+
+// Store Product
+export interface StoreProduct {
+  id: string;
+  academyId: string;
+  name: string;
+  description?: string;
+  price: number; // in cents
+  images: string[]; // URLs of images
+  category: StoreProductCategory;
+  stockType: StoreStockType;
+  stockQuantity?: number; // only if stockType === 'in_stock'
+  sizes?: string[]; // e.g., ['P', 'M', 'G', 'GG']
+  colors?: string[]; // e.g., ['Branco', 'Azul', 'Preto']
+  active: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Store Order Item
+export interface StoreOrderItem {
+  productId: string;
+  productName: string;
+  quantity: number;
+  unitPrice: number; // in cents
+  size?: string;
+  color?: string;
+}
+
+// Store Order
+export interface StoreOrder {
+  id: string;
+  academyId: string;
+  studentId: string;
+  studentName: string;
+  items: StoreOrderItem[];
+  totalAmount: number; // in cents
+  status: StoreOrderStatus;
+  paymentMethod?: 'pix';
+  abacatePayTransactionId?: string;
+  pixCode?: string;
+  qrCodeUrl?: string;
+  notes?: string;
+  createdAt: Date;
+  updatedAt: Date;
+  paidAt?: Date;
+  deliveredAt?: Date;
+}
+
+// Status flow:
+// pending_payment → paid (webhook) → preparing (admin) → ready (admin) → delivered (admin)
+//                                  ↘ cancelled (only admin can cancel after payment)
+
+// Store Category Labels
+export const STORE_CATEGORY_LABELS: Record<StoreProductCategory, string> = {
+  uniform: 'Uniforme',
+  equipment: 'Equipamento',
+  accessory: 'Acessorio',
+  other: 'Outros',
+};
+
+// Store Order Status Labels
+export const STORE_ORDER_STATUS_LABELS: Record<StoreOrderStatus, string> = {
+  pending_payment: 'Aguardando Pagamento',
+  paid: 'Pago',
+  preparing: 'Em Preparacao',
+  ready: 'Pronto para Retirada',
+  delivered: 'Entregue',
+  cancelled: 'Cancelado',
+};
+
+// Store Order Status Colors
+export const STORE_ORDER_STATUS_COLORS: Record<StoreOrderStatus, 'default' | 'warning' | 'success' | 'info' | 'primary' | 'error'> = {
+  pending_payment: 'warning',
+  paid: 'success',
+  preparing: 'info',
+  ready: 'primary',
+  delivered: 'success',
+  cancelled: 'error',
+};

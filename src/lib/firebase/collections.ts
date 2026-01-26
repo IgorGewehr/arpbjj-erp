@@ -75,6 +75,8 @@ export const collections = {
   assessments: (academyId: string) => getCollection(academyId, 'assessments'),
   notifications: (academyId: string) => getCollection(academyId, 'notifications'),
   walletTransactions: (academyId: string) => getCollection(academyId, 'walletTransactions'),
+  storeProducts: (academyId: string) => getCollection(academyId, 'storeProducts'),
+  storeOrders: (academyId: string) => getCollection(academyId, 'storeOrders'),
 
   // Document references
   user: (academyId: string, userId: string) => getDocRef(academyId, 'users', userId),
@@ -93,12 +95,22 @@ export const collections = {
   notification: (academyId: string, notificationId: string) => getDocRef(academyId, 'notifications', notificationId),
   walletTransaction: (academyId: string, transactionId: string) => getDocRef(academyId, 'walletTransactions', transactionId),
   wallet: (academyId: string) => doc(db, `academies/${academyId}/wallet`, 'balance'),
+  storeProduct: (academyId: string, productId: string) => getDocRef(academyId, 'storeProducts', productId),
+  storeOrder: (academyId: string, orderId: string) => getDocRef(academyId, 'storeOrders', orderId),
 };
 
 // ============================================
 // Root Collections (not per-academy)
 // ============================================
 export const rootCollections = {
+  // Academy documents
   academies: () => collection(db, 'academies'),
+
+  // Global users (identity independent of academies)
+  users: () => collection(db, 'users'),
+  user: (userId: string) => doc(db, 'users', userId),
+
+  // User-to-Academy mapping
   userAcademyMapping: () => collection(db, 'userAcademyMapping'),
+  userAcademyMappingDoc: (userId: string) => doc(db, 'userAcademyMapping', userId),
 };

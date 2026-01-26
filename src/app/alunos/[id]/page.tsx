@@ -56,6 +56,7 @@ import {
   Trophy,
   History,
   Trash2,
+  QrCode,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -64,12 +65,15 @@ import { useStudent, useStudents, useFinancial, usePlans, useAssessment, useStud
 import { getBeltChipColor } from '@/lib/theme';
 import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode } from '@/types';
+import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode, FinancialPaymentLink } from '@/types';
 import { financialService, attendanceService, studentService } from '@/services';
+import { createAbacatePayService } from '@/services/abacatePayService';
 import { Attendance } from '@/types';
 import { linkCodeService } from '@/services/linkCodeService';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
+import QRCode from 'qrcode';
 
 // ============================================
 // Assessment Score Types
@@ -272,11 +276,21 @@ export default function StudentProfilePage() {
   const studentId = params.id as string;
 
   const { user } = useAuth();
+  const { academy } = useAcademy();
   const { success: showSuccess, error: showError } = useFeedback();
   const { student, isLoading, refresh: refreshStudent } = useStudent(studentId);
   const { updateBelt } = useStudents({ autoLoad: false });
   const { markAsPaid, isMarkingPaid } = useFinancial({ autoLoad: false });
   const { plans } = usePlans();
+
+  // Check if AbacatePay is enabled
+  const [abacatePayEnabled, setAbacatePayEnabled] = useState(false);
+  useEffect(() => {
+    if (academy?.id) {
+      const service = createAbacatePayService(academy.id);
+      service.isEnabled().then(setAbacatePayEnabled);
+    }
+  }, [academy?.id]);
 
   // Assessment hooks
   const { createAssessment, isCreating: isSavingAssessment } = useAssessment();
@@ -309,6 +323,13 @@ export default function StudentProfilePage() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Financial | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
+
+  // PIX Payment state
+  const [pixDialogOpen, setPixDialogOpen] = useState(false);
+  const [pixPaymentLink, setPixPaymentLink] = useState<FinancialPaymentLink | null>(null);
+  const [generatingPix, setGeneratingPix] = useState(false);
+  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
+  const [pixCopied, setPixCopied] = useState(false);
 
   // Graduation dialog state
   const [graduationDialogOpen, setGraduationDialogOpen] = useState(false);
@@ -493,6 +514,49 @@ export default function StudentProfilePage() {
       // Error handled by hook
     }
   }, [selectedPayment, paymentMethod, markAsPaid, studentId]);
+
+  // Handle PIX payment generation
+  const handleGeneratePix = useCallback(async (payment: Financial) => {
+    if (!academy?.id || !student) return;
+
+    setSelectedPayment(payment);
+    setPixPaymentLink(null);
+    setQrCodeUrl('');
+    setPixDialogOpen(true);
+    setGeneratingPix(true);
+
+    try {
+      const service = createAbacatePayService(academy.id);
+      const link = await service.createPixPayment(
+        payment.amount,
+        payment.description || `Mensalidade - ${payment.referenceMonth || ''}`,
+        payment.id,
+        studentId,
+        student.fullName || student.nickname || 'Aluno'
+      );
+      setPixPaymentLink(link);
+
+      // Generate QR code
+      if (link?.pixCode) {
+        const qr = await QRCode.toDataURL(link.pixCode, { width: 256 });
+        setQrCodeUrl(qr);
+      }
+    } catch (err) {
+      console.error('Error generating PIX payment:', err);
+      showError('Erro ao gerar pagamento PIX');
+    } finally {
+      setGeneratingPix(false);
+    }
+  }, [academy?.id, student, studentId, showError]);
+
+  const handleCopyPixCode = useCallback(() => {
+    if (pixPaymentLink?.pixCode) {
+      navigator.clipboard.writeText(pixPaymentLink.pixCode);
+      setPixCopied(true);
+      showSuccess('Codigo PIX copiado!');
+      setTimeout(() => setPixCopied(false), 2000);
+    }
+  }, [pixPaymentLink?.pixCode, showSuccess]);
 
   // Handle graduation
   const handleOpenGraduationDialog = useCallback(() => {
@@ -1161,15 +1225,28 @@ export default function StudentProfilePage() {
                             }}
                             secondaryAction={
                               payment.status !== 'paid' && payment.status !== 'cancelled' && (
-                                <Button
-                                  size="small"
-                                  variant="contained"
-                                  color="success"
-                                  startIcon={<CreditCard size={14} />}
-                                  onClick={() => handleOpenPaymentDialog(payment)}
-                                >
-                                  Dar Baixa
-                                </Button>
+                                <Box sx={{ display: 'flex', gap: 1 }}>
+                                  {abacatePayEnabled && (
+                                    <Button
+                                      size="small"
+                                      variant="outlined"
+                                      color="primary"
+                                      startIcon={<QrCode size={14} />}
+                                      onClick={() => handleGeneratePix(payment)}
+                                    >
+                                      Gerar PIX
+                                    </Button>
+                                  )}
+                                  <Button
+                                    size="small"
+                                    variant="contained"
+                                    color="success"
+                                    startIcon={<CreditCard size={14} />}
+                                    onClick={() => handleOpenPaymentDialog(payment)}
+                                  >
+                                    Dar Baixa
+                                  </Button>
+                                </Box>
                               )
                             }
                           >
@@ -1536,6 +1613,79 @@ export default function StudentProfilePage() {
               startIcon={isMarkingPaid ? <CircularProgress size={16} color="inherit" /> : <CheckCircle size={16} />}
             >
               {isMarkingPaid ? 'Processando...' : 'Confirmar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* PIX Payment Dialog */}
+        <Dialog open={pixDialogOpen} onClose={() => setPixDialogOpen(false)} maxWidth="xs" fullWidth>
+          <DialogTitle>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="h6" fontWeight={600}>
+                Pagamento PIX
+              </Typography>
+              {selectedPayment && (
+                <Typography variant="body2" color="text.secondary">
+                  {selectedPayment.description} - R$ {selectedPayment.amount.toLocaleString('pt-BR')}
+                </Typography>
+              )}
+            </Box>
+          </DialogTitle>
+          <DialogContent>
+            {generatingPix ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
+                <CircularProgress />
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+                  Gerando QR Code...
+                </Typography>
+              </Box>
+            ) : pixPaymentLink?.pixCode ? (
+              <Box sx={{ textAlign: 'center' }}>
+                {qrCodeUrl ? (
+                  <Box
+                    sx={{
+                      p: 2,
+                      bgcolor: 'white',
+                      borderRadius: 2,
+                      display: 'inline-block',
+                      mb: 2,
+                      border: '1px solid',
+                      borderColor: 'grey.200',
+                    }}
+                  >
+                    <img src={qrCodeUrl} alt="QR Code PIX" style={{ display: 'block' }} />
+                  </Box>
+                ) : (
+                  <Skeleton variant="rectangular" width={256} height={256} sx={{ mx: 'auto', mb: 2 }} />
+                )}
+
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Escaneie o QR Code ou copie o codigo PIX
+                </Typography>
+
+                <Button
+                  variant="outlined"
+                  fullWidth
+                  startIcon={pixCopied ? <CheckCircle size={18} /> : <Copy size={18} />}
+                  onClick={handleCopyPixCode}
+                  color={pixCopied ? 'success' : 'primary'}
+                >
+                  {pixCopied ? 'Copiado!' : 'Copiar Codigo PIX'}
+                </Button>
+
+                <Alert severity="info" sx={{ mt: 2, textAlign: 'left' }}>
+                  Apos o pagamento, o status sera atualizado automaticamente via webhook.
+                </Alert>
+              </Box>
+            ) : (
+              <Alert severity="error">
+                Erro ao gerar pagamento. Tente novamente.
+              </Alert>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={() => setPixDialogOpen(false)} fullWidth>
+              Fechar
             </Button>
           </DialogActions>
         </Dialog>

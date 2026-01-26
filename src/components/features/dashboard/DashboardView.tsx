@@ -18,7 +18,6 @@ import { useFinancial } from '@/hooks';
 import { studentService } from '@/services';
 import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
-import { AttendanceChart } from './AttendanceChart';
 import { RevenueOverview } from './RevenueOverview';
 import { AlertsPanel } from './AlertsPanel';
 import { QuickStudentDialog } from './QuickStudentDialog';

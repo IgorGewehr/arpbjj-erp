@@ -42,6 +42,27 @@ interface AbacatePayWebhookPayload {
   };
 }
 
+interface AbacatePayCardResponse {
+  id: string;
+  status: 'pending' | 'approved' | 'declined' | 'error';
+  message?: string;
+}
+
+interface CardPaymentData {
+  cardNumber: string;
+  cardHolder: string;
+  expirationMonth: string;
+  expirationYear: string;
+  cvv: string;
+  cpf: string;
+}
+
+interface CardPaymentResult {
+  success: boolean;
+  transactionId?: string;
+  message?: string;
+}
+
 // ============================================
 // AbacatePay Service Class (Multi-Tenant)
 // ============================================
@@ -159,6 +180,109 @@ class AbacatePayService {
     } catch (error) {
       console.error('Error creating PIX payment:', error);
       return null;
+    }
+  }
+
+  // ============================================
+  // Create Card Payment
+  // ============================================
+  async createCardPayment(
+    amount: number,
+    description: string,
+    financialId: string,
+    studentId: string,
+    studentName: string,
+    cardData: CardPaymentData
+  ): Promise<CardPaymentResult> {
+    const apiKey = await this.getApiKey();
+
+    if (!apiKey) {
+      console.error('AbacatePay API key not configured');
+      return { success: false, message: 'API key not configured' };
+    }
+
+    try {
+      // Create card payment via AbacatePay API
+      const response = await fetch(`${this.apiBaseUrl}/card/charge`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          amount, // Amount in cents
+          description,
+          card: {
+            number: cardData.cardNumber.replace(/\s/g, ''),
+            holderName: cardData.cardHolder,
+            expirationMonth: cardData.expirationMonth,
+            expirationYear: cardData.expirationYear,
+            cvv: cardData.cvv,
+          },
+          customer: {
+            document: cardData.cpf.replace(/\D/g, ''),
+          },
+          metadata: {
+            academyId: this.academyId,
+            financialId,
+            studentId,
+          },
+        }),
+      });
+
+      const data: AbacatePayCardResponse = await response.json();
+
+      if (!response.ok || data.status === 'declined' || data.status === 'error') {
+        console.error('AbacatePay card payment error:', data);
+        return {
+          success: false,
+          message: data.message || 'Pagamento recusado',
+        };
+      }
+
+      // Create transaction record
+      await addDoc(this.walletTransactionsRef, {
+        academyId: this.academyId,
+        type: 'payment' as TransactionType,
+        amount,
+        status: data.status === 'approved' ? 'completed' : 'pending',
+        financialId,
+        studentId,
+        studentName,
+        abacatePayTransactionId: data.id,
+        paymentMethod: 'card',
+        description,
+        createdAt: serverTimestamp(),
+        completedAt: data.status === 'approved' ? serverTimestamp() : null,
+      });
+
+      // If approved, update financial record and wallet
+      if (data.status === 'approved') {
+        // Update wallet balance
+        await this.updateWalletBalance(amount, 'add');
+
+        // Update financial record if it's a mensalidade
+        if (financialId && !financialId.startsWith('order_')) {
+          const financialRef = collections.financial(this.academyId, financialId);
+          await updateDoc(financialRef, {
+            status: 'paid',
+            paymentDate: serverTimestamp(),
+            method: 'card',
+            paidViaAbacatePay: true,
+            abacatePayTransactionId: data.id,
+            updatedAt: serverTimestamp(),
+          });
+        }
+      }
+
+      return {
+        success: data.status === 'approved',
+        transactionId: data.id,
+        message: data.status === 'approved' ? 'Pagamento aprovado!' : 'Aguardando confirmação',
+      };
+    } catch (error) {
+      console.error('Error creating card payment:', error);
+      return { success: false, message: 'Erro ao processar pagamento' };
     }
   }
 

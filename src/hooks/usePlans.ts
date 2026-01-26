@@ -1,9 +1,10 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { planService } from '@/services/planService';
+import { createPlanService } from '@/services';
 import { useFeedback } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { Plan } from '@/types';
 
 // ============================================
@@ -19,8 +20,11 @@ const QUERY_KEYS = {
 // usePlans Hook
 // ============================================
 export function usePlans() {
+  const { academyId } = useAcademy();
   const { success, error: showError } = useFeedback();
   const queryClient = useQueryClient();
+
+  const planService = useMemo(() => createPlanService(academyId || 'default'), [academyId]);
 
   // ============================================
   // Fetch All Plans
@@ -31,7 +35,7 @@ export function usePlans() {
     error,
     refetch,
   } = useQuery({
-    queryKey: [QUERY_KEYS.plans],
+    queryKey: [QUERY_KEYS.plans, academyId],
     queryFn: () => planService.list(),
     staleTime: 1000 * 60 * 5,
   });
@@ -40,7 +44,7 @@ export function usePlans() {
   // Fetch Active Plans
   // ============================================
   const { data: activePlans = [] } = useQuery({
-    queryKey: [QUERY_KEYS.activePlans],
+    queryKey: [QUERY_KEYS.activePlans, academyId],
     queryFn: () => planService.getActive(),
     staleTime: 1000 * 60 * 5,
   });

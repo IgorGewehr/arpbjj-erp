@@ -2,9 +2,9 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { attendanceService, classService, studentService } from '@/services';
-import { useAuth } from '@/components/providers';
-import { useFeedback } from '@/components/providers';
+import { createAttendanceService, createClassService, createStudentService } from '@/services';
+import { useAuth, useFeedback } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { Attendance, Class, Student } from '@/types';
 import { format, isSameDay, isToday } from 'date-fns';
 
@@ -38,8 +38,13 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
   const { autoDetectClass = true, classId: initialClassId, initialDate = new Date() } = options;
 
   const { user } = useAuth();
+  const { academyId } = useAcademy();
   const { success, error: showError } = useFeedback();
   const queryClient = useQueryClient();
+
+  const attendanceService = useMemo(() => createAttendanceService(academyId || 'default'), [academyId]);
+  const classService = useMemo(() => createClassService(academyId || 'default'), [academyId]);
+  const studentService = useMemo(() => createStudentService(academyId || 'default'), [academyId]);
 
   // Selected date state
   const [selectedDate, setSelectedDate] = useState<Date>(initialDate);
@@ -57,7 +62,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     data: allClasses = [],
     isLoading: isLoadingAllClasses,
   } = useQuery({
-    queryKey: [QUERY_KEYS.allClasses],
+    queryKey: [QUERY_KEYS.allClasses, academyId],
     queryFn: () => classService.list(),
     staleTime: 1000 * 60 * 2, // 2 minutes - shorter to catch class updates
     refetchOnWindowFocus: true, // Refetch when user returns from editing
@@ -105,7 +110,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     data: currentClass,
     isLoading: isLoadingCurrentClass,
   } = useQuery({
-    queryKey: [QUERY_KEYS.currentClass],
+    queryKey: [QUERY_KEYS.currentClass, academyId],
     queryFn: () => classService.getCurrentClass(),
     enabled: autoDetectClass && !initialClassId && isToday(selectedDate),
     staleTime: 1000 * 60 * 5, // 5 minutes
@@ -142,7 +147,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     data: students = [],
     isLoading: isLoadingStudents,
   } = useQuery({
-    queryKey: [QUERY_KEYS.activeStudents],
+    queryKey: [QUERY_KEYS.activeStudents, academyId],
     queryFn: () => studentService.getActive(),
     staleTime: 1000 * 60 * 2, // 2 minutes - shorter to catch student updates
     refetchOnWindowFocus: true,
@@ -156,7 +161,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     data: presentStudentIds = new Set<string>(),
     isLoading: isLoadingPresent,
   } = useQuery({
-    queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, format(selectedDate, 'yyyy-MM-dd')],
+    queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, format(selectedDate, 'yyyy-MM-dd'), academyId],
     queryFn: async () => {
       if (!selectedClassId) return new Set<string>();
       return attendanceService.getPresentStudentIds(selectedClassId, selectedDate);
@@ -187,7 +192,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
       const dateKey = format(selectedDate, 'yyyy-MM-dd');
       // Cancel outgoing queries
       await queryClient.cancelQueries({
-        queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey],
+        queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey, academyId],
       });
 
       // Snapshot previous value
@@ -199,7 +204,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
 
       // Optimistically update
       queryClient.setQueryData<Set<string>>(
-        [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey],
+        [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey, academyId],
         (old) => {
           const newSet = new Set(old);
           newSet.add(student.id);
@@ -247,7 +252,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     onMutate: async ({ studentId }) => {
       const dateKey = format(selectedDate, 'yyyy-MM-dd');
       await queryClient.cancelQueries({
-        queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey],
+        queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey, academyId],
       });
 
       const previousPresent = queryClient.getQueryData<Set<string>>([
@@ -257,7 +262,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
       ]);
 
       queryClient.setQueryData<Set<string>>(
-        [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey],
+        [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey, academyId],
         (old) => {
           const newSet = new Set(old);
           newSet.delete(studentId);
@@ -309,7 +314,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     onMutate: async ({ studentsToMark }) => {
       const dateKey = format(selectedDate, 'yyyy-MM-dd');
       await queryClient.cancelQueries({
-        queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey],
+        queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey, academyId],
       });
 
       const previousPresent = queryClient.getQueryData<Set<string>>([
@@ -319,7 +324,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
       ]);
 
       queryClient.setQueryData<Set<string>>(
-        [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey],
+        [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey, academyId],
         (old) => {
           const newSet = new Set(old);
           studentsToMark.forEach((s) => newSet.add(s.id));
@@ -371,7 +376,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     onMutate: async ({ studentIds }) => {
       const dateKey = format(selectedDate, 'yyyy-MM-dd');
       await queryClient.cancelQueries({
-        queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey],
+        queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey, academyId],
       });
 
       const previousPresent = queryClient.getQueryData<Set<string>>([
@@ -381,7 +386,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
       ]);
 
       queryClient.setQueryData<Set<string>>(
-        [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey],
+        [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey, academyId],
         (old) => {
           const newSet = new Set(old);
           studentIds.forEach((id) => newSet.delete(id));
@@ -588,7 +593,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
       // Invalidate all related queries to force fresh data
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.allClasses] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activeStudents] });
-      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.presentStudentIds, selectedClassId, dateKey, academyId] });
     },
   };
 }

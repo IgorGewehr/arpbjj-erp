@@ -14,9 +14,7 @@ import {
   IconButton,
   List,
   ListItem,
-  ListItemIcon,
   ListItemText,
-  ListItemSecondaryAction,
   Chip,
   Skeleton,
   CircularProgress,
@@ -34,13 +32,11 @@ import {
 import {
   User,
   Building2,
-  Bell,
   Mail,
   Phone,
   MapPin,
   Camera,
   Save,
-  Calendar,
   Award,
   RefreshCw,
   Wrench,
@@ -51,24 +47,29 @@ import {
   Wallet,
   Zap,
   GraduationCap,
+  Store,
+  ShoppingBag,
+  Palette,
+  Type,
+  Trash2,
+  Shield,
+  UserPlus,
+  X,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useAuth, useFeedback } from '@/components/providers';
-import { settingsService, AcademySettings } from '@/services/settingsService';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { settingsService, AcademySettings, createSettingsService } from '@/services/settingsService';
 import { attendanceService } from '@/services/attendanceService';
+import { createStudentService } from '@/services';
+import { Student } from '@/types';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '@/lib/firebase';
 
 // ============================================
 // Types
 // ============================================
-interface NotificationSettings {
-  emailPaymentReminder: boolean;
-  emailAttendance: boolean;
-  emailPromotion: boolean;
-  whatsappReminder: boolean;
-}
 
 // ============================================
 // Settings Section Component
@@ -246,12 +247,14 @@ function ProfileTab() {
 // ============================================
 // Academy Tab
 // ============================================
+type ImageUploadField = 'logoUrl' | 'sidebarLogoUrl' | 'portalBackgroundUrl' | 'adminBackgroundUrl' | 'sidebarBackgroundUrl';
+
 function AcademyTab() {
   const theme = useTheme();
   const { success, error } = useFeedback();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
+  const [uploading, setUploading] = useState<ImageUploadField | null>(null);
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<AcademySettings>({
     name: '',
@@ -263,11 +266,21 @@ function AcademyTab() {
     state: '',
     zipCode: '',
     logoUrl: '',
+    portalSlogan: '',
+    sidebarLogoUrl: '',
+    portalBackgroundUrl: '',
+    adminBackgroundUrl: '',
+    sidebarBackgroundUrl: '',
     pixKey: '',
     pixKeyType: 'cpf',
     autoGraduationEnabled: false,
     autoGraduationAttendances: 50,
     abacatePayEnabled: false,
+    abacatePayApiKey: '',
+    storeEnabled: false,
+    storePublished: false,
+    storeWelcomeMessage: '',
+    storeMinOrderAmount: 0,
   });
 
   // Load settings from Firestore
@@ -286,11 +299,21 @@ function AcademyTab() {
             state: data.state || '',
             zipCode: data.zipCode || '',
             logoUrl: data.logoUrl || '',
+            portalSlogan: data.portalSlogan || '',
+            sidebarLogoUrl: data.sidebarLogoUrl || '',
+            portalBackgroundUrl: data.portalBackgroundUrl || '',
+            adminBackgroundUrl: data.adminBackgroundUrl || '',
+            sidebarBackgroundUrl: data.sidebarBackgroundUrl || '',
             pixKey: data.pixKey || '',
             pixKeyType: data.pixKeyType || 'cpf',
             autoGraduationEnabled: data.autoGraduationEnabled || false,
             autoGraduationAttendances: data.autoGraduationAttendances || 50,
             abacatePayEnabled: data.abacatePayEnabled || false,
+            abacatePayApiKey: data.abacatePayApiKey || '',
+            storeEnabled: data.storeEnabled || false,
+            storePublished: data.storePublished || false,
+            storeWelcomeMessage: data.storeWelcomeMessage || '',
+            storeMinOrderAmount: data.storeMinOrderAmount || 0,
           });
         }
       } catch (err) {
@@ -303,7 +326,7 @@ function AcademyTab() {
     loadSettings();
   }, [error]);
 
-  const handleLogoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, field: ImageUploadField) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -319,21 +342,25 @@ function AcademyTab() {
       return;
     }
 
-    setUploading(true);
+    setUploading(field);
     try {
       const timestamp = Date.now();
-      const storageRef = ref(storage, `academy/logo_${timestamp}`);
+      const storageRef = ref(storage, `academy/${field}_${timestamp}`);
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
 
-      setSettings(prev => ({ ...prev, logoUrl: downloadURL }));
-      success('Logo atualizado!');
+      setSettings(prev => ({ ...prev, [field]: downloadURL }));
+      success('Imagem atualizada!');
     } catch (err) {
-      console.error('Error uploading logo:', err);
-      error('Erro ao fazer upload do logo');
+      console.error('Error uploading image:', err);
+      error('Erro ao fazer upload da imagem');
     } finally {
-      setUploading(false);
+      setUploading(null);
     }
+  };
+
+  const handleRemoveImage = (field: ImageUploadField) => {
+    setSettings(prev => ({ ...prev, [field]: '' }));
   };
 
   const handleSave = useCallback(async () => {
@@ -390,18 +417,18 @@ function AcademyTab() {
               <input
                 type="file"
                 ref={fileInputRef}
-                onChange={handleLogoUpload}
+                onChange={(e) => handleImageUpload(e, 'logoUrl')}
                 accept="image/*"
                 style={{ display: 'none' }}
               />
               <Button
                 variant="outlined"
-                startIcon={uploading ? <CircularProgress size={16} /> : <Upload size={18} />}
+                startIcon={uploading === 'logoUrl' ? <CircularProgress size={16} /> : <Upload size={18} />}
                 onClick={() => fileInputRef.current?.click()}
-                disabled={uploading}
+                disabled={uploading !== null}
                 sx={{ mb: 1 }}
               >
-                {uploading ? 'Enviando...' : 'Enviar Logo'}
+                {uploading === 'logoUrl' ? 'Enviando...' : 'Enviar Logo'}
               </Button>
               <Typography variant="caption" color="text.secondary" display="block">
                 PNG, JPG ou SVG. Max 2MB.
@@ -497,6 +524,324 @@ function AcademyTab() {
               value={settings.zipCode}
               onChange={(e) => setSettings({ ...settings, zipCode: e.target.value })}
             />
+          </Grid>
+        </Grid>
+
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="contained"
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? 'Salvando...' : 'Salvar'}
+          </Button>
+        </Box>
+      </SettingsSection>
+
+      {/* Appearance Settings */}
+      <SettingsSection
+        title="Aparencia"
+        description="Personalize a aparencia do portal e painel administrativo"
+        icon={Palette}
+        loading={loading}
+      >
+        {/* Portal Slogan */}
+        <Box sx={{ mb: 4 }}>
+          <TextField
+            fullWidth
+            label="Slogan do Portal"
+            value={settings.portalSlogan}
+            onChange={(e) => setSettings({ ...settings, portalSlogan: e.target.value })}
+            placeholder="Ex: Vamos avante, ombro a ombro"
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Type size={18} />
+                </InputAdornment>
+              ),
+            }}
+            helperText="Frase exibida na barra superior do portal do aluno junto com o nome da academia"
+          />
+        </Box>
+
+        <Divider sx={{ my: 3 }} />
+
+        {/* Image Uploads Grid */}
+        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+          Imagens Personalizadas
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+          Configure as imagens de logo e backgrounds do sistema
+        </Typography>
+
+        <Grid container spacing={3}>
+          {/* Sidebar Logo */}
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                Logo da Sidebar
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Logo alternativo para a sidebar (opcional)
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: 2,
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    bgcolor: 'action.hover',
+                  }}
+                >
+                  {settings.sidebarLogoUrl ? (
+                    <img
+                      src={settings.sidebarLogoUrl}
+                      alt="Sidebar Logo"
+                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                    />
+                  ) : (
+                    <ImageIcon size={24} color={theme.palette.text.disabled} />
+                  )}
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <input
+                    type="file"
+                    id="sidebarLogo-input"
+                    onChange={(e) => handleImageUpload(e, 'sidebarLogoUrl')}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={uploading === 'sidebarLogoUrl' ? <CircularProgress size={14} /> : <Upload size={16} />}
+                    onClick={() => document.getElementById('sidebarLogo-input')?.click()}
+                    disabled={uploading !== null}
+                  >
+                    {uploading === 'sidebarLogoUrl' ? 'Enviando...' : 'Enviar'}
+                  </Button>
+                  {settings.sidebarLogoUrl && (
+                    <Button
+                      variant="text"
+                      size="small"
+                      color="error"
+                      startIcon={<Trash2 size={14} />}
+                      onClick={() => handleRemoveImage('sidebarLogoUrl')}
+                    >
+                      Remover
+                    </Button>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </Grid>
+
+          {/* Portal Background */}
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                Background do Portal do Aluno
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Imagem de fundo para o portal do aluno
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 120,
+                    height: 80,
+                    borderRadius: 2,
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    bgcolor: 'action.hover',
+                  }}
+                >
+                  {settings.portalBackgroundUrl ? (
+                    <img
+                      src={settings.portalBackgroundUrl}
+                      alt="Portal Background"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <ImageIcon size={24} color={theme.palette.text.disabled} />
+                  )}
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <input
+                    type="file"
+                    id="portalBackground-input"
+                    onChange={(e) => handleImageUpload(e, 'portalBackgroundUrl')}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={uploading === 'portalBackgroundUrl' ? <CircularProgress size={14} /> : <Upload size={16} />}
+                    onClick={() => document.getElementById('portalBackground-input')?.click()}
+                    disabled={uploading !== null}
+                  >
+                    {uploading === 'portalBackgroundUrl' ? 'Enviando...' : 'Enviar'}
+                  </Button>
+                  {settings.portalBackgroundUrl && (
+                    <Button
+                      variant="text"
+                      size="small"
+                      color="error"
+                      startIcon={<Trash2 size={14} />}
+                      onClick={() => handleRemoveImage('portalBackgroundUrl')}
+                    >
+                      Remover
+                    </Button>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </Grid>
+
+          {/* Admin Background */}
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                Background do Painel Admin
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Imagem de fundo para o painel do professor/admin
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 120,
+                    height: 80,
+                    borderRadius: 2,
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    bgcolor: 'action.hover',
+                  }}
+                >
+                  {settings.adminBackgroundUrl ? (
+                    <img
+                      src={settings.adminBackgroundUrl}
+                      alt="Admin Background"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <ImageIcon size={24} color={theme.palette.text.disabled} />
+                  )}
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <input
+                    type="file"
+                    id="adminBackground-input"
+                    onChange={(e) => handleImageUpload(e, 'adminBackgroundUrl')}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={uploading === 'adminBackgroundUrl' ? <CircularProgress size={14} /> : <Upload size={16} />}
+                    onClick={() => document.getElementById('adminBackground-input')?.click()}
+                    disabled={uploading !== null}
+                  >
+                    {uploading === 'adminBackgroundUrl' ? 'Enviando...' : 'Enviar'}
+                  </Button>
+                  {settings.adminBackgroundUrl && (
+                    <Button
+                      variant="text"
+                      size="small"
+                      color="error"
+                      startIcon={<Trash2 size={14} />}
+                      onClick={() => handleRemoveImage('adminBackgroundUrl')}
+                    >
+                      Remover
+                    </Button>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </Grid>
+
+          {/* Sidebar Background */}
+          <Grid size={{ xs: 12, md: 6 }}>
+            <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+                Background da Sidebar
+              </Typography>
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+                Imagem de fundo para a sidebar lateral
+              </Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                <Box
+                  sx={{
+                    width: 80,
+                    height: 100,
+                    borderRadius: 2,
+                    border: '2px dashed',
+                    borderColor: 'divider',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    bgcolor: 'action.hover',
+                  }}
+                >
+                  {settings.sidebarBackgroundUrl ? (
+                    <img
+                      src={settings.sidebarBackgroundUrl}
+                      alt="Sidebar Background"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <ImageIcon size={24} color={theme.palette.text.disabled} />
+                  )}
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <input
+                    type="file"
+                    id="sidebarBackground-input"
+                    onChange={(e) => handleImageUpload(e, 'sidebarBackgroundUrl')}
+                    accept="image/*"
+                    style={{ display: 'none' }}
+                  />
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={uploading === 'sidebarBackgroundUrl' ? <CircularProgress size={14} /> : <Upload size={16} />}
+                    onClick={() => document.getElementById('sidebarBackground-input')?.click()}
+                    disabled={uploading !== null}
+                  >
+                    {uploading === 'sidebarBackgroundUrl' ? 'Enviando...' : 'Enviar'}
+                  </Button>
+                  {settings.sidebarBackgroundUrl && (
+                    <Button
+                      variant="text"
+                      size="small"
+                      color="error"
+                      startIcon={<Trash2 size={14} />}
+                      onClick={() => handleRemoveImage('sidebarBackgroundUrl')}
+                    >
+                      Remover
+                    </Button>
+                  )}
+                </Box>
+              </Box>
+            </Box>
           </Grid>
         </Grid>
 
@@ -661,14 +1006,180 @@ function AcademyTab() {
           />
 
           {settings.abacatePayEnabled && (
-            <Alert severity="success" sx={{ mt: 2, borderRadius: 2 }}>
-              <Typography variant="body2">
-                <strong>Taxa: 0%</strong> - Alunos podem pagar via PIX e voce sera notificado imediatamente.
-                Os valores serao depositados na sua chave PIX cadastrada acima.
-              </Typography>
-            </Alert>
+            <Box sx={{ mt: 2 }}>
+              <TextField
+                fullWidth
+                label="API Key AbacatePay"
+                type="password"
+                value={settings.abacatePayApiKey || ''}
+                onChange={(e) => setSettings({ ...settings, abacatePayApiKey: e.target.value })}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Zap size={18} />
+                    </InputAdornment>
+                  ),
+                }}
+                helperText="Sua chave de API do AbacatePay. Obtenha em abacatepay.com"
+                sx={{ mb: 2 }}
+              />
+
+              <Alert severity="success" sx={{ borderRadius: 2 }}>
+                <Typography variant="body2">
+                  <strong>Taxa: 0%</strong> - Alunos podem pagar via PIX e voce sera notificado imediatamente.
+                  Os valores serao depositados na sua chave PIX cadastrada acima.
+                </Typography>
+              </Alert>
+            </Box>
           )}
         </Box>
+
+        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+          <Button
+            variant="contained"
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
+            onClick={handleSave}
+            disabled={saving}
+          >
+            {saving ? 'Salvando...' : 'Salvar'}
+          </Button>
+        </Box>
+      </SettingsSection>
+
+      {/* Store Settings */}
+      <SettingsSection
+        title="Loja"
+        description="Venda uniformes, equipamentos e acessorios para seus alunos"
+        icon={Store}
+        loading={loading}
+      >
+        <Box sx={{ mb: 3 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.storeEnabled}
+                onChange={(e) =>
+                  setSettings({ ...settings, storeEnabled: e.target.checked })
+                }
+                color="primary"
+              />
+            }
+            label={
+              <Box>
+                <Typography variant="body1" fontWeight={500}>
+                  Habilitar Loja
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Ative para gerenciar produtos e receber pedidos
+                </Typography>
+              </Box>
+            }
+          />
+        </Box>
+
+        {settings.storeEnabled && (
+          <Box sx={{ pl: 2, borderLeft: '3px solid', borderColor: 'primary.main' }}>
+            <Grid container spacing={3}>
+              <Grid size={{ xs: 12 }}>
+                <TextField
+                  fullWidth
+                  label="Mensagem de Boas-vindas"
+                  value={settings.storeWelcomeMessage || ''}
+                  onChange={(e) =>
+                    setSettings({ ...settings, storeWelcomeMessage: e.target.value })
+                  }
+                  placeholder="Ex: Bem-vindo a nossa loja! Confira nossos produtos."
+                  InputProps={{
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <ShoppingBag size={18} />
+                      </InputAdornment>
+                    ),
+                  }}
+                  helperText="Mensagem exibida aos alunos na pagina da loja"
+                />
+              </Grid>
+              <Grid size={{ xs: 12, md: 6 }}>
+                <TextField
+                  fullWidth
+                  label="Valor Minimo do Pedido (R$)"
+                  type="number"
+                  value={(settings.storeMinOrderAmount || 0) / 100}
+                  onChange={(e) =>
+                    setSettings({
+                      ...settings,
+                      storeMinOrderAmount: Math.round(parseFloat(e.target.value || '0') * 100),
+                    })
+                  }
+                  inputProps={{ min: 0, step: 0.01 }}
+                  helperText="Deixe em 0 para sem valor minimo"
+                />
+              </Grid>
+            </Grid>
+
+            <Divider sx={{ my: 3 }} />
+
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+              <Box
+                sx={{
+                  px: 2,
+                  py: 1,
+                  borderRadius: 2,
+                  bgcolor: settings.storePublished ? 'success.50' : 'warning.50',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 1,
+                }}
+              >
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    bgcolor: settings.storePublished ? 'success.main' : 'warning.main',
+                  }}
+                />
+                <Typography
+                  variant="body2"
+                  fontWeight={600}
+                  color={settings.storePublished ? 'success.main' : 'warning.main'}
+                >
+                  {settings.storePublished ? 'Loja Publicada' : 'Loja em Rascunho'}
+                </Typography>
+              </Box>
+            </Box>
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.storePublished}
+                  onChange={(e) =>
+                    setSettings({ ...settings, storePublished: e.target.checked })
+                  }
+                  color="success"
+                />
+              }
+              label={
+                <Box>
+                  <Typography variant="body1" fontWeight={500}>
+                    Publicar Loja
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    Quando publicada, os alunos poderao ver e comprar produtos
+                  </Typography>
+                </Box>
+              }
+            />
+
+            {!settings.storePublished && (
+              <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
+                <Typography variant="body2">
+                  Sua loja esta em modo rascunho. Adicione produtos em <strong>/loja</strong> e depois publique quando estiver pronta.
+                </Typography>
+              </Alert>
+            )}
+          </Box>
+        )}
 
         <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
           <Button
@@ -685,101 +1196,6 @@ function AcademyTab() {
   );
 }
 
-// ============================================
-// Notifications Tab
-// ============================================
-function NotificationsTab() {
-  const { success } = useFeedback();
-  const [settings, setSettings] = useState<NotificationSettings>({
-    emailPaymentReminder: true,
-    emailAttendance: true,
-    emailPromotion: true,
-    whatsappReminder: true,
-  });
-
-  const handleToggle = (key: keyof NotificationSettings) => {
-    setSettings((prev) => ({ ...prev, [key]: !prev[key] }));
-    success('Configuracao atualizada!');
-  };
-
-  return (
-    <SettingsSection
-      title="Notificacoes"
-      description="Configure como voce deseja receber alertas"
-      icon={Bell}
-    >
-      <List>
-        <ListItem>
-          <ListItemIcon>
-            <Mail size={20} />
-          </ListItemIcon>
-          <ListItemText
-            primary="Lembrete de Pagamento por Email"
-            secondary="Enviar email aos alunos antes do vencimento"
-          />
-          <ListItemSecondaryAction>
-            <Switch
-              checked={settings.emailPaymentReminder}
-              onChange={() => handleToggle('emailPaymentReminder')}
-              color="primary"
-            />
-          </ListItemSecondaryAction>
-        </ListItem>
-        <Divider component="li" />
-        <ListItem>
-          <ListItemIcon>
-            <Calendar size={20} />
-          </ListItemIcon>
-          <ListItemText
-            primary="Resumo de Presenca"
-            secondary="Notificar sobre faltas consecutivas"
-          />
-          <ListItemSecondaryAction>
-            <Switch
-              checked={settings.emailAttendance}
-              onChange={() => handleToggle('emailAttendance')}
-              color="primary"
-            />
-          </ListItemSecondaryAction>
-        </ListItem>
-        <Divider component="li" />
-        <ListItem>
-          <ListItemIcon>
-            <Award size={20} />
-          </ListItemIcon>
-          <ListItemText
-            primary="Notificacao de Graduacao"
-            secondary="Alertar quando aluno atingir meta de presencas"
-          />
-          <ListItemSecondaryAction>
-            <Switch
-              checked={settings.emailPromotion}
-              onChange={() => handleToggle('emailPromotion')}
-              color="primary"
-            />
-          </ListItemSecondaryAction>
-        </ListItem>
-        <Divider component="li" />
-        <ListItem>
-          <ListItemIcon>
-            <Phone size={20} />
-          </ListItemIcon>
-          <ListItemText
-            primary="WhatsApp"
-            secondary="Enviar lembretes via WhatsApp"
-          />
-          <ListItemSecondaryAction>
-            <Switch
-              checked={settings.whatsappReminder}
-              onChange={() => handleToggle('whatsappReminder')}
-              color="primary"
-            />
-          </ListItemSecondaryAction>
-        </ListItem>
-      </List>
-    </SettingsSection>
-  );
-}
 
 // ============================================
 // System Tab (Maintenance)
@@ -901,6 +1317,256 @@ function SystemTab() {
 }
 
 // ============================================
+// Monitors Tab
+// ============================================
+function MonitorsTab() {
+  const theme = useTheme();
+  const { success, error } = useFeedback();
+  const { academyId, academy, refreshAcademy } = useAcademy();
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [monitors, setMonitors] = useState<Student[]>([]);
+  const [linkedStudents, setLinkedStudents] = useState<Student[]>([]);
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+
+  // Load monitors and linked students
+  useEffect(() => {
+    const loadData = async () => {
+      if (!academyId) {
+        setLoading(false);
+        return;
+      }
+
+      try {
+        const studentService = createStudentService(academyId);
+        const allStudents = await studentService.getAll();
+
+        // Get students with linkedUserId (students who have linked accounts)
+        const linked = allStudents.filter(s => s.linkedUserId && s.status === 'active');
+        setLinkedStudents(linked);
+
+        // Get current monitors
+        const monitorIds = academy?.monitorIds || [];
+        const currentMonitors = allStudents.filter(s => monitorIds.includes(s.id));
+        setMonitors(currentMonitors);
+      } catch (err) {
+        console.error('Error loading monitors data:', err);
+        error('Erro ao carregar dados dos monitores');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadData();
+  }, [academyId, academy?.monitorIds, error]);
+
+  const handleAddMonitor = async () => {
+    if (!selectedStudentId || !academyId) return;
+
+    setSaving(true);
+    try {
+      const settingsServiceInstance = createSettingsService(academyId);
+      await settingsServiceInstance.addMonitor(selectedStudentId);
+
+      // Update local state
+      const addedStudent = linkedStudents.find(s => s.id === selectedStudentId);
+      if (addedStudent) {
+        setMonitors(prev => [...prev, addedStudent]);
+      }
+      setSelectedStudentId('');
+
+      // Refresh academy data to update context
+      await refreshAcademy();
+
+      success('Monitor adicionado com sucesso!');
+    } catch (err) {
+      console.error('Error adding monitor:', err);
+      error('Erro ao adicionar monitor');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveMonitor = async (studentId: string) => {
+    if (!academyId) return;
+
+    setSaving(true);
+    try {
+      const settingsServiceInstance = createSettingsService(academyId);
+      await settingsServiceInstance.removeMonitor(studentId);
+
+      // Update local state
+      setMonitors(prev => prev.filter(m => m.id !== studentId));
+
+      // Refresh academy data to update context
+      await refreshAcademy();
+
+      success('Monitor removido com sucesso!');
+    } catch (err) {
+      console.error('Error removing monitor:', err);
+      error('Erro ao remover monitor');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Filter out students who are already monitors
+  const availableStudents = linkedStudents.filter(
+    s => !monitors.some(m => m.id === s.id)
+  );
+
+  return (
+    <SettingsSection
+      title="Monitores"
+      description="Alunos com permissao para fazer chamada e gerenciar alunos"
+      icon={Shield}
+      loading={loading}
+    >
+      {/* Add Monitor */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+          Adicionar Monitor
+        </Typography>
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          Selecione um aluno com conta vinculada para adiciona-lo como monitor.
+          Monitores podem fazer chamada de presenca e gerenciar alunos.
+        </Typography>
+
+        <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
+          <FormControl fullWidth sx={{ maxWidth: 400 }}>
+            <InputLabel>Selecionar Aluno</InputLabel>
+            <Select
+              value={selectedStudentId}
+              onChange={(e) => setSelectedStudentId(e.target.value)}
+              label="Selecionar Aluno"
+              disabled={saving || availableStudents.length === 0}
+            >
+              {availableStudents.length === 0 ? (
+                <MenuItem disabled value="">
+                  Nenhum aluno com conta vinculada disponivel
+                </MenuItem>
+              ) : (
+                availableStudents.map((student) => (
+                  <MenuItem key={student.id} value={student.id}>
+                    {student.fullName} {student.nickname ? `(${student.nickname})` : ''}
+                  </MenuItem>
+                ))
+              )}
+            </Select>
+          </FormControl>
+          <Button
+            variant="contained"
+            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <UserPlus size={18} />}
+            onClick={handleAddMonitor}
+            disabled={saving || !selectedStudentId}
+            sx={{ minWidth: 160, height: 56 }}
+          >
+            {saving ? 'Adicionando...' : 'Adicionar'}
+          </Button>
+        </Box>
+
+        {linkedStudents.length === 0 && (
+          <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
+            <Typography variant="body2">
+              Nenhum aluno possui conta vinculada. Para um aluno ser monitor, ele precisa
+              primeiro vincular sua conta atraves do codigo de vinculacao.
+            </Typography>
+          </Alert>
+        )}
+      </Box>
+
+      <Divider sx={{ my: 3 }} />
+
+      {/* Current Monitors List */}
+      <Box>
+        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+          Monitores Atuais ({monitors.length})
+        </Typography>
+
+        {monitors.length === 0 ? (
+          <Box
+            sx={{
+              p: 4,
+              textAlign: 'center',
+              bgcolor: 'grey.50',
+              borderRadius: 2,
+            }}
+          >
+            <Shield size={48} color={theme.palette.text.disabled} />
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
+              Nenhum monitor cadastrado
+            </Typography>
+          </Box>
+        ) : (
+          <List sx={{ p: 0 }}>
+            {monitors.map((monitor) => (
+              <ListItem
+                key={monitor.id}
+                sx={{
+                  px: 2,
+                  py: 1.5,
+                  bgcolor: 'grey.50',
+                  borderRadius: 2,
+                  mb: 1,
+                }}
+                secondaryAction={
+                  <IconButton
+                    edge="end"
+                    onClick={() => handleRemoveMonitor(monitor.id)}
+                    disabled={saving}
+                    sx={{
+                      color: 'error.main',
+                      '&:hover': { bgcolor: 'error.50' },
+                    }}
+                  >
+                    <X size={18} />
+                  </IconButton>
+                }
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar
+                    src={monitor.photoUrl}
+                    sx={{ width: 40, height: 40, bgcolor: 'primary.main' }}
+                  >
+                    {monitor.fullName.charAt(0).toUpperCase()}
+                  </Avatar>
+                  <Box>
+                    <Typography variant="body1" fontWeight={500}>
+                      {monitor.fullName}
+                    </Typography>
+                    {monitor.nickname && (
+                      <Typography variant="caption" color="text.secondary">
+                        {monitor.nickname}
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+              </ListItem>
+            ))}
+          </List>
+        )}
+      </Box>
+
+      <Divider sx={{ my: 3 }} />
+
+      <Alert severity="info" sx={{ borderRadius: 2 }}>
+        <Typography variant="body2">
+          <strong>Permissoes do Monitor:</strong>
+        </Typography>
+        <Box component="ul" sx={{ mt: 1, mb: 0, pl: 2 }}>
+          <li>Fazer chamada de presenca</li>
+          <li>Visualizar, cadastrar e editar alunos</li>
+        </Box>
+        <Typography variant="body2" sx={{ mt: 1 }}>
+          Monitores NAO tem acesso a: Financeiro, Relatorios, Configuracoes.
+        </Typography>
+      </Alert>
+    </SettingsSection>
+  );
+}
+
+// ============================================
 // Main Component
 // ============================================
 export default function ConfiguracoesPage() {
@@ -909,7 +1575,7 @@ export default function ConfiguracoesPage() {
   const tabs = [
     { label: 'Perfil', icon: User },
     { label: 'Academia', icon: Building2 },
-    { label: 'Notificacoes', icon: Bell },
+    { label: 'Monitores', icon: Shield },
     { label: 'Sistema', icon: Wrench },
   ];
 
@@ -966,7 +1632,7 @@ export default function ConfiguracoesPage() {
             <Grid size={{ xs: 12, md: 9 }}>
               {tabValue === 0 && <ProfileTab />}
               {tabValue === 1 && <AcademyTab />}
-              {tabValue === 2 && <NotificationsTab />}
+              {tabValue === 2 && <MonitorsTab />}
               {tabValue === 3 && <SystemTab />}
             </Grid>
           </Grid>

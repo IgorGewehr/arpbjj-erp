@@ -381,6 +381,93 @@ class NotificationService {
       expiresInDays: daysUntil,
     });
   }
+
+  // ============================================
+  // New Tuition Created (For Students)
+  // ============================================
+  async notifyNewTuitionCreated(
+    userId: string,
+    studentName: string,
+    amount: number,
+    dueDate: Date,
+    financialId: string
+  ): Promise<Notification> {
+    return this.create({
+      userId,
+      type: 'payment_pending',
+      priority: 'normal',
+      title: 'Nova Mensalidade',
+      message: `Sua mensalidade de R$ ${(amount / 100).toFixed(2)} vence em ${dueDate.toLocaleDateString('pt-BR')}.`,
+      financialId,
+      actionUrl: `/portal/financeiro`,
+      actionLabel: 'Ver detalhes',
+      expiresInDays: 30,
+    });
+  }
+
+  // ============================================
+  // New Competition Created (For Students)
+  // ============================================
+  async notifyNewCompetitionCreated(
+    userId: string,
+    competitionName: string,
+    date: Date,
+    competitionId: string
+  ): Promise<Notification> {
+    return this.create({
+      userId,
+      type: 'competition_reminder',
+      priority: 'normal',
+      title: 'Novo Campeonato!',
+      message: `${competitionName} será realizado em ${date.toLocaleDateString('pt-BR')}. Inscreva-se!`,
+      competitionId,
+      actionUrl: `/portal/competicoes`,
+      actionLabel: 'Ver campeonato',
+      expiresInDays: 60,
+    });
+  }
+
+  // ============================================
+  // New Achievement (For Students)
+  // ============================================
+  async notifyNewAchievement(
+    userId: string,
+    achievementTitle: string,
+    studentId: string
+  ): Promise<Notification> {
+    return this.create({
+      userId,
+      type: 'student_milestone',
+      priority: 'normal',
+      title: 'Conquista Desbloqueada!',
+      message: `Parabéns! Você conquistou: ${achievementTitle}`,
+      studentId,
+      actionUrl: `/portal/linha-do-tempo`,
+      actionLabel: 'Ver conquistas',
+      expiresInDays: 30,
+    });
+  }
+
+  // ============================================
+  // Store Order (For Admins)
+  // ============================================
+  async notifyStoreOrder(
+    adminUserId: string,
+    studentName: string,
+    total: number,
+    orderId: string
+  ): Promise<Notification> {
+    return this.create({
+      userId: adminUserId,
+      type: 'payment_pending',
+      priority: 'normal',
+      title: 'Novo Pedido',
+      message: `${studentName} fez um pedido de R$ ${(total / 100).toFixed(2)} na loja.`,
+      actionUrl: `/loja/pedidos/${orderId}`,
+      actionLabel: 'Ver pedido',
+      expiresInDays: 7,
+    });
+  }
 }
 
 // ============================================

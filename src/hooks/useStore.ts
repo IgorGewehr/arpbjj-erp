@@ -192,12 +192,29 @@ export function useStore() {
   });
 
   // ============================================
-  // Generate Payment Mutation
+  // Generate Payment Mutation (calls API route)
   // ============================================
   const generatePaymentMutation = useMutation({
     mutationFn: async ({ orderId, method = 'PIX' }: { orderId: string; method?: 'PIX' | 'CARD' }): Promise<FinancialPaymentLink | null> => {
-      if (!storeService) throw new Error('Store service not available');
-      return storeService.generateOrderPayment(orderId, method);
+      if (!academy?.id) throw new Error('Academy not available');
+
+      const response = await fetch('/api/store/generate-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          academyId: academy.id,
+          orderId,
+          method,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao gerar pagamento');
+      }
+
+      return data.paymentLink;
     },
     onSuccess: (paymentLink, { orderId, method }) => {
       if (paymentLink) {
@@ -207,8 +224,8 @@ export function useStore() {
         showError('Erro ao gerar pagamento');
       }
     },
-    onError: () => {
-      showError('Erro ao gerar pagamento');
+    onError: (error: Error) => {
+      showError(error.message || 'Erro ao gerar pagamento');
     },
   });
 
@@ -365,20 +382,37 @@ export function useStoreCart() {
   });
 
   // ============================================
-  // Generate Payment Mutation
+  // Generate Payment Mutation (calls API route)
   // ============================================
   const generatePaymentMutation = useMutation({
     mutationFn: async ({ orderId, method = 'PIX' }: { orderId: string; method?: 'PIX' | 'CARD' }): Promise<FinancialPaymentLink | null> => {
-      if (!storeService) throw new Error('Store service not available');
-      return storeService.generateOrderPayment(orderId, method);
+      if (!academy?.id) throw new Error('Academy not available');
+
+      const response = await fetch('/api/store/generate-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          academyId: academy.id,
+          orderId,
+          method,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Erro ao gerar pagamento');
+      }
+
+      return data.paymentLink;
     },
     onSuccess: (paymentLink, { method }) => {
       if (paymentLink) {
         success(method === 'CARD' ? 'Redirecionando para pagamento...' : 'QR Code PIX gerado!');
       }
     },
-    onError: () => {
-      showError('Erro ao gerar pagamento');
+    onError: (error: Error) => {
+      showError(error.message || 'Erro ao gerar pagamento');
     },
   });
 

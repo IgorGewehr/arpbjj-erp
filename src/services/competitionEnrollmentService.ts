@@ -139,12 +139,17 @@ export class CompetitionEnrollmentService {
   // Get All Enrollments for a Student (History)
   // ============================================
   async getByStudent(studentId: string): Promise<CompetitionEnrollment[]> {
+    console.log('[CompetitionEnrollmentService] Querying enrollments for studentId:', studentId);
+    console.log('[CompetitionEnrollmentService] Collection path:', this.enrollmentsRef.path);
+
     const q = query(
       this.enrollmentsRef,
       where('studentId', '==', studentId)
     );
 
     const snapshot = await getDocs(q);
+    console.log('[CompetitionEnrollmentService] Query returned', snapshot.docs.length, 'documents');
+
     const enrollments = snapshot.docs.map(docToEnrollment);
 
     // Sort by enrollment date descending (most recent first)

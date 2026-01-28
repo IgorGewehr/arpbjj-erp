@@ -28,9 +28,7 @@ import {
   InputAdornment,
 } from '@mui/material';
 import {
-  Menu as MenuIcon,
   Search,
-  Bell,
   User,
   Settings,
   LogOut,
@@ -47,6 +45,7 @@ import { studentService } from '@/services/studentService';
 import { classService } from '@/services/classService';
 import { planService } from '@/services/planService';
 import { Student, Class, Plan } from '@/types';
+import { NotificationBell } from '@/components/features/notifications/NotificationBell';
 
 // ============================================
 // Search Result Types
@@ -88,7 +87,6 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
   const { user, signOut } = useAuth();
 
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
-  const [notificationAnchor, setNotificationAnchor] = useState<null | HTMLElement>(null);
 
   // Mobile search dialog state
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -247,13 +245,6 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
     setUserMenuAnchor(null);
   }, []);
 
-  const handleNotificationOpen = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    setNotificationAnchor(event.currentTarget);
-  }, []);
-
-  const handleNotificationClose = useCallback(() => {
-    setNotificationAnchor(null);
-  }, []);
 
   const handleProfile = useCallback(() => {
     handleUserMenuClose();
@@ -480,12 +471,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           </IconButton>
 
           {/* Notifications */}
-          <IconButton
-            onClick={handleNotificationOpen}
-            sx={{ color: 'text.primary', p: { xs: 0.75, sm: 1 } }}
-          >
-            <Bell size={isMobile ? 18 : 20} />
-          </IconButton>
+          <NotificationBell />
 
           {/* User Avatar */}
           <IconButton onClick={handleUserMenuOpen} sx={{ p: 0.5 }}>
@@ -542,34 +528,6 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           </MenuItem>
         </Menu>
 
-        {/* Notification Menu */}
-        <Menu
-          anchorEl={notificationAnchor}
-          open={Boolean(notificationAnchor)}
-          onClose={handleNotificationClose}
-          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-          PaperProps={{
-            sx: {
-              mt: 1,
-              minWidth: { xs: 280, sm: 320 },
-              maxWidth: { xs: 'calc(100vw - 32px)', sm: 'none' },
-              maxHeight: { xs: 350, sm: 400 },
-            },
-          }}
-        >
-          <Box sx={{ px: { xs: 1.5, sm: 2 }, py: 1.5 }}>
-            <Typography variant="subtitle2" fontWeight={600} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-              Notificações
-            </Typography>
-          </Box>
-          <Divider />
-          <Box sx={{ px: { xs: 1.5, sm: 2 }, py: { xs: 2, sm: 3 }, textAlign: 'center' }}>
-            <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-              Nenhuma notificação
-            </Typography>
-          </Box>
-        </Menu>
       </Toolbar>
 
       {/* Mobile Search Dialog */}

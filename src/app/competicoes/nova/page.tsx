@@ -22,6 +22,8 @@ import { useFeedback } from '@/components/providers';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { createCompetitionService } from '@/services/competitionService';
+import { createNotificationService } from '@/services/notificationService';
+import { createStudentService } from '@/services/studentService';
 import { CompetitionStatus, CompetitionTransportStatus, TRANSPORT_STATUS_LABELS } from '@/types';
 import { format, parseISO } from 'date-fns';
 
@@ -94,6 +96,8 @@ export default function NewCompetitionPage() {
     if (!user || !academy?.id) return;
 
     const competitionService = createCompetitionService(academy.id);
+    const notificationService = createNotificationService(academy.id);
+    const studentService = createStudentService(academy.id);
 
     try {
       setLoading(true);
@@ -117,6 +121,28 @@ export default function NewCompetitionPage() {
       };
 
       const newCompetition = await competitionService.create(competitionData, user.id);
+
+      // Notify all active students with linked accounts about the new competition
+      try {
+        const allStudents = await studentService.list();
+        const activeStudentsWithAccounts = allStudents.filter(
+          (s) => s.status === 'active' && s.linkedUserId
+        );
+
+        await Promise.all(
+          activeStudentsWithAccounts.map((student) =>
+            notificationService.notifyNewCompetitionCreated(
+              student.linkedUserId!,
+              newCompetition.name,
+              newCompetition.date,
+              newCompetition.id
+            )
+          )
+        );
+      } catch (notifError) {
+        console.error('Failed to send competition notifications:', notifError);
+      }
+
       success('Competição criada com sucesso!');
       router.push(`/competicoes/${newCompetition.id}`);
     } catch (err) {

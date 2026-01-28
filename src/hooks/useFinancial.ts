@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { createFinancialService } from '@/services';
+import { createFinancialService, createNotificationService, createStudentService } from '@/services';
 import { useAuth, useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { Financial, FinancialFilters, PaymentMethod } from '@/types';
@@ -40,6 +40,8 @@ export function useFinancial(options: UseFinancialOptions = {}) {
   const queryClient = useQueryClient();
 
   const financialService = useMemo(() => createFinancialService(academyId || 'default'), [academyId]);
+  const notificationService = useMemo(() => createNotificationService(academyId || 'default'), [academyId]);
+  const studentService = useMemo(() => createStudentService(academyId || 'default'), [academyId]);
 
   // Current month for default view
   const currentMonth = format(new Date(), 'yyyy-MM');
@@ -113,10 +115,28 @@ export function useFinancial(options: UseFinancialOptions = {}) {
       if (!user) throw new Error('User not authenticated');
       return financialService.create(data, user.id);
     },
-    onSuccess: () => {
+    onSuccess: async (financial) => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.financials] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.summary] });
       success('Registro financeiro criado!');
+
+      // Notify student about new tuition if they have a linked user
+      if (financial.type === 'monthly_tuition' && financial.studentId) {
+        try {
+          const student = await studentService.getById(financial.studentId);
+          if (student?.linkedUserId) {
+            await notificationService.notifyNewTuitionCreated(
+              student.linkedUserId,
+              student.fullName,
+              financial.amount,
+              new Date(financial.dueDate),
+              financial.id
+            );
+          }
+        } catch (err) {
+          console.error('Failed to send notification:', err);
+        }
+      }
     },
     onError: () => {
       showError('Erro ao criar registro');
@@ -138,12 +158,27 @@ export function useFinancial(options: UseFinancialOptions = {}) {
     }) => {
       return financialService.markAsPaid(id, method, paymentDate);
     },
-    onSuccess: () => {
+    onSuccess: async (financial) => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.financials] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.pending] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.overdue] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.summary] });
       success('Pagamento registrado!');
+
+      // Notify admins about payment received
+      if (user && financial.studentId) {
+        try {
+          await notificationService.notifyPaymentReceived(
+            user.id,
+            financial.studentName,
+            financial.amount,
+            financial.studentId,
+            financial.id
+          );
+        } catch (err) {
+          console.error('Failed to send notification:', err);
+        }
+      }
     },
     onError: () => {
       showError('Erro ao registrar pagamento');

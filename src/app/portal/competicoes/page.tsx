@@ -302,7 +302,7 @@ export default function StudentCompetitionsPage() {
   const { success, error: showError } = useFeedback();
 
   // Get studentId from academyUser (not from user)
-  const studentId = academyUser?.studentId;
+  const studentIdFromUser = academyUser?.studentId;
   const studentName = academyUser?.displayName || user?.displayName;
 
   const [competitions, setCompetitions] = useState<Competition[]>([]);
@@ -314,6 +314,7 @@ export default function StudentCompetitionsPage() {
   const [selectedCompetition, setSelectedCompetition] = useState<Competition | null>(null);
   const [enrolling, setEnrolling] = useState(false);
   const [canceling, setCanceling] = useState<string | null>(null);
+  const [effectiveStudentId, setEffectiveStudentId] = useState<string | undefined>(studentIdFromUser);
 
   // Load data
   useEffect(() => {
@@ -331,16 +332,33 @@ export default function StudentCompetitionsPage() {
         const competitionsData = await competitionService.list();
         setCompetitions(competitionsData);
 
-        // Only load enrollments and results if user has studentId
-        if (studentId) {
+        // Try to get studentId from academyUser, or find student by linkedUserId
+        let resolvedStudentId = studentIdFromUser;
+
+        // If no studentId in academyUser, try to find student by user.id (linkedUserId)
+        if (!resolvedStudentId && user?.id) {
+          const { createStudentService } = await import('@/services/studentService');
+          const studentService = createStudentService(academy.id);
+          const student = await studentService.getByLinkedUserId(user.id);
+          if (student) {
+            resolvedStudentId = student.id;
+          }
+        }
+
+        // Save the resolved studentId for use in other functions
+        setEffectiveStudentId(resolvedStudentId);
+
+        // Only load enrollments and results if we have a studentId
+        if (resolvedStudentId) {
           const [enrollmentsData, resultsData] = await Promise.all([
-            competitionEnrollmentService.getByStudent(studentId),
-            competitionService.getResultsForStudent(studentId),
+            competitionEnrollmentService.getByStudent(resolvedStudentId),
+            competitionService.getResultsForStudent(resolvedStudentId),
           ]);
           setEnrollments(enrollmentsData);
           setResults(resultsData);
         }
       } catch (err) {
+        console.error('Error loading competitions:', err);
         showError('Erro ao carregar competições');
       } finally {
         setLoading(false);
@@ -348,7 +366,7 @@ export default function StudentCompetitionsPage() {
     };
 
     loadData();
-  }, [academy?.id, studentId, showError]);
+  }, [academy?.id, studentIdFromUser, user?.id, showError]);
 
   // Get enrollment for competition
   const getEnrollment = useCallback(
@@ -373,7 +391,7 @@ export default function StudentCompetitionsPage() {
   };
 
   const handleEnroll = async (data: { ageCategory: AgeCategory; weightCategory: string; transportPreference: StudentTransportPreference }) => {
-    if (!studentId || !studentName || !selectedCompetition || !academy?.id) return;
+    if (!effectiveStudentId || !studentName || !selectedCompetition || !academy?.id) return;
 
     const competitionEnrollmentService = createCompetitionEnrollmentService(academy.id);
 
@@ -402,7 +420,7 @@ export default function StudentCompetitionsPage() {
         const enrollment = await competitionEnrollmentService.enroll({
           competitionId: selectedCompetition.id,
           competitionName: selectedCompetition.name,
-          studentId: studentId,
+          studentId: effectiveStudentId,
           studentName: studentName,
           ageCategory: data.ageCategory,
           weightCategory: data.weightCategory,

@@ -19,7 +19,7 @@ import {
   Grow,
   keyframes,
 } from '@mui/material';
-import { Mail, Lock, Eye, EyeOff, GraduationCap, Sparkles, Shield, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, GraduationCap, Sparkles, Loader2 } from 'lucide-react';
 import { useAuth } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 
@@ -137,22 +137,18 @@ export default function LoginPage() {
               gap: 3,
             }}
           >
-            {/* Animated logo/icon */}
+            {/* Animated logo */}
             <Box
+              component="img"
+              src="/bjjeasy_logo.png"
+              alt="BJJEasy"
               sx={{
-                width: 80,
-                height: 80,
-                borderRadius: '24px',
-                background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: `0 12px 40px ${theme.palette.primary.main}30`,
+                width: 100,
+                height: 100,
+                objectFit: 'contain',
                 animation: `${pulse} 2s ease-in-out infinite`,
               }}
-            >
-              <Shield size={40} color="white" strokeWidth={1.5} />
-            </Box>
+            />
 
             {/* Loading indicator */}
             <Box
@@ -277,22 +273,18 @@ export default function LoginPage() {
             mb: 4,
           }}
         >
-          {/* Icon Badge */}
+          {/* Logo */}
           <Box
+            component="img"
+            src="/bjjeasy_logo.png"
+            alt="BJJEasy"
             sx={{
-              width: 72,
-              height: 72,
-              borderRadius: '20px',
-              background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
+              width: 100,
+              height: 100,
               mb: 2,
-              boxShadow: `0 8px 32px ${theme.palette.primary.main}40`,
+              objectFit: 'contain',
             }}
-          >
-            <Shield size={36} color="white" strokeWidth={1.5} />
-          </Box>
+          />
 
           <Typography
             variant="h5"

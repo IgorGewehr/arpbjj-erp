@@ -55,7 +55,8 @@ import { useAcademy } from '@/contexts/AcademyContext';
 import { createAttendanceService } from '@/services';
 import { useQuery } from '@tanstack/react-query';
 import { BeltColor, KidsBeltColor, StudentCategory } from '@/types';
-import { startOfDay, endOfDay, startOfWeek, startOfMonth } from 'date-fns';
+import { startOfDay, endOfDay, startOfWeek, startOfMonth, subDays, format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 // ============================================
 // Constants - Adult Belts
@@ -407,6 +408,7 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
       todayEnd: endOfDay(now),
       weekStart: startOfWeek(now, { weekStartsOn: 1 }), // Monday
       monthStart: startOfMonth(now),
+      last30DaysStart: startOfDay(subDays(now, 29)), // 30 days including today
     };
   }, []);
 
@@ -458,7 +460,23 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
     staleTime: 1000 * 60 * 2,
   });
 
-  const isLoading = isLoadingStudents || isLoadingToday || isLoadingWeek || isLoadingMonth;
+  // Fetch last 30 days attendance for chart
+  const { data: last30DaysAttendance = [], isLoading: isLoadingChart } = useQuery({
+    queryKey: ['attendanceReport', 'last30days', academyId, classFilter],
+    queryFn: async () => {
+      if (!attendanceService) return [];
+      const attendance = await attendanceService.getByDateRange(
+        dateRanges.last30DaysStart,
+        dateRanges.todayEnd,
+        classFilter ? { classId: classFilter } : undefined
+      );
+      return attendance;
+    },
+    enabled: !!attendanceService,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const isLoading = isLoadingStudents || isLoadingToday || isLoadingWeek || isLoadingMonth || isLoadingChart;
 
   // Filter students by class and category
   const students = useMemo(() => {
@@ -543,6 +561,38 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
     kids: students?.filter(s => s.category === 'kids').length || 0,
   }), [students]);
 
+  // Chart data - group attendance by day for last 30 days
+  const chartData = useMemo(() => {
+    const filteredAttendance = filterAttendanceByCategory(last30DaysAttendance);
+
+    // Create a map of day -> count
+    const attendanceByDay: Record<string, number> = {};
+
+    // Initialize all 30 days with 0
+    for (let i = 29; i >= 0; i--) {
+      const date = subDays(new Date(), i);
+      const key = format(date, 'yyyy-MM-dd');
+      attendanceByDay[key] = 0;
+    }
+
+    // Count attendance per day
+    filteredAttendance.forEach(a => {
+      const key = format(new Date(a.date), 'yyyy-MM-dd');
+      if (attendanceByDay[key] !== undefined) {
+        attendanceByDay[key]++;
+      }
+    });
+
+    // Convert to array for chart
+    return Object.entries(attendanceByDay)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([dateStr, count]) => ({
+        name: format(new Date(dateStr), 'dd/MM', { locale: ptBR }),
+        fullDate: format(new Date(dateStr), "EEEE, d 'de' MMMM", { locale: ptBR }),
+        presencas: count,
+      }));
+  }, [last30DaysAttendance, categoryFilter, allStudents]);
+
   return (
     <Box>
       <Grid container spacing={{ xs: 1.5, sm: 2, md: 3 }}>
@@ -590,9 +640,7 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
               <Box sx={{ width: '100%', height: { xs: 200, sm: 280 } }}>
                 <ResponsiveContainer>
                   <AreaChart
-                    data={[
-                      { name: 'Sem dados', presencas: 0 },
-                    ]}
+                    data={chartData}
                     margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
                   >
                     <defs>
@@ -607,13 +655,33 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
                       axisLine={false}
                       tickLine={false}
                       tick={{ fill: '#6B7280', fontSize: 11 }}
+                      interval="preserveStartEnd"
                     />
                     <YAxis
                       axisLine={false}
                       tickLine={false}
                       tick={{ fill: '#6B7280', fontSize: 11 }}
+                      allowDecimals={false}
                     />
-                    <Tooltip content={<CustomTooltip />} />
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload?.[0]) return null;
+                        const data = payload[0].payload;
+                        return (
+                          <Paper sx={{ p: 1.5, borderRadius: 1.5, boxShadow: 2, minWidth: 120 }}>
+                            <Typography variant="caption" fontWeight={600} sx={{ mb: 0.5, display: 'block', textTransform: 'capitalize' }}>
+                              {data.fullDate}
+                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Box sx={{ width: 8, height: 8, borderRadius: '50%', bgcolor: '#3b82f6' }} />
+                              <Typography variant="caption" color="text.secondary">
+                                Presenças: <strong>{data.presencas}</strong>
+                              </Typography>
+                            </Box>
+                          </Paper>
+                        );
+                      }}
+                    />
                     <Area
                       type="monotone"
                       dataKey="presencas"
@@ -626,11 +694,6 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
                 </ResponsiveContainer>
               </Box>
             )}
-            <Box sx={{ textAlign: 'center', py: 2 }}>
-              <Typography variant="body2" color="text.secondary">
-                O grafico sera preenchido conforme as presencas forem registradas
-              </Typography>
-            </Box>
           </ChartPaper>
         </Grid>
 

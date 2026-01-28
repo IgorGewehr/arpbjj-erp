@@ -20,7 +20,8 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useFeedback } from '@/components/providers';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { competitionService } from '@/services/competitionService';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { createCompetitionService } from '@/services/competitionService';
 import { CompetitionStatus, CompetitionTransportStatus, TRANSPORT_STATUS_LABELS } from '@/types';
 import { format, parseISO } from 'date-fns';
 
@@ -58,6 +59,7 @@ const initialFormData: FormData = {
 export default function NewCompetitionPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { academy } = useAcademy();
   const { success, error: showError } = useFeedback();
 
   const [formData, setFormData] = useState<FormData>(initialFormData);
@@ -89,7 +91,9 @@ export default function NewCompetitionPage() {
   // ============================================
   const handleSubmit = async () => {
     if (!validate()) return;
-    if (!user) return;
+    if (!user || !academy?.id) return;
+
+    const competitionService = createCompetitionService(academy.id);
 
     try {
       setLoading(true);

@@ -43,8 +43,9 @@ import { format, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
-import { competitionService } from '@/services/competitionService';
-import { competitionEnrollmentService } from '@/services/competitionEnrollmentService';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { createCompetitionService } from '@/services/competitionService';
+import { createCompetitionEnrollmentService } from '@/services/competitionEnrollmentService';
 import {
   Competition,
   CompetitionResult,
@@ -297,7 +298,12 @@ export default function StudentCompetitionsPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user } = useAuth();
+  const { academy, academyUser } = useAcademy();
   const { success, error: showError } = useFeedback();
+
+  // Get studentId from academyUser (not from user)
+  const studentId = academyUser?.studentId;
+  const studentName = academyUser?.displayName || user?.displayName;
 
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [enrollments, setEnrollments] = useState<CompetitionEnrollment[]>([]);
@@ -312,21 +318,28 @@ export default function StudentCompetitionsPage() {
   // Load data
   useEffect(() => {
     const loadData = async () => {
-      if (!user?.studentId) {
+      if (!academy?.id) {
         setLoading(false);
         return;
       }
 
-      try {
-        const [competitionsData, enrollmentsData, resultsData] = await Promise.all([
-          competitionService.list(),
-          competitionEnrollmentService.getByStudent(user.studentId),
-          competitionService.getResultsForStudent(user.studentId),
-        ]);
+      const competitionService = createCompetitionService(academy.id);
+      const competitionEnrollmentService = createCompetitionEnrollmentService(academy.id);
 
+      try {
+        // Load competitions for all students (they should see all available competitions)
+        const competitionsData = await competitionService.list();
         setCompetitions(competitionsData);
-        setEnrollments(enrollmentsData);
-        setResults(resultsData);
+
+        // Only load enrollments and results if user has studentId
+        if (studentId) {
+          const [enrollmentsData, resultsData] = await Promise.all([
+            competitionEnrollmentService.getByStudent(studentId),
+            competitionService.getResultsForStudent(studentId),
+          ]);
+          setEnrollments(enrollmentsData);
+          setResults(resultsData);
+        }
       } catch (err) {
         showError('Erro ao carregar competições');
       } finally {
@@ -335,7 +348,7 @@ export default function StudentCompetitionsPage() {
     };
 
     loadData();
-  }, [user?.studentId, showError]);
+  }, [academy?.id, studentId, showError]);
 
   // Get enrollment for competition
   const getEnrollment = useCallback(
@@ -360,7 +373,9 @@ export default function StudentCompetitionsPage() {
   };
 
   const handleEnroll = async (data: { ageCategory: AgeCategory; weightCategory: string; transportPreference: StudentTransportPreference }) => {
-    if (!user?.studentId || !user?.displayName || !selectedCompetition) return;
+    if (!studentId || !studentName || !selectedCompetition || !academy?.id) return;
+
+    const competitionEnrollmentService = createCompetitionEnrollmentService(academy.id);
 
     setEnrolling(true);
     try {
@@ -387,12 +402,12 @@ export default function StudentCompetitionsPage() {
         const enrollment = await competitionEnrollmentService.enroll({
           competitionId: selectedCompetition.id,
           competitionName: selectedCompetition.name,
-          studentId: user.studentId,
-          studentName: user.displayName,
+          studentId: studentId,
+          studentName: studentName,
           ageCategory: data.ageCategory,
           weightCategory: data.weightCategory,
           transportPreference: data.transportPreference,
-          enrolledBy: user.id,
+          enrolledBy: user?.id || '',
         });
 
         setEnrollments((prev) => [...prev, enrollment]);
@@ -410,7 +425,9 @@ export default function StudentCompetitionsPage() {
   // Handle cancel enrollment
   const handleCancelEnrollment = async (competitionId: string) => {
     const enrollment = getEnrollment(competitionId);
-    if (!enrollment) return;
+    if (!enrollment || !academy?.id) return;
+
+    const competitionEnrollmentService = createCompetitionEnrollmentService(academy.id);
 
     setCanceling(competitionId);
     try {

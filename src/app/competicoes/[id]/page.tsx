@@ -55,10 +55,11 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useFeedback, useConfirmDialog } from '@/components/providers';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { competitionService } from '@/services/competitionService';
-import { competitionEnrollmentService } from '@/services/competitionEnrollmentService';
-import { studentService } from '@/services/studentService';
-import { achievementService } from '@/services/achievementService';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { createCompetitionService } from '@/services/competitionService';
+import { createCompetitionEnrollmentService } from '@/services/competitionEnrollmentService';
+import { createStudentService } from '@/services/studentService';
+import { createAchievementService } from '@/services/achievementService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import {
   Competition,
@@ -476,6 +477,7 @@ export default function CompetitionDetailsPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const { user } = useAuth();
+  const { academy } = useAcademy();
   const { success, error: showError } = useFeedback();
   const { confirm } = useConfirmDialog();
 
@@ -502,10 +504,18 @@ export default function CompetitionDetailsPage() {
   // Load Data
   // ============================================
   useEffect(() => {
-    loadData();
-  }, [competitionId]);
+    if (academy?.id) {
+      loadData();
+    }
+  }, [competitionId, academy?.id]);
 
   const loadData = async () => {
+    if (!academy?.id) return;
+
+    const competitionService = createCompetitionService(academy.id);
+    const competitionEnrollmentService = createCompetitionEnrollmentService(academy.id);
+    const studentService = createStudentService(academy.id);
+
     try {
       setLoading(true);
       const [compData, resultsData, enrollmentsData, studentsData] = await Promise.all([
@@ -537,7 +547,9 @@ export default function CompetitionDetailsPage() {
   // Handlers
   // ============================================
   const handleSave = async () => {
-    if (!competition) return;
+    if (!competition || !academy?.id) return;
+
+    const competitionService = createCompetitionService(academy.id);
 
     try {
       setSaving(true);
@@ -559,7 +571,10 @@ export default function CompetitionDetailsPage() {
     weightCategory: string;
     transportPreference: StudentTransportPreference;
   }) => {
-    if (!competition || !user) return;
+    if (!competition || !user || !academy?.id) return;
+
+    const competitionService = createCompetitionService(academy.id);
+    const competitionEnrollmentService = createCompetitionEnrollmentService(academy.id);
 
     try {
       await competitionEnrollmentService.enroll({
@@ -584,7 +599,10 @@ export default function CompetitionDetailsPage() {
   };
 
   const handleRemoveStudent = async (enrollmentId: string, studentId: string) => {
-    if (!competition) return;
+    if (!competition || !academy?.id) return;
+
+    const competitionService = createCompetitionService(academy.id);
+    const competitionEnrollmentService = createCompetitionEnrollmentService(academy.id);
 
     const enrollment = enrollments.find((e) => e.id === enrollmentId);
     const confirmed = await confirm({
@@ -608,7 +626,10 @@ export default function CompetitionDetailsPage() {
   };
 
   const handleSaveResult = async (data: Omit<CompetitionResult, 'id' | 'createdAt' | 'updatedAt' | 'createdBy'>) => {
-    if (!user) return;
+    if (!user || !academy?.id) return;
+
+    const competitionService = createCompetitionService(academy.id);
+    const achievementService = createAchievementService(academy.id);
 
     try {
       if (editingResult) {
@@ -636,6 +657,8 @@ export default function CompetitionDetailsPage() {
   };
 
   const handleDeleteResult = async (result: CompetitionResult) => {
+    if (!academy?.id) return;
+
     const confirmed = await confirm({
       title: 'Excluir Resultado',
       message: `Deseja excluir o resultado de ${result.studentName}?`,
@@ -644,6 +667,7 @@ export default function CompetitionDetailsPage() {
     });
 
     if (confirmed) {
+      const competitionService = createCompetitionService(academy.id);
       try {
         await competitionService.deleteResult(result.id);
         success('Resultado excluído');

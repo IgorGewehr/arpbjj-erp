@@ -46,7 +46,8 @@ import { ptBR } from 'date-fns/locale';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useConfirmDialog, useFeedback } from '@/components/providers';
-import { competitionService } from '@/services/competitionService';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { createCompetitionService } from '@/services/competitionService';
 import { Competition, CompetitionStatus } from '@/types';
 import { CardSkeleton } from '@/components/common/SkeletonComponents';
 import { EmptyCompetitionsIllustration } from '@/components/common/EmptyStateIllustrations';
@@ -199,6 +200,7 @@ export default function CompetitionsPage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { confirm } = useConfirmDialog();
   const { success, error: showError } = useFeedback();
+  const { academy } = useAcademy();
 
   const [competitions, setCompetitions] = useState<Competition[]>([]);
   const [loading, setLoading] = useState(true);
@@ -209,10 +211,15 @@ export default function CompetitionsPage() {
   // Load Competitions
   // ============================================
   useEffect(() => {
-    loadCompetitions();
-  }, []);
+    if (academy?.id) {
+      loadCompetitions();
+    }
+  }, [academy?.id]);
 
   const loadCompetitions = async () => {
+    if (!academy?.id) return;
+    const competitionService = createCompetitionService(academy.id);
+
     try {
       setLoading(true);
       const data = await competitionService.list();
@@ -242,6 +249,8 @@ export default function CompetitionsPage() {
   // Handlers
   // ============================================
   const handleDelete = async (competition: Competition) => {
+    if (!academy?.id) return;
+
     const confirmed = await confirm({
       title: 'Excluir Competição',
       message: `Tem certeza que deseja excluir "${competition.name}"? Esta ação não pode ser desfeita.`,
@@ -251,6 +260,7 @@ export default function CompetitionsPage() {
     });
 
     if (confirmed) {
+      const competitionService = createCompetitionService(academy.id);
       try {
         await competitionService.delete(competition.id);
         success('Competição excluída com sucesso');

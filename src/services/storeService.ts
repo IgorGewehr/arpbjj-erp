@@ -245,14 +245,19 @@ class StoreService {
       }
 
       // Build validated item with SERVER-SIDE price
-      validatedItems.push({
+      // Note: Firestore doesn't accept undefined values, so we only include optional fields if they have values
+      const validatedItem: StoreOrderItem = {
         productId: product.id,
         productName: product.name,
         quantity: item.quantity,
         unitPrice: product.price, // SECURITY: Always use database price
-        size: item.size,
-        color: item.color,
-      });
+      };
+
+      // Only add size/color if they have values (Firestore rejects undefined)
+      if (item.size) validatedItem.size = item.size;
+      if (item.color) validatedItem.color = item.color;
+
+      validatedItems.push(validatedItem);
     }
 
     // Calculate total from validated items (server-side prices)
@@ -261,17 +266,22 @@ class StoreService {
       0
     );
 
-    const orderData = {
+    // Build order data - ensure no undefined values for Firestore
+    const orderData: Record<string, unknown> = {
       academyId: this.academyId,
       studentId: data.studentId,
       studentName: data.studentName,
       items: validatedItems,
       totalAmount,
       status: 'pending_payment' as StoreOrderStatus,
-      notes: data.notes || '',
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+
+    // Only add notes if provided (Firestore rejects undefined)
+    if (data.notes) {
+      orderData.notes = data.notes;
+    }
 
     const docRef = await addDoc(this.ordersRef, orderData);
 

@@ -110,6 +110,7 @@ class SettingsService {
           storePublished: data.storePublished || false,
           storeWelcomeMessage: data.storeWelcomeMessage,
           storeMinOrderAmount: data.storeMinOrderAmount,
+          storeCreditCardEnabled: data.storeCreditCardEnabled || false,
           studentCheckinEnabled: data.studentCheckinEnabled || false,
           monitorIds: data.monitorIds || [],
           updatedAt: data.updatedAt?.toDate(),
@@ -280,6 +281,7 @@ class SettingsService {
         storePublished: data.storePublished || false,
         storeWelcomeMessage: data.storeWelcomeMessage,
         storeMinOrderAmount: data.storeMinOrderAmount,
+        storeCreditCardEnabled: data.storeCreditCardEnabled || false,
         // Student Check-in
         studentCheckinEnabled: data.studentCheckinEnabled || false,
         // Monitors

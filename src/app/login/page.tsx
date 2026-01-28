@@ -15,10 +15,29 @@ import {
   useTheme,
   useMediaQuery,
   Divider,
+  Fade,
+  Grow,
+  keyframes,
 } from '@mui/material';
-import { Mail, Lock, Eye, EyeOff, GraduationCap, Sparkles, Shield } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, GraduationCap, Sparkles, Shield, Loader2 } from 'lucide-react';
 import { useAuth } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
+
+// Loading animation keyframes
+const pulse = keyframes`
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.95); }
+`;
+
+const spin = keyframes`
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+`;
+
+const shimmer = keyframes`
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+`;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,6 +49,7 @@ export default function LoginPage() {
 
   const [mounted, setMounted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [redirecting, setRedirecting] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -44,11 +64,13 @@ export default function LoginPage() {
   // Redirect based on academy-specific role (not global user role)
   useEffect(() => {
     if (isAuthenticated && user && !academyLoading && academyUser) {
+      setRedirecting(true);
       const role = academyUser.role;
       const redirectTo = role === 'student' ? '/portal'
                        : role === 'guardian' ? '/responsavel'
                        : '/dashboard';
-      router.push(redirectTo);
+      // Small delay for smooth transition
+      setTimeout(() => router.push(redirectTo), 300);
     }
   }, [isAuthenticated, user, academyUser, academyLoading, router]);
 
@@ -73,10 +95,12 @@ export default function LoginPage() {
     [formData, signIn]
   );
 
-  // Show loading while auth or academy context is loading
-  const isLoading = loading || (isAuthenticated && academyLoading);
+  // Show loading while auth is initializing or redirecting
+  const isInitializing = loading && !mounted;
+  const isLoadingAfterAuth = isAuthenticated && (academyLoading || redirecting);
 
-  if (isLoading || !mounted) {
+  // Professional loading screen
+  if (isInitializing || isLoadingAfterAuth || !mounted) {
     return (
       <Box
         sx={{
@@ -84,15 +108,101 @@ export default function LoginPage() {
           alignItems: 'center',
           justifyContent: 'center',
           flexDirection: 'column',
-          gap: 2,
           height: '100dvh',
           bgcolor: 'background.default',
+          position: 'relative',
+          overflow: 'hidden',
         }}
       >
-        <CircularProgress size={40} />
-        <Typography variant="body2" color="text.secondary">
-          Carregando...
-        </Typography>
+        {/* Subtle background gradient */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: '20%',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: '120%',
+            height: '60%',
+            background: `radial-gradient(ellipse, ${theme.palette.primary.main}08, transparent 70%)`,
+            pointerEvents: 'none',
+          }}
+        />
+
+        <Fade in timeout={400}>
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 3,
+            }}
+          >
+            {/* Animated logo/icon */}
+            <Box
+              sx={{
+                width: 80,
+                height: 80,
+                borderRadius: '24px',
+                background: `linear-gradient(135deg, ${theme.palette.primary.main}, ${theme.palette.primary.dark})`,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: `0 12px 40px ${theme.palette.primary.main}30`,
+                animation: `${pulse} 2s ease-in-out infinite`,
+              }}
+            >
+              <Shield size={40} color="white" strokeWidth={1.5} />
+            </Box>
+
+            {/* Loading indicator */}
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1.5,
+              }}
+            >
+              <Box
+                sx={{
+                  animation: `${spin} 1s linear infinite`,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Loader2 size={18} color={theme.palette.primary.main} />
+              </Box>
+              <Typography
+                variant="body1"
+                color="text.secondary"
+                fontWeight={500}
+              >
+                {redirecting ? 'Entrando...' : 'Carregando...'}
+              </Typography>
+            </Box>
+
+            {/* Shimmer loading bar */}
+            <Box
+              sx={{
+                width: 180,
+                height: 4,
+                borderRadius: 2,
+                bgcolor: isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)',
+                overflow: 'hidden',
+              }}
+            >
+              <Box
+                sx={{
+                  width: '100%',
+                  height: '100%',
+                  background: `linear-gradient(90deg, transparent, ${theme.palette.primary.main}40, transparent)`,
+                  backgroundSize: '200% 100%',
+                  animation: `${shimmer} 1.5s ease-in-out infinite`,
+                }}
+              />
+            </Box>
+          </Box>
+        </Fade>
       </Box>
     );
   }
@@ -135,6 +245,7 @@ export default function LoginPage() {
         }}
       />
 
+      <Grow in timeout={500}>
       <Paper
         elevation={0}
         sx={{
@@ -368,6 +479,7 @@ export default function LoginPage() {
           Sistema de Gestão de Academia
         </Typography>
       </Paper>
+      </Grow>
     </Box>
   );
 }

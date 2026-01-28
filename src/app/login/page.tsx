@@ -279,32 +279,11 @@ export default function LoginPage() {
             src="/bjjeasy_logo.png"
             alt="BJJEasy"
             sx={{
-              width: 100,
-              height: 100,
-              mb: 2,
+              width: 180,
+              height: 180,
               objectFit: 'contain',
             }}
           />
-
-          <Typography
-            variant="h5"
-            fontWeight={700}
-            sx={{
-              background: `linear-gradient(135deg, ${theme.palette.text.primary}, ${theme.palette.text.secondary})`,
-              backgroundClip: 'text',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-            }}
-          >
-            Bem-vindo
-          </Typography>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ mt: 0.5, textAlign: 'center' }}
-          >
-            Acesse sua conta para continuar
-          </Typography>
         </Box>
 
         {/* Error Alert */}
@@ -328,7 +307,7 @@ export default function LoginPage() {
         <Box component="form" onSubmit={handleSubmit} sx={{ width: '100%' }}>
           <TextField
             fullWidth
-            label="Email"
+            placeholder="Email"
             name="email"
             type="email"
             value={formData.email}
@@ -352,7 +331,7 @@ export default function LoginPage() {
 
           <TextField
             fullWidth
-            label="Senha"
+            placeholder="Senha"
             name="password"
             type={showPassword ? 'text' : 'password'}
             value={formData.password}

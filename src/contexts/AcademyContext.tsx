@@ -132,6 +132,7 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           // Store
           storeEnabled: data.storeEnabled || false,
           storePublished: data.storePublished || false,
+          storeCreditCardEnabled: data.storeCreditCardEnabled || false,
           storeWelcomeMessage: data.storeWelcomeMessage,
           storeMinOrderAmount: data.storeMinOrderAmount,
           // Student Check-in
@@ -279,6 +280,7 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           // Store
           storeEnabled: data.storeEnabled || false,
           storePublished: data.storePublished || false,
+          storeCreditCardEnabled: data.storeCreditCardEnabled || false,
           storeWelcomeMessage: data.storeWelcomeMessage,
           storeMinOrderAmount: data.storeMinOrderAmount,
           // Student Check-in

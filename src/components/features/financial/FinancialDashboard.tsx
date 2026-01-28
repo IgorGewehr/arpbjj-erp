@@ -869,21 +869,24 @@ export function FinancialDashboard() {
   // ============================================
   // Handle Generate Tuitions (only for students with plans)
   // ============================================
-  const handleGenerateTuitions = useCallback(async () => {
+  const handleGenerateTuitions = useCallback(async (planIdFilter: string | null) => {
     // Build student data ONLY from students enrolled in active plans
     const studentsWithPlans = new Map<string, { value: number; day: number }>();
 
+    // Filter plans if a specific plan is selected
+    const plansToProcess = planIdFilter
+      ? plans.filter(p => p.id === planIdFilter && p.isActive)
+      : plans.filter(p => p.isActive);
+
     // Get values from plans - only students in active plans get tuitions
-    for (const plan of plans) {
-      if (plan.isActive) {
-        for (const studentId of plan.studentIds) {
-          const student = activeStudents.find(s => s.id === studentId);
-          if (student && student.status === 'active') {
-            studentsWithPlans.set(studentId, {
-              value: plan.monthlyValue,
-              day: student.tuitionDay || 10,
-            });
-          }
+    for (const plan of plansToProcess) {
+      for (const studentId of plan.studentIds) {
+        const student = activeStudents.find(s => s.id === studentId);
+        if (student && student.status === 'active') {
+          studentsWithPlans.set(studentId, {
+            value: plan.monthlyValue,
+            day: student.tuitionDay || 10,
+          });
         }
       }
     }
@@ -1484,7 +1487,9 @@ export function FinancialDashboard() {
       <GenerateTuitionsDialog
         open={generateDialogOpen}
         month={selectedMonth}
-        studentsCount={studentsWithPlansCount}
+        plans={plans}
+        students={activeStudents}
+        financials={financials}
         onClose={() => setGenerateDialogOpen(false)}
         onConfirm={handleGenerateTuitions}
         isLoading={isGenerating}

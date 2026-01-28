@@ -555,7 +555,7 @@ export default function CarteiraPage() {
                           boxShadow: theme.shadows[3],
                           padding: '8px 12px',
                         }}
-                        formatter={(value: number) => [formatCurrency(value * 100), 'Receita']}
+                        formatter={(value) => [formatCurrency((value as number) * 100), 'Receita']}
                         labelFormatter={(_, payload) => payload[0]?.payload?.fullDate || ''}
                       />
                       <Area

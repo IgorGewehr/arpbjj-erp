@@ -50,8 +50,12 @@ import {
 } from 'recharts';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
-import { useAllStudents, useFinancial, useAttendance, useClasses } from '@/hooks';
+import { useAllStudents, useFinancial, useClasses } from '@/hooks';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { createAttendanceService } from '@/services';
+import { useQuery } from '@tanstack/react-query';
 import { BeltColor, KidsBeltColor, StudentCategory } from '@/types';
+import { startOfDay, endOfDay, startOfWeek, startOfMonth } from 'date-fns';
 
 // ============================================
 // Constants - Adult Belts
@@ -386,8 +390,75 @@ interface ReportProps {
 }
 
 function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps) {
-  const { stats, isLoading } = useAttendance();
-  const { students: allStudents } = useAllStudents();
+  const { academyId } = useAcademy();
+  const { students: allStudents, isLoading: isLoadingStudents } = useAllStudents();
+
+  // Create attendance service
+  const attendanceService = useMemo(() =>
+    academyId ? createAttendanceService(academyId) : null,
+    [academyId]
+  );
+
+  // Calculate date ranges
+  const dateRanges = useMemo(() => {
+    const now = new Date();
+    return {
+      todayStart: startOfDay(now),
+      todayEnd: endOfDay(now),
+      weekStart: startOfWeek(now, { weekStartsOn: 1 }), // Monday
+      monthStart: startOfMonth(now),
+    };
+  }, []);
+
+  // Fetch today's attendance
+  const { data: todayAttendance = [], isLoading: isLoadingToday } = useQuery({
+    queryKey: ['attendanceReport', 'today', academyId, classFilter],
+    queryFn: async () => {
+      if (!attendanceService) return [];
+      const attendance = await attendanceService.getByDateRange(
+        dateRanges.todayStart,
+        dateRanges.todayEnd,
+        classFilter ? { classId: classFilter } : undefined
+      );
+      return attendance;
+    },
+    enabled: !!attendanceService,
+    staleTime: 1000 * 60 * 2, // 2 minutes
+  });
+
+  // Fetch this week's attendance
+  const { data: weekAttendance = [], isLoading: isLoadingWeek } = useQuery({
+    queryKey: ['attendanceReport', 'week', academyId, classFilter],
+    queryFn: async () => {
+      if (!attendanceService) return [];
+      const attendance = await attendanceService.getByDateRange(
+        dateRanges.weekStart,
+        dateRanges.todayEnd,
+        classFilter ? { classId: classFilter } : undefined
+      );
+      return attendance;
+    },
+    enabled: !!attendanceService,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  // Fetch this month's attendance
+  const { data: monthAttendance = [], isLoading: isLoadingMonth } = useQuery({
+    queryKey: ['attendanceReport', 'month', academyId, classFilter],
+    queryFn: async () => {
+      if (!attendanceService) return [];
+      const attendance = await attendanceService.getByDateRange(
+        dateRanges.monthStart,
+        dateRanges.todayEnd,
+        classFilter ? { classId: classFilter } : undefined
+      );
+      return attendance;
+    },
+    enabled: !!attendanceService,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const isLoading = isLoadingStudents || isLoadingToday || isLoadingWeek || isLoadingMonth;
 
   // Filter students by class and category
   const students = useMemo(() => {
@@ -406,6 +477,19 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
 
     return filtered;
   }, [allStudents, classFilter, categoryFilter, classes]);
+
+  // Filter attendance by category if needed
+  const filterAttendanceByCategory = (attendance: typeof todayAttendance) => {
+    if (!categoryFilter) return attendance;
+
+    const studentIdsOfCategory = new Set(
+      (allStudents || [])
+        .filter(s => s.category === categoryFilter)
+        .map(s => s.id)
+    );
+
+    return attendance.filter(a => studentIdsOfCategory.has(a.studentId));
+  };
 
   // Separate belt distributions
   const adultBeltData = useMemo(() => {
@@ -430,13 +514,28 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
     }));
   }, [students]);
 
-  // Stats
-  const extendedStats = useMemo(() => ({
-    today: stats?.presentCount || 0,
-    week: stats?.presentCount || 0,
-    month: stats?.presentCount || 0,
-    averageRate: stats?.attendanceRate || 0,
-  }), [stats]);
+  // Stats - now using real data
+  const extendedStats = useMemo(() => {
+    const filteredToday = filterAttendanceByCategory(todayAttendance);
+    const filteredWeek = filterAttendanceByCategory(weekAttendance);
+    const filteredMonth = filterAttendanceByCategory(monthAttendance);
+
+    // Calculate unique students who attended this month
+    const uniqueStudentsThisMonth = new Set(filteredMonth.map(a => a.studentId)).size;
+    const totalActiveStudents = students.filter(s => s.status === 'active').length;
+
+    // Calculate attendance rate based on unique students who attended
+    const attendanceRate = totalActiveStudents > 0
+      ? Math.round((uniqueStudentsThisMonth / totalActiveStudents) * 100)
+      : 0;
+
+    return {
+      today: filteredToday.length,
+      week: filteredWeek.length,
+      month: filteredMonth.length,
+      averageRate: attendanceRate,
+    };
+  }, [todayAttendance, weekAttendance, monthAttendance, students, categoryFilter, allStudents]);
 
   // Count by category
   const categoryCount = useMemo(() => ({

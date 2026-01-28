@@ -272,8 +272,13 @@ export default function CarteiraPage() {
   }, [academyId, showError]);
 
   useEffect(() => {
-    fetchWalletData();
-  }, [fetchWalletData]);
+    // Only fetch wallet data if payments are enabled
+    if (!settingsLoading && settings?.abacatePayEnabled) {
+      fetchWalletData();
+    } else if (!settingsLoading && !settings?.abacatePayEnabled) {
+      setLoading(false);
+    }
+  }, [fetchWalletData, settingsLoading, settings?.abacatePayEnabled]);
 
   const handleRefresh = () => {
     setRefreshing(true);

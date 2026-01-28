@@ -429,12 +429,16 @@ export class FinancialService {
     const monthlyData: Record<string, { paid: number; expected: number }> = {};
 
     financials.forEach((f) => {
+      // Skip cancelled payments - they don't count for collection rate
+      if (f.status === 'cancelled') return;
+
       const monthKey = format(f.dueDate, 'yyyy-MM');
 
       if (!monthlyData[monthKey]) {
         monthlyData[monthKey] = { paid: 0, expected: 0 };
       }
 
+      // Only count active payments (pending, overdue, paid) in expected
       monthlyData[monthKey].expected += f.amount;
       expectedRevenue += f.amount;
 

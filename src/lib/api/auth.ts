@@ -101,12 +101,15 @@ export async function verifyIdToken(idToken: string): Promise<AuthResult> {
     const userData = userDoc.data();
     const mappingData = userMappingDoc.data();
 
+    // Get academyId from mapping (primaryAcademyId or first in academyIds array)
+    const academyId = mappingData?.primaryAcademyId || mappingData?.academyIds?.[0];
+
     return {
       authenticated: true,
       user: {
         uid: decodedToken.uid,
         email: decodedToken.email,
-        academyId: mappingData?.academyId,
+        academyId,
         role: userData?.role,
         studentId: userData?.studentId,
       },

@@ -23,7 +23,11 @@ service cloud.firestore {
 
     // Check if user belongs to a specific academy
     function belongsToAcademy(academyId) {
-      return isAuthenticated() && getUserAcademyMapping().academyId == academyId;
+      let mapping = getUserAcademyMapping();
+      return isAuthenticated() && (
+        academyId in mapping.academyIds ||
+        mapping.primaryAcademyId == academyId
+      );
     }
 
     // Check if user is admin of the academy

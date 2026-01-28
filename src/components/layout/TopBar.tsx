@@ -40,10 +40,9 @@ import {
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useRouter } from 'next/navigation';
-import { studentService } from '@/services/studentService';
-import { classService } from '@/services/classService';
-import { planService } from '@/services/planService';
+import { createStudentService, createClassService, createPlanService } from '@/services';
 import { Student, Class, Plan } from '@/types';
 import { NotificationBell } from '@/components/features/notifications/NotificationBell';
 
@@ -85,6 +84,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const router = useRouter();
   const { user, signOut } = useAuth();
+  const { academyId } = useAcademy();
 
   const [userMenuAnchor, setUserMenuAnchor] = useState<null | HTMLElement>(null);
 
@@ -101,7 +101,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
 
   // Debounced search
   useEffect(() => {
-    if (!searchTerm.trim()) {
+    if (!searchTerm.trim() || !academyId) {
       setSearchResults([]);
       setShowResults(false);
       return;
@@ -112,6 +112,11 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
       try {
         const results: SearchResult[] = [];
         const searchLower = searchTerm.toLowerCase();
+
+        // Create multi-tenant services
+        const studentService = createStudentService(academyId);
+        const classService = createClassService(academyId);
+        const planService = createPlanService(academyId);
 
         // Search students using the new searchByName method
         const students = await studentService.searchByName(searchTerm);
@@ -162,7 +167,7 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
     }, 300);
 
     return () => clearTimeout(debounceTimer);
-  }, [searchTerm]);
+  }, [searchTerm, academyId]);
 
   const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchTerm(e.target.value);

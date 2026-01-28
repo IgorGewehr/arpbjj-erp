@@ -66,10 +66,10 @@ import { getBeltChipColor } from '@/lib/theme';
 import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode, FinancialPaymentLink } from '@/types';
-import { financialService, attendanceService, studentService } from '@/services';
+import { createFinancialService, createAttendanceService, createStudentService } from '@/services';
 import { createAbacatePayService } from '@/services/abacatePayService';
 import { Attendance } from '@/types';
-import { linkCodeService } from '@/services/linkCodeService';
+import { createLinkCodeService } from '@/services/linkCodeService';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
@@ -368,8 +368,9 @@ export default function StudentProfilePage() {
   // Load student attendance when tab changes to Presenca
   useEffect(() => {
     const presencaTabIndex = tabs.indexOf('Presenca');
-    if (activeTab === presencaTabIndex && presencaTabIndex !== -1 && studentId) {
+    if (activeTab === presencaTabIndex && presencaTabIndex !== -1 && studentId && academy?.id) {
       setLoadingAttendance(true);
+      const attendanceService = createAttendanceService(academy.id);
       attendanceService.getByStudent(studentId, 100).then((data) => {
         setAttendanceRecords(data);
         setLoadingAttendance(false);
@@ -377,19 +378,20 @@ export default function StudentProfilePage() {
         setLoadingAttendance(false);
       });
     }
-  }, [activeTab, studentId, tabs]);
+  }, [activeTab, studentId, tabs, academy?.id]);
 
   // Load student financials when tab changes to Financeiro
   useEffect(() => {
     const financeiroTabIndex = tabs.indexOf('Financeiro');
-    if (activeTab === financeiroTabIndex && financeiroTabIndex !== -1 && studentId) {
+    if (activeTab === financeiroTabIndex && financeiroTabIndex !== -1 && studentId && academy?.id) {
       setLoadingFinancials(true);
+      const financialService = createFinancialService(academy.id);
       financialService.getByStudent(studentId).then((data) => {
         setStudentFinancials(data);
         setLoadingFinancials(false);
       });
     }
-  }, [activeTab, studentId, tabs]);
+  }, [activeTab, studentId, tabs, academy?.id]);
 
   // Initialize graduation dialog with current values
   useEffect(() => {
@@ -401,13 +403,14 @@ export default function StudentProfilePage() {
 
   // Load total attendance count
   useEffect(() => {
-    if (student && studentId) {
+    if (student && studentId && academy?.id) {
+      const attendanceService = createAttendanceService(academy.id);
       attendanceService.getTotalStudentAttendanceCount(
         studentId,
         student.initialAttendanceCount || 0
       ).then(setTotalAttendanceCount).catch(() => setTotalAttendanceCount(null));
     }
-  }, [student, studentId]);
+  }, [student, studentId, academy?.id]);
 
   // Handle assessment score change
   const handleScoreChange = useCallback((key: keyof AssessmentScores, value: number) => {
@@ -502,10 +505,11 @@ export default function StudentProfilePage() {
   }, []);
 
   const handleConfirmPayment = useCallback(async () => {
-    if (!selectedPayment) return;
+    if (!selectedPayment || !academy?.id) return;
     try {
       await markAsPaid({ id: selectedPayment.id, method: paymentMethod });
       // Refresh financials
+      const financialService = createFinancialService(academy.id);
       const data = await financialService.getByStudent(studentId);
       setStudentFinancials(data);
       setPaymentDialogOpen(false);
@@ -513,7 +517,7 @@ export default function StudentProfilePage() {
     } catch {
       // Error handled by hook
     }
-  }, [selectedPayment, paymentMethod, markAsPaid, studentId]);
+  }, [selectedPayment, paymentMethod, markAsPaid, studentId, academy?.id]);
 
   // Handle PIX payment generation
   const handleGeneratePix = useCallback(async (payment: Financial) => {
@@ -583,9 +587,10 @@ export default function StudentProfilePage() {
 
   // Handle generate link code
   const handleGenerateLinkCode = useCallback(async () => {
-    if (!student || !user) return;
+    if (!student || !user || !academy?.id) return;
     setGeneratingCode(true);
     try {
+      const linkCodeService = createLinkCodeService(academy.id);
       const linkCode = await linkCodeService.generate(studentId, student.fullName, user.id);
       setGeneratedLinkCode(linkCode);
       setLinkCodeDialogOpen(true);
@@ -596,7 +601,7 @@ export default function StudentProfilePage() {
     } finally {
       setGeneratingCode(false);
     }
-  }, [student, studentId, user, showError]);
+  }, [student, studentId, user, showError, academy?.id]);
 
   // Handle copy link code
   const handleCopyLinkCode = useCallback(() => {
@@ -608,10 +613,11 @@ export default function StudentProfilePage() {
 
   // Handle delete student
   const handleDeleteStudent = useCallback(async () => {
-    if (!student) return;
+    if (!student || !academy?.id) return;
 
     setDeleting(true);
     try {
+      const studentService = createStudentService(academy.id);
       await studentService.hardDelete(studentId);
       showSuccess('Aluno excluido com sucesso!');
       router.push('/alunos');

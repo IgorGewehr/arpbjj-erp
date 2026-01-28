@@ -20,7 +20,8 @@ import {
   Alert,
 } from '@mui/material';
 import { User, Phone, Mail, Calendar, X, UserPlus, Check, Award } from 'lucide-react';
-import { studentService } from '@/services';
+import { createStudentService } from '@/services';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { StudentCategory, BeltColor, KidsBeltColor, Stripes } from '@/types';
 
 interface QuickStudentDialogProps {
@@ -74,6 +75,7 @@ const kidsBelts: { value: KidsBeltColor; label: string; color: string }[] = [
 ];
 
 export function QuickStudentDialog({ open, onClose, onSuccess }: QuickStudentDialogProps) {
+  const { academyId } = useAcademy();
   const [form, setForm] = useState<QuickStudentForm>(initialForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -106,11 +108,17 @@ export function QuickStudentDialog({ open, onClose, onSuccess }: QuickStudentDia
       return;
     }
 
+    if (!academyId) {
+      setError('Academia nao encontrada');
+      return;
+    }
+
     setSaving(true);
     setError(null);
 
     try {
-      // Create minimal student record
+      // Create minimal student record using multi-tenant service
+      const studentService = createStudentService(academyId);
       await studentService.create({
         fullName: form.fullName.trim(),
         phone: form.phone || undefined,

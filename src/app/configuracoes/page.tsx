@@ -63,7 +63,7 @@ import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useAuth, useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { AcademySettings, createSettingsService } from '@/services/settingsService';
-import { attendanceService } from '@/services/attendanceService';
+import { createAttendanceService } from '@/services/attendanceService';
 import { createStudentService } from '@/services';
 import { Student } from '@/types';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
@@ -1227,6 +1227,7 @@ function ResourcesTab() {
 // ============================================
 function SystemTab() {
   const { user } = useAuth();
+  const { academyId } = useAcademy();
   const { success, error } = useFeedback();
   const [recalculatingAchievements, setRecalculatingAchievements] = useState(false);
   const [recalculationResult, setRecalculationResult] = useState<{
@@ -1242,8 +1243,8 @@ function SystemTab() {
   } | null>(null);
 
   const handleRecalculateAchievements = useCallback(async () => {
-    if (!user?.id) {
-      error('Usuario nao autenticado');
+    if (!user?.id || !academyId) {
+      error('Usuario nao autenticado ou academia nao encontrada');
       return;
     }
 
@@ -1251,6 +1252,7 @@ function SystemTab() {
     setRecalculationResult(null);
 
     try {
+      const attendanceService = createAttendanceService(academyId);
       const result = await attendanceService.recalculateAllAchievements(user.id);
       setRecalculationResult(result);
       success(`Achievements recalculados! ${result.totalAnniversaryCreated + result.totalAttendanceCreated} conquistas criadas.`);
@@ -1260,7 +1262,7 @@ function SystemTab() {
     } finally {
       setRecalculatingAchievements(false);
     }
-  }, [user, success, error]);
+  }, [user, academyId, success, error]);
 
   return (
     <SettingsSection

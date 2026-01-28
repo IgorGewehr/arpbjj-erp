@@ -77,6 +77,7 @@ export const collections = {
   walletTransactions: (academyId: string) => getCollection(academyId, 'walletTransactions'),
   storeProducts: (academyId: string) => getCollection(academyId, 'storeProducts'),
   storeOrders: (academyId: string) => getCollection(academyId, 'storeOrders'),
+  checkins: (academyId: string) => getCollection(academyId, 'checkins'),
 
   // Document references
   user: (academyId: string, userId: string) => getDocRef(academyId, 'users', userId),
@@ -97,6 +98,7 @@ export const collections = {
   wallet: (academyId: string) => doc(db, `academies/${academyId}/wallet`, 'balance'),
   storeProduct: (academyId: string, productId: string) => getDocRef(academyId, 'storeProducts', productId),
   storeOrder: (academyId: string, orderId: string) => getDocRef(academyId, 'storeOrders', orderId),
+  checkin: (academyId: string, checkinId: string) => getDocRef(academyId, 'checkins', checkinId),
 };
 
 // ============================================

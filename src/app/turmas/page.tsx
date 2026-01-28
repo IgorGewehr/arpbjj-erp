@@ -627,7 +627,7 @@ export default function TurmasPage() {
   return (
     <ProtectedRoute>
       <AppLayout title="Turmas">
-        <Box>
+        <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
             <Box>

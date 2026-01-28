@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useCallback, useRef, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Drawer,
@@ -17,6 +17,8 @@ import {
   useTheme,
   useMediaQuery,
   SwipeableDrawer,
+  alpha,
+  Tooltip,
 } from '@mui/material';
 import {
   LayoutDashboard,
@@ -29,7 +31,6 @@ import {
   LogOut,
   ChevronLeft,
   ChevronRight,
-  GraduationCap,
   Trophy,
   X,
   Store,
@@ -78,11 +79,16 @@ const bottomNavItems: NavItem[] = [
 interface SidebarProps {
   mobileOpen?: boolean;
   onMobileClose?: () => void;
+  collapsed?: boolean;
+  onCollapseToggle?: () => void;
 }
 
-export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
-  const [collapsed, setCollapsed] = useState(false);
-  const [isScrolling, setIsScrolling] = useState(false);
+export function Sidebar({
+  mobileOpen = false,
+  onMobileClose,
+  collapsed = false,
+  onCollapseToggle,
+}: SidebarProps) {
   const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const pathname = usePathname();
   const router = useRouter();
@@ -110,16 +116,6 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     return items;
   }, [academy?.storeEnabled, academy?.abacatePayEnabled]);
 
-  const handleScroll = useCallback(() => {
-    setIsScrolling(true);
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    scrollTimeoutRef.current = setTimeout(() => {
-      setIsScrolling(false);
-    }, 1000);
-  }, []);
-
   const handleNavigate = useCallback(
     (path: string) => {
       router.push(path);
@@ -135,32 +131,65 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
     router.push('/login');
   }, [signOut, router]);
 
-  const toggleCollapsed = useCallback(() => {
-    setCollapsed((prev) => !prev);
-  }, []);
-
   const isActive = (path: string) => pathname === path || pathname?.startsWith(path + '/');
 
-  // Modern minimal scrollbar styles
-  const scrollbarStyles = {
-    overflowY: 'auto' as const,
-    '&::-webkit-scrollbar': {
-      width: '6px',
-    },
-    '&::-webkit-scrollbar-track': {
-      background: 'transparent',
-    },
-    '&::-webkit-scrollbar-thumb': {
-      background: isScrolling ? 'rgba(0, 0, 0, 0.2)' : 'transparent',
-      borderRadius: '3px',
-      transition: 'background 0.3s ease',
-    },
-    '&::-webkit-scrollbar-thumb:hover': {
-      background: 'rgba(0, 0, 0, 0.3)',
-    },
-    // Firefox
-    scrollbarWidth: 'thin' as const,
-    scrollbarColor: isScrolling ? 'rgba(0, 0, 0, 0.2) transparent' : 'transparent transparent',
+  // Navigation item component
+  const NavItemButton = ({ item, isCompact = false }: { item: NavItem; isCompact?: boolean }) => {
+    const active = isActive(item.path);
+
+    const button = (
+      <ListItemButton
+        onClick={() => handleNavigate(item.path)}
+        selected={active}
+        sx={{
+          borderRadius: 2,
+          minHeight: isCompact ? 44 : 48,
+          justifyContent: collapsed && !isCompact ? 'center' : 'flex-start',
+          px: collapsed && !isCompact ? 1.5 : 2,
+          '&.Mui-selected': {
+            bgcolor: 'primary.main',
+            color: 'primary.contrastText',
+            '&:hover': {
+              bgcolor: 'primary.dark',
+            },
+            '& .MuiListItemIcon-root': {
+              color: 'inherit',
+            },
+          },
+          '&:hover': {
+            bgcolor: active ? 'primary.dark' : 'action.hover',
+          },
+        }}
+      >
+        <ListItemIcon
+          sx={{
+            minWidth: collapsed && !isCompact ? 0 : isCompact ? 36 : 40,
+            color: active ? 'inherit' : 'text.secondary',
+          }}
+        >
+          <item.icon size={isCompact ? 20 : 22} />
+        </ListItemIcon>
+        {(!collapsed || isCompact) && (
+          <ListItemText
+            primary={item.label}
+            primaryTypographyProps={{
+              fontWeight: active ? 600 : 500,
+              fontSize: isCompact ? '0.875rem' : '0.9rem',
+            }}
+          />
+        )}
+      </ListItemButton>
+    );
+
+    if (collapsed && !isCompact) {
+      return (
+        <Tooltip title={item.label} placement="right" arrow>
+          {button}
+        </Tooltip>
+      );
+    }
+
+    return button;
   };
 
   // Drawer content
@@ -171,6 +200,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         flexDirection: 'column',
         height: '100%',
         bgcolor: 'background.paper',
+        position: 'relative',
         ...(academy?.sidebarBackgroundUrl && {
           backgroundImage: `linear-gradient(rgba(255,255,255,0.92), rgba(255,255,255,0.92)), url(${academy.sidebarBackgroundUrl})`,
           backgroundSize: 'cover',
@@ -184,140 +214,136 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           p: 2,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'space-between',
+          justifyContent: collapsed ? 'center' : 'flex-start',
           minHeight: 64,
+          gap: 1.5,
         }}
       >
+        <Box
+          sx={{
+            width: 40,
+            height: 40,
+            borderRadius: '50%',
+            overflow: 'hidden',
+            position: 'relative',
+            flexShrink: 0,
+          }}
+        >
+          <Image
+            src={academy?.sidebarLogoUrl || academy?.logoUrl || '/logo_conteudo.png'}
+            alt={academy?.name || 'Academia'}
+            fill
+            style={{ objectFit: 'cover' }}
+          />
+        </Box>
         {!collapsed && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <Box
+          <Box sx={{ minWidth: 0, flex: 1 }}>
+            <Typography
+              variant="subtitle2"
               sx={{
-                width: 40,
-                height: 40,
-                borderRadius: '50%',
+                fontWeight: 700,
+                color: 'text.primary',
+                lineHeight: 1.3,
+                fontSize: '0.85rem',
                 overflow: 'hidden',
-                position: 'relative',
-                flexShrink: 0,
-                mr: '1px',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
               }}
             >
-              <Image
-                src={academy?.sidebarLogoUrl || academy?.logoUrl || '/logo_conteudo.png'}
-                alt={academy?.name || 'Academia'}
-                fill
-                style={{ objectFit: 'cover' }}
-              />
-            </Box>
-            <Box>
+              {academy?.name || 'Academia'}
+            </Typography>
+            {academy?.portalSlogan && (
               <Typography
-                variant="subtitle2"
+                variant="caption"
                 sx={{
-                  fontWeight: 700,
-                  color: 'text.primary',
-                  lineHeight: 1.3,
-                  fontSize: '0.85rem',
+                  fontWeight: 500,
+                  color: 'text.secondary',
+                  lineHeight: 1.2,
+                  fontSize: '0.75rem',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  display: 'block',
                 }}
               >
-                {academy?.name || 'Academia'}
+                {academy.portalSlogan}
               </Typography>
-              {academy?.portalSlogan && (
-                <Typography
-                  variant="subtitle2"
-                  sx={{
-                    fontWeight: 700,
-                    color: 'text.primary',
-                    lineHeight: 1.3,
-                    fontSize: '0.85rem',
-                  }}
-                >
-                  - {academy.portalSlogan}
-                </Typography>
-              )}
-            </Box>
+            )}
           </Box>
-        )}
-
-        {collapsed && (
-          <Box
-            sx={{
-              width: 40,
-              height: 40,
-              borderRadius: '50%',
-              overflow: 'hidden',
-              position: 'relative',
-            }}
-          >
-            <Image
-              src={academy?.sidebarLogoUrl || academy?.logoUrl || '/logo_conteudo.png'}
-              alt={academy?.name || 'Academia'}
-              fill
-              style={{ objectFit: 'cover' }}
-            />
-          </Box>
-        )}
-
-        {!isMobile && (
-          <IconButton size="small" onClick={toggleCollapsed}>
-            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          </IconButton>
         )}
       </Box>
 
+      {/* Floating Collapse Toggle - positioned at the edge of sidebar */}
+      {!isMobile && !collapsed && onCollapseToggle && (
+        <Tooltip title="Recolher menu" placement="right">
+          <IconButton
+            size="small"
+            onClick={onCollapseToggle}
+            sx={{
+              position: 'absolute',
+              right: -14,
+              top: 72,
+              width: 28,
+              height: 28,
+              bgcolor: 'background.paper',
+              color: 'text.secondary',
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              zIndex: 1,
+              '&:hover': {
+                bgcolor: 'primary.main',
+                borderColor: 'primary.main',
+                color: 'white',
+              },
+            }}
+          >
+            <ChevronLeft size={16} />
+          </IconButton>
+        </Tooltip>
+      )}
+
       <Divider />
 
+      {/* Floating Expand Toggle - positioned at the edge when collapsed */}
+      {!isMobile && collapsed && onCollapseToggle && (
+        <Tooltip title="Expandir menu" placement="right">
+          <IconButton
+            size="small"
+            onClick={onCollapseToggle}
+            sx={{
+              position: 'absolute',
+              right: -14,
+              top: 72,
+              width: 28,
+              height: 28,
+              bgcolor: 'background.paper',
+              color: 'text.secondary',
+              border: '1px solid',
+              borderColor: 'divider',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              zIndex: 1,
+              '&:hover': {
+                bgcolor: 'primary.main',
+                borderColor: 'primary.main',
+                color: 'white',
+              },
+            }}
+          >
+            <ChevronRight size={16} />
+          </IconButton>
+        </Tooltip>
+      )}
+
       {/* Main Navigation */}
-      <Box
-        onScroll={handleScroll}
-        sx={{ flex: 1, py: 1, ...scrollbarStyles }}
-      >
+      <Box sx={{ flex: 1, py: 1, overflowY: 'auto' }}>
         <List disablePadding>
           {mainNavItems.map((item) => (
             <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
-              <ListItemButton
-                onClick={() => handleNavigate(item.path)}
-                selected={isActive(item.path)}
-                sx={{
-                  borderRadius: 2,
-                  minHeight: 48,
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  px: collapsed ? 1.5 : 2,
-                  '&.Mui-selected': {
-                    bgcolor: 'primary.main',
-                    color: 'primary.contrastText',
-                    '&:hover': {
-                      bgcolor: 'primary.dark',
-                    },
-                    '& .MuiListItemIcon-root': {
-                      color: 'inherit',
-                    },
-                  },
-                  '&:hover': {
-                    bgcolor: 'action.hover',
-                  },
-                }}
-              >
-                <ListItemIcon
-                  sx={{
-                    minWidth: collapsed ? 0 : 40,
-                    color: isActive(item.path) ? 'inherit' : 'text.secondary',
-                  }}
-                >
-                  <item.icon size={22} />
-                </ListItemIcon>
-                {!collapsed && (
-                  <ListItemText
-                    primary={item.label}
-                    primaryTypographyProps={{
-                      fontWeight: isActive(item.path) ? 600 : 500,
-                      fontSize: '0.9rem',
-                    }}
-                  />
-                )}
-              </ListItemButton>
+              <NavItemButton item={item} />
             </ListItem>
           ))}
         </List>
-
       </Box>
 
       <Divider />
@@ -327,41 +353,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         <List disablePadding>
           {bottomNavItems.map((item) => (
             <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
-              <ListItemButton
-                onClick={() => handleNavigate(item.path)}
-                selected={isActive(item.path)}
-                sx={{
-                  borderRadius: 2,
-                  minHeight: 48,
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  px: collapsed ? 1.5 : 2,
-                  '&.Mui-selected': {
-                    bgcolor: 'primary.main',
-                    color: 'primary.contrastText',
-                    '&:hover': {
-                      bgcolor: 'primary.dark',
-                    },
-                  },
-                }}
-              >
-                <ListItemIcon
-                  sx={{
-                    minWidth: collapsed ? 0 : 40,
-                    color: isActive(item.path) ? 'inherit' : 'text.secondary',
-                  }}
-                >
-                  <item.icon size={22} />
-                </ListItemIcon>
-                {!collapsed && (
-                  <ListItemText
-                    primary={item.label}
-                    primaryTypographyProps={{
-                      fontWeight: isActive(item.path) ? 600 : 500,
-                      fontSize: '0.9rem',
-                    }}
-                  />
-                )}
-              </ListItemButton>
+              <NavItemButton item={item} />
             </ListItem>
           ))}
         </List>
@@ -371,28 +363,56 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
 
       {/* User Profile */}
       <Box sx={{ p: 1.5 }}>
-        <Box
-          sx={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 1.5,
-            p: 1,
-            borderRadius: 2,
-            bgcolor: 'action.hover',
-          }}
-        >
-          <Avatar
-            src={user?.photoUrl}
+        {collapsed ? (
+          <Box
             sx={{
-              width: 36,
-              height: 36,
-              bgcolor: 'primary.main',
-              fontSize: '0.9rem',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 1,
             }}
           >
-            {user?.displayName?.[0] || 'U'}
-          </Avatar>
-          {!collapsed && (
+            <Tooltip title={user?.displayName || 'Usuário'} placement="right">
+              <Avatar
+                src={user?.photoUrl}
+                sx={{
+                  width: 36,
+                  height: 36,
+                  bgcolor: 'primary.main',
+                  fontSize: '0.9rem',
+                }}
+              >
+                {user?.displayName?.[0] || 'U'}
+              </Avatar>
+            </Tooltip>
+            <Tooltip title="Sair" placement="right">
+              <IconButton size="small" onClick={handleSignOut}>
+                <LogOut size={16} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        ) : (
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              p: 1,
+              borderRadius: 2,
+              bgcolor: 'action.hover',
+            }}
+          >
+            <Avatar
+              src={user?.photoUrl}
+              sx={{
+                width: 36,
+                height: 36,
+                bgcolor: 'primary.main',
+                fontSize: '0.9rem',
+              }}
+            >
+              {user?.displayName?.[0] || 'U'}
+            </Avatar>
             <Box sx={{ flex: 1, minWidth: 0 }}>
               <Typography
                 variant="body2"
@@ -418,14 +438,15 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                 {user?.email}
               </Typography>
             </Box>
-          )}
-          {!collapsed && (
-            <IconButton size="small" onClick={handleSignOut}>
-              <LogOut size={18} />
-            </IconButton>
-          )}
-        </Box>
+            <Tooltip title="Sair">
+              <IconButton size="small" onClick={handleSignOut}>
+                <LogOut size={18} />
+              </IconButton>
+            </Tooltip>
+          </Box>
+        )}
       </Box>
+
     </Box>
   );
 
@@ -454,7 +475,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
           minHeight: 56,
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0, flex: 1, overflow: 'hidden' }}>
           <Box
             sx={{
               width: 36,
@@ -472,7 +493,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
               style={{ objectFit: 'cover' }}
             />
           </Box>
-          <Box>
+          <Box sx={{ minWidth: 0, flex: 1 }}>
             <Typography
               variant="subtitle1"
               sx={{
@@ -480,6 +501,9 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
                 color: 'text.primary',
                 lineHeight: 1.2,
                 fontSize: '1rem',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
               }}
             >
               {academy?.name || 'Academia'}
@@ -487,7 +511,15 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             {academy?.portalSlogan && (
               <Typography
                 variant="caption"
-                sx={{ color: 'text.secondary', lineHeight: 1, fontSize: '0.7rem' }}
+                sx={{
+                  color: 'text.secondary',
+                  lineHeight: 1,
+                  fontSize: '0.7rem',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  display: 'block',
+                }}
               >
                 {academy.portalSlogan}
               </Typography>
@@ -507,44 +539,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         <List disablePadding>
           {mainNavItems.map((item) => (
             <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
-              <ListItemButton
-                onClick={() => handleNavigate(item.path)}
-                selected={isActive(item.path)}
-                sx={{
-                  borderRadius: 2,
-                  minHeight: 44,
-                  px: 2,
-                  '&.Mui-selected': {
-                    bgcolor: 'primary.main',
-                    color: 'primary.contrastText',
-                    '&:hover': {
-                      bgcolor: 'primary.dark',
-                    },
-                    '& .MuiListItemIcon-root': {
-                      color: 'inherit',
-                    },
-                  },
-                  '&:hover': {
-                    bgcolor: 'action.hover',
-                  },
-                }}
-              >
-                <ListItemIcon
-                  sx={{
-                    minWidth: 36,
-                    color: isActive(item.path) ? 'inherit' : 'text.secondary',
-                  }}
-                >
-                  <item.icon size={20} />
-                </ListItemIcon>
-                <ListItemText
-                  primary={item.label}
-                  primaryTypographyProps={{
-                    fontWeight: isActive(item.path) ? 600 : 500,
-                    fontSize: '0.875rem',
-                  }}
-                />
-              </ListItemButton>
+              <NavItemButton item={item} isCompact />
             </ListItem>
           ))}
         </List>
@@ -557,38 +552,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
         <List disablePadding>
           {bottomNavItems.map((item) => (
             <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
-              <ListItemButton
-                onClick={() => handleNavigate(item.path)}
-                selected={isActive(item.path)}
-                sx={{
-                  borderRadius: 2,
-                  minHeight: 44,
-                  px: 2,
-                  '&.Mui-selected': {
-                    bgcolor: 'primary.main',
-                    color: 'primary.contrastText',
-                    '&:hover': {
-                      bgcolor: 'primary.dark',
-                    },
-                  },
-                }}
-              >
-                <ListItemIcon
-                  sx={{
-                    minWidth: 36,
-                    color: isActive(item.path) ? 'inherit' : 'text.secondary',
-                  }}
-                >
-                  <item.icon size={20} />
-                </ListItemIcon>
-                <ListItemText
-                  primary={item.label}
-                  primaryTypographyProps={{
-                    fontWeight: isActive(item.path) ? 600 : 500,
-                    fontSize: '0.875rem',
-                  }}
-                />
-              </ListItemButton>
+              <NavItemButton item={item} isCompact />
             </ListItem>
           ))}
         </List>
@@ -693,6 +657,7 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps) {
             easing: theme.transitions.easing.sharp,
             duration: theme.transitions.duration.enteringScreen,
           }),
+          overflow: 'visible', // Allow toggle button to overflow
         },
       }}
     >

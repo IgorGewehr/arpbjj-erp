@@ -5,16 +5,10 @@ import {
   Box,
   Typography,
   Paper,
-  Grid,
   Button,
-  Divider,
   Chip,
   Skeleton,
   IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
   Dialog,
   DialogTitle,
   DialogContent,
@@ -29,6 +23,7 @@ import {
   MenuItem,
   SelectChangeEvent,
   CircularProgress,
+  alpha,
 } from '@mui/material';
 import {
   Wallet,
@@ -40,19 +35,28 @@ import {
   CheckCircle,
   XCircle,
   Banknote,
-  DollarSign,
-  Copy,
-  AlertCircle,
   ChevronRight,
+  AlertCircle,
+  ArrowRight,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useAuth, useFeedback } from '@/components/providers';
-import { useAcademySettings } from '@/hooks';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { useAcademySettings, useFinancial } from '@/hooks';
 import { createAbacatePayService } from '@/services/abacatePayService';
 import { WalletTransaction, AcademyWallet, TransactionStatus } from '@/types';
+import {
+  AreaChart,
+  Area,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 
 // ============================================
 // Types
@@ -60,164 +64,14 @@ import { WalletTransaction, AcademyWallet, TransactionStatus } from '@/types';
 type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
 
 // ============================================
-// Balance Card Component
+// Format Currency Helper
 // ============================================
-interface BalanceCardProps {
-  title: string;
-  value: number;
-  icon: React.ElementType;
-  color: string;
-  subtitle?: string;
-}
-
-function BalanceCard({ title, value, icon: Icon, color, subtitle }: BalanceCardProps) {
-  const theme = useTheme();
-
-  return (
-    <Paper
-      sx={{
-        p: 3,
-        borderRadius: 3,
-        background: `linear-gradient(135deg, ${color}15 0%, ${color}05 100%)`,
-        border: `1px solid ${color}20`,
-        position: 'relative',
-        overflow: 'hidden',
-      }}
-    >
-      <Box
-        sx={{
-          position: 'absolute',
-          top: -20,
-          right: -20,
-          opacity: 0.1,
-        }}
-      >
-        <Icon size={120} color={color} />
-      </Box>
-      <Box sx={{ position: 'relative', zIndex: 1 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-          <Box
-            sx={{
-              p: 1,
-              borderRadius: 2,
-              bgcolor: `${color}20`,
-            }}
-          >
-            <Icon size={20} color={color} />
-          </Box>
-          <Typography variant="body2" color="text.secondary" fontWeight={500}>
-            {title}
-          </Typography>
-        </Box>
-        <Typography
-          variant="h4"
-          fontWeight={700}
-          sx={{ color: theme.palette.text.primary }}
-        >
-          R$ {(value / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-        </Typography>
-        {subtitle && (
-          <Typography variant="caption" color="text.secondary">
-            {subtitle}
-          </Typography>
-        )}
-      </Box>
-    </Paper>
-  );
-}
-
-// ============================================
-// Transaction Item Component
-// ============================================
-interface TransactionItemProps {
-  transaction: WalletTransaction;
-}
-
-function TransactionItem({ transaction }: TransactionItemProps) {
-  const theme = useTheme();
-  const isCredit = transaction.type === 'payment';
-
-  const statusConfig: Record<TransactionStatus, { color: string; label: string; icon: React.ElementType }> = {
-    pending: { color: theme.palette.warning.main, label: 'Pendente', icon: Clock },
-    completed: { color: theme.palette.success.main, label: 'Concluido', icon: CheckCircle },
-    cancelled: { color: theme.palette.error.main, label: 'Cancelado', icon: XCircle },
-    failed: { color: theme.palette.error.main, label: 'Falhou', icon: XCircle },
-  };
-
-  const status = statusConfig[transaction.status];
-  const StatusIcon = status.icon;
-
-  return (
-    <ListItem
-      sx={{
-        px: 2,
-        py: 1.5,
-        borderRadius: 2,
-        mb: 1,
-        bgcolor: 'background.paper',
-        border: '1px solid',
-        borderColor: 'divider',
-        '&:hover': {
-          bgcolor: 'action.hover',
-        },
-      }}
-    >
-      <ListItemIcon sx={{ minWidth: 48 }}>
-        <Box
-          sx={{
-            p: 1,
-            borderRadius: 2,
-            bgcolor: isCredit ? `${theme.palette.success.main}15` : `${theme.palette.error.main}15`,
-          }}
-        >
-          {isCredit ? (
-            <ArrowDownRight size={20} color={theme.palette.success.main} />
-          ) : (
-            <ArrowUpRight size={20} color={theme.palette.error.main} />
-          )}
-        </Box>
-      </ListItemIcon>
-      <ListItemText
-        primary={
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="body2" fontWeight={600}>
-              {transaction.description || (isCredit ? 'Pagamento recebido' : 'Saque')}
-            </Typography>
-            <Chip
-              label={status.label}
-              size="small"
-              icon={<StatusIcon size={12} />}
-              sx={{
-                height: 22,
-                fontSize: '0.7rem',
-                bgcolor: `${status.color}15`,
-                color: status.color,
-                '& .MuiChip-icon': {
-                  color: status.color,
-                },
-              }}
-            />
-          </Box>
-        }
-        secondary={
-          <Box sx={{ mt: 0.5 }}>
-            <Typography variant="caption" color="text.secondary">
-              {transaction.studentName && `${transaction.studentName} • `}
-              {format(transaction.createdAt, "dd MMM yyyy 'as' HH:mm", { locale: ptBR })}
-            </Typography>
-          </Box>
-        }
-      />
-      <Typography
-        variant="body1"
-        fontWeight={600}
-        color={isCredit ? 'success.main' : 'error.main'}
-      >
-        {isCredit ? '+' : '-'} R$ {(transaction.amount / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-      </Typography>
-    </ListItem>
-  );
-}
+const formatCurrency = (valueInCents: number) => {
+  return (valueInCents / 100).toLocaleString('pt-BR', {
+    style: 'currency',
+    currency: 'BRL',
+  });
+};
 
 // ============================================
 // Withdrawal Dialog Component
@@ -248,7 +102,7 @@ function WithdrawalDialog({ open, onClose, maxAmount, onWithdraw }: WithdrawalDi
   const handleWithdraw = async () => {
     const amountInCents = Math.round(parseFloat(amount) * 100);
     if (amountInCents < 100) {
-      setError('Valor minimo para saque: R$ 1,00');
+      setError('Valor mínimo para saque: R$ 1,00');
       return;
     }
     if (amountInCents > maxAmount) {
@@ -268,7 +122,7 @@ function WithdrawalDialog({ open, onClose, maxAmount, onWithdraw }: WithdrawalDi
       onClose();
       setAmount('');
       setPixKey('');
-    } catch (e) {
+    } catch {
       setError('Erro ao solicitar saque. Tente novamente.');
     } finally {
       setLoading(false);
@@ -285,14 +139,22 @@ function WithdrawalDialog({ open, onClose, maxAmount, onWithdraw }: WithdrawalDi
   };
 
   return (
-    <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
+    <Dialog
+      open={open}
+      onClose={handleClose}
+      maxWidth="sm"
+      fullWidth
+      PaperProps={{
+        sx: { borderRadius: 3 }
+      }}
+    >
       <DialogTitle sx={{ pb: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Box
             sx={{
               p: 1.5,
               borderRadius: 2,
-              bgcolor: `${theme.palette.primary.main}15`,
+              bgcolor: alpha(theme.palette.primary.main, 0.1),
             }}
           >
             <Banknote size={24} color={theme.palette.primary.main} />
@@ -302,14 +164,14 @@ function WithdrawalDialog({ open, onClose, maxAmount, onWithdraw }: WithdrawalDi
               Solicitar Saque
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Disponivel: R$ {(maxAmount / 100).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              Disponível: {formatCurrency(maxAmount)}
             </Typography>
           </Box>
         </Box>
       </DialogTitle>
       <DialogContent>
         {error && (
-          <Alert severity="error" sx={{ mb: 2 }}>
+          <Alert severity="error" sx={{ mb: 2, borderRadius: 2 }}>
             {error}
           </Alert>
         )}
@@ -336,7 +198,7 @@ function WithdrawalDialog({ open, onClose, maxAmount, onWithdraw }: WithdrawalDi
             <MenuItem value="cnpj">CNPJ</MenuItem>
             <MenuItem value="email">E-mail</MenuItem>
             <MenuItem value="phone">Telefone</MenuItem>
-            <MenuItem value="random">Chave aleatoria</MenuItem>
+            <MenuItem value="random">Chave aleatória</MenuItem>
           </Select>
         </FormControl>
 
@@ -350,7 +212,7 @@ function WithdrawalDialog({ open, onClose, maxAmount, onWithdraw }: WithdrawalDi
             pixKeyType === 'cnpj' ? '00.000.000/0000-00' :
             pixKeyType === 'email' ? 'email@exemplo.com' :
             pixKeyType === 'phone' ? '+55 (00) 00000-0000' :
-            'Chave aleatoria'
+            'Chave aleatória'
           }
         />
       </DialogContent>
@@ -363,8 +225,9 @@ function WithdrawalDialog({ open, onClose, maxAmount, onWithdraw }: WithdrawalDi
           onClick={handleWithdraw}
           disabled={loading || !amount || !pixKey}
           startIcon={loading ? <CircularProgress size={16} /> : <Banknote size={18} />}
+          sx={{ borderRadius: 2, px: 3 }}
         >
-          {loading ? 'Processando...' : 'Solicitar Saque'}
+          {loading ? 'Processando...' : 'Confirmar Saque'}
         </Button>
       </DialogActions>
     </Dialog>
@@ -376,9 +239,10 @@ function WithdrawalDialog({ open, onClose, maxAmount, onWithdraw }: WithdrawalDi
 // ============================================
 export default function CarteiraPage() {
   const theme = useTheme();
-  const { user, academyId } = useAuth();
+  const { academyId } = useAcademy();
   const { success, error: showError } = useFeedback();
-  const { settings, loading: settingsLoading } = useAcademySettings();
+  const { settings, isLoading: settingsLoading } = useAcademySettings();
+  const { revenueStats, isRevenueLoading } = useFinancial({ autoLoad: true });
 
   const [wallet, setWallet] = useState<AcademyWallet | null>(null);
   const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
@@ -398,8 +262,8 @@ export default function CarteiraPage() {
 
       setWallet(walletData);
       setTransactions(transactionsData);
-    } catch (e) {
-      console.error('Error fetching wallet data:', e);
+    } catch {
+      console.error('Error fetching wallet data');
       showError('Erro ao carregar dados da carteira');
     } finally {
       setLoading(false);
@@ -430,7 +294,28 @@ export default function CarteiraPage() {
     }
   };
 
-  // If AbacatePay is not enabled, show message
+  // Chart data formatting
+  const chartData = Array.isArray(revenueStats?.byMonth)
+    ? revenueStats.byMonth.map(item => {
+        const [year, month] = item.month.split('-').map(Number);
+        const date = new Date(year, month - 1, 1);
+        return {
+          name: format(date, 'MMM', { locale: ptBR }),
+          fullDate: format(date, 'MMMM yyyy', { locale: ptBR }),
+          value: item.paid / 100,
+        };
+      })
+    : [];
+
+  // Status config for transactions
+  const statusConfig: Record<TransactionStatus, { color: string; label: string; icon: React.ElementType }> = {
+    pending: { color: theme.palette.warning.main, label: 'Pendente', icon: Clock },
+    completed: { color: theme.palette.success.main, label: 'Concluído', icon: CheckCircle },
+    cancelled: { color: theme.palette.error.main, label: 'Cancelado', icon: XCircle },
+    failed: { color: theme.palette.error.main, label: 'Falhou', icon: XCircle },
+  };
+
+  // If AbacatePay is not enabled
   if (!settingsLoading && !settings?.abacatePayEnabled) {
     return (
       <ProtectedRoute>
@@ -450,7 +335,7 @@ export default function CarteiraPage() {
               sx={{
                 p: 3,
                 borderRadius: '50%',
-                bgcolor: `${theme.palette.warning.main}15`,
+                bgcolor: alpha(theme.palette.warning.main, 0.1),
                 mb: 3,
               }}
             >
@@ -460,14 +345,15 @@ export default function CarteiraPage() {
               Carteira Desativada
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 400, mb: 3 }}>
-              Ative os pagamentos pela plataforma nas configuracoes para acessar sua carteira e receber pagamentos via PIX.
+              Ative os pagamentos pela plataforma nas configurações para acessar sua carteira.
             </Typography>
             <Button
               variant="contained"
               href="/configuracoes"
               endIcon={<ChevronRight size={18} />}
+              sx={{ borderRadius: 2 }}
             >
-              Ir para Configuracoes
+              Ir para Configurações
             </Button>
           </Box>
         </AppLayout>
@@ -478,150 +364,355 @@ export default function CarteiraPage() {
   return (
     <ProtectedRoute>
       <AppLayout title="Carteira">
-        <Box sx={{ p: { xs: 2, md: 3 } }}>
-          {/* Header */}
-          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-            <Box>
-              <Typography variant="h4" fontWeight={700}>
-                Carteira
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Gerencie seu saldo e transacoes
-              </Typography>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <IconButton onClick={handleRefresh} disabled={refreshing}>
-                <RefreshCw size={20} className={refreshing ? 'spin' : ''} />
-              </IconButton>
-              <Button
-                variant="contained"
-                startIcon={<Banknote size={18} />}
-                onClick={() => setWithdrawalOpen(true)}
-                disabled={!wallet || wallet.availableBalance < 100}
-              >
-                Sacar
-              </Button>
-            </Box>
-          </Box>
+        <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1400, mx: 'auto' }}>
+          {/* Main Balance Card */}
+          <Paper
+            elevation={0}
+            sx={{
+              p: { xs: 3, md: 4 },
+              borderRadius: 4,
+              background: `linear-gradient(135deg, ${theme.palette.primary.main} 0%, ${theme.palette.primary.dark} 100%)`,
+              color: 'white',
+              mb: 3,
+              position: 'relative',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Background decoration */}
+            <Box
+              sx={{
+                position: 'absolute',
+                top: -50,
+                right: -50,
+                width: 200,
+                height: 200,
+                borderRadius: '50%',
+                bgcolor: 'rgba(255,255,255,0.1)',
+              }}
+            />
+            <Box
+              sx={{
+                position: 'absolute',
+                bottom: -30,
+                right: 100,
+                width: 100,
+                height: 100,
+                borderRadius: '50%',
+                bgcolor: 'rgba(255,255,255,0.05)',
+              }}
+            />
 
-          {/* Balance Cards */}
-          <Grid container spacing={3} sx={{ mb: 4 }}>
-            <Grid item xs={12} md={4}>
-              {loading ? (
-                <Skeleton variant="rectangular" height={140} sx={{ borderRadius: 3 }} />
-              ) : (
-                <BalanceCard
-                  title="Saldo Disponivel"
-                  value={wallet?.availableBalance || 0}
-                  icon={Wallet}
-                  color={theme.palette.success.main}
-                  subtitle="Disponivel para saque"
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} md={4}>
-              {loading ? (
-                <Skeleton variant="rectangular" height={140} sx={{ borderRadius: 3 }} />
-              ) : (
-                <BalanceCard
-                  title="Saldo Pendente"
-                  value={wallet?.pendingBalance || 0}
-                  icon={Clock}
-                  color={theme.palette.warning.main}
-                  subtitle="Aguardando confirmacao"
-                />
-              )}
-            </Grid>
-            <Grid item xs={12} md={4}>
-              {loading ? (
-                <Skeleton variant="rectangular" height={140} sx={{ borderRadius: 3 }} />
-              ) : (
-                <BalanceCard
-                  title="Total Recebido"
-                  value={wallet?.totalReceived || 0}
-                  icon={TrendingUp}
-                  color={theme.palette.primary.main}
-                  subtitle="Desde o inicio"
-                />
-              )}
-            </Grid>
-          </Grid>
-
-          {/* Transactions */}
-          <Paper sx={{ borderRadius: 3, p: 3 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-              <Typography variant="h6" fontWeight={600}>
-                Transacoes Recentes
-              </Typography>
-              <Chip
-                label={`${transactions.length} transacoes`}
-                size="small"
-                sx={{ bgcolor: 'action.hover' }}
-              />
-            </Box>
-
-            {loading ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <Skeleton key={i} variant="rectangular" height={72} sx={{ borderRadius: 2 }} />
-                ))}
-              </Box>
-            ) : transactions.length === 0 ? (
-              <Box
-                sx={{
-                  textAlign: 'center',
-                  py: 6,
-                }}
-              >
-                <Box
-                  sx={{
-                    p: 2,
-                    borderRadius: '50%',
-                    bgcolor: 'action.hover',
-                    display: 'inline-flex',
-                    mb: 2,
-                  }}
-                >
-                  <DollarSign size={32} color={theme.palette.text.secondary} />
+            <Box sx={{ position: 'relative', zIndex: 1 }}>
+              {/* Header */}
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 4 }}>
+                <Box>
+                  <Typography variant="body2" sx={{ opacity: 0.8, mb: 0.5 }}>
+                    Saldo Disponível
+                  </Typography>
+                  {loading ? (
+                    <Skeleton variant="text" width={200} height={60} sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />
+                  ) : (
+                    <Typography variant="h3" fontWeight={700} sx={{ letterSpacing: '-0.02em' }}>
+                      {formatCurrency(wallet?.availableBalance || 0)}
+                    </Typography>
+                  )}
                 </Box>
-                <Typography variant="h6" color="text.secondary" gutterBottom>
-                  Nenhuma transacao ainda
+                <Box sx={{ display: 'flex', gap: 1 }}>
+                  <IconButton
+                    onClick={handleRefresh}
+                    disabled={refreshing}
+                    sx={{
+                      bgcolor: 'rgba(255,255,255,0.15)',
+                      color: 'white',
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.25)' },
+                    }}
+                  >
+                    <RefreshCw size={20} className={refreshing ? 'spin' : ''} />
+                  </IconButton>
+                  <Button
+                    variant="contained"
+                    startIcon={<Banknote size={18} />}
+                    onClick={() => setWithdrawalOpen(true)}
+                    disabled={!wallet || wallet.availableBalance < 100}
+                    sx={{
+                      bgcolor: 'white',
+                      color: theme.palette.primary.main,
+                      fontWeight: 600,
+                      borderRadius: 2,
+                      px: 3,
+                      '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' },
+                      '&:disabled': { bgcolor: 'rgba(255,255,255,0.3)', color: 'rgba(255,255,255,0.5)' },
+                    }}
+                  >
+                    Sacar
+                  </Button>
+                </Box>
+              </Box>
+
+              {/* Secondary balances */}
+              <Box sx={{ display: 'flex', gap: { xs: 3, md: 6 } }}>
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <Clock size={14} style={{ opacity: 0.7 }} />
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                      A Receber
+                    </Typography>
+                  </Box>
+                  {loading ? (
+                    <Skeleton variant="text" width={100} sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />
+                  ) : (
+                    <Typography variant="h6" fontWeight={600}>
+                      {formatCurrency(wallet?.pendingBalance || 0)}
+                    </Typography>
+                  )}
+                </Box>
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                    <TrendingUp size={14} style={{ opacity: 0.7 }} />
+                    <Typography variant="caption" sx={{ opacity: 0.7 }}>
+                      Total Recebido
+                    </Typography>
+                  </Box>
+                  {loading ? (
+                    <Skeleton variant="text" width={100} sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />
+                  ) : (
+                    <Typography variant="h6" fontWeight={600}>
+                      {formatCurrency(wallet?.totalReceived || 0)}
+                    </Typography>
+                  )}
+                </Box>
+              </Box>
+            </Box>
+          </Paper>
+
+          {/* Content Grid */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 400px' }, gap: 3 }}>
+            {/* Revenue Chart */}
+            <Paper
+              elevation={0}
+              sx={{
+                p: 3,
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'divider',
+                minHeight: 350,
+              }}
+            >
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" fontWeight={600}>
+                  Receita Mensal
                 </Typography>
                 <Typography variant="body2" color="text.secondary">
-                  As transacoes aparecerão aqui quando seus alunos fizerem pagamentos
+                  Últimos 6 meses
                 </Typography>
               </Box>
-            ) : (
-              <List disablePadding>
-                {transactions.map((transaction) => (
-                  <TransactionItem key={transaction.id} transaction={transaction} />
-                ))}
-              </List>
-            )}
-          </Paper>
+
+              {isRevenueLoading ? (
+                <Skeleton variant="rectangular" height={250} sx={{ borderRadius: 2 }} />
+              ) : chartData.length === 0 ? (
+                <Box
+                  sx={{
+                    height: 250,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    bgcolor: alpha(theme.palette.primary.main, 0.04),
+                    borderRadius: 2,
+                  }}
+                >
+                  <Typography color="text.secondary">Sem dados de receita</Typography>
+                </Box>
+              ) : (
+                <Box sx={{ height: 250 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={theme.palette.primary.main} stopOpacity={0.15} />
+                          <stop offset="95%" stopColor={theme.palette.primary.main} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={theme.palette.divider} />
+                      <XAxis
+                        dataKey="name"
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: theme.palette.text.secondary, fontSize: 12 }}
+                        dy={10}
+                      />
+                      <YAxis
+                        axisLine={false}
+                        tickLine={false}
+                        tick={{ fill: theme.palette.text.secondary, fontSize: 12 }}
+                        tickFormatter={(value) => `R$${value}`}
+                        width={60}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: theme.palette.background.paper,
+                          borderRadius: 8,
+                          border: `1px solid ${theme.palette.divider}`,
+                          boxShadow: theme.shadows[3],
+                          padding: '8px 12px',
+                        }}
+                        formatter={(value: number) => [formatCurrency(value * 100), 'Receita']}
+                        labelFormatter={(_, payload) => payload[0]?.payload?.fullDate || ''}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="value"
+                        stroke={theme.palette.primary.main}
+                        strokeWidth={2}
+                        fillOpacity={1}
+                        fill="url(#colorRevenue)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </Box>
+              )}
+            </Paper>
+
+            {/* Transactions */}
+            <Paper
+              elevation={0}
+              sx={{
+                borderRadius: 3,
+                border: '1px solid',
+                borderColor: 'divider',
+                display: 'flex',
+                flexDirection: 'column',
+                maxHeight: { lg: 350 },
+              }}
+            >
+              <Box sx={{ p: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="h6" fontWeight={600}>
+                  Últimas Transações
+                </Typography>
+              </Box>
+
+              <Box sx={{ flex: 1, overflow: 'auto' }}>
+                {loading ? (
+                  <Box sx={{ p: 2 }}>
+                    {[1, 2, 3].map((i) => (
+                      <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                        <Skeleton variant="circular" width={40} height={40} />
+                        <Box sx={{ flex: 1 }}>
+                          <Skeleton variant="text" width="60%" />
+                          <Skeleton variant="text" width="40%" />
+                        </Box>
+                        <Skeleton variant="text" width={80} />
+                      </Box>
+                    ))}
+                  </Box>
+                ) : transactions.length === 0 ? (
+                  <Box sx={{ p: 4, textAlign: 'center' }}>
+                    <Wallet size={32} color={theme.palette.text.disabled} style={{ marginBottom: 8 }} />
+                    <Typography color="text.secondary" variant="body2">
+                      Nenhuma transação ainda
+                    </Typography>
+                  </Box>
+                ) : (
+                  <Box sx={{ p: 1 }}>
+                    {transactions.slice(0, 6).map((t) => {
+                      const isCredit = t.type === 'payment';
+                      const status = statusConfig[t.status];
+
+                      return (
+                        <Box
+                          key={t.id}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 2,
+                            p: 1.5,
+                            borderRadius: 2,
+                            '&:hover': { bgcolor: 'action.hover' },
+                          }}
+                        >
+                          <Box
+                            sx={{
+                              p: 1,
+                              borderRadius: 2,
+                              bgcolor: alpha(isCredit ? theme.palette.success.main : theme.palette.error.main, 0.1),
+                            }}
+                          >
+                            {isCredit ? (
+                              <ArrowDownRight size={18} color={theme.palette.success.main} />
+                            ) : (
+                              <ArrowUpRight size={18} color={theme.palette.error.main} />
+                            )}
+                          </Box>
+                          <Box sx={{ flex: 1, minWidth: 0 }}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="body2" fontWeight={500} noWrap>
+                                {t.description || (isCredit ? 'Pagamento' : 'Saque')}
+                              </Typography>
+                              <Chip
+                                label={status.label}
+                                size="small"
+                                sx={{
+                                  height: 18,
+                                  fontSize: '0.65rem',
+                                  bgcolor: alpha(status.color, 0.1),
+                                  color: status.color,
+                                  fontWeight: 600,
+                                }}
+                              />
+                            </Box>
+                            <Typography variant="caption" color="text.secondary">
+                              {format(t.createdAt, "dd MMM 'às' HH:mm", { locale: ptBR })}
+                            </Typography>
+                          </Box>
+                          <Typography
+                            variant="body2"
+                            fontWeight={600}
+                            color={isCredit ? 'success.main' : 'error.main'}
+                          >
+                            {isCredit ? '+' : '-'}{formatCurrency(t.amount)}
+                          </Typography>
+                        </Box>
+                      );
+                    })}
+                  </Box>
+                )}
+              </Box>
+
+              {transactions.length > 0 && (
+                <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                  <Button
+                    fullWidth
+                    endIcon={<ArrowRight size={16} />}
+                    sx={{
+                      borderRadius: 2,
+                      color: 'text.secondary',
+                      '&:hover': { bgcolor: 'action.hover' },
+                    }}
+                  >
+                    Ver extrato completo
+                  </Button>
+                </Box>
+              )}
+            </Paper>
+          </Box>
+
+          {/* Withdrawal Dialog */}
+          <WithdrawalDialog
+            open={withdrawalOpen}
+            onClose={() => setWithdrawalOpen(false)}
+            maxAmount={wallet?.availableBalance || 0}
+            onWithdraw={handleWithdraw}
+          />
+
+          <style jsx global>{`
+            @keyframes spin {
+              from { transform: rotate(0deg); }
+              to { transform: rotate(360deg); }
+            }
+            .spin {
+              animation: spin 1s linear infinite;
+            }
+          `}</style>
         </Box>
-
-        {/* Withdrawal Dialog */}
-        <WithdrawalDialog
-          open={withdrawalOpen}
-          onClose={() => setWithdrawalOpen(false)}
-          maxAmount={wallet?.availableBalance || 0}
-          onWithdraw={handleWithdraw}
-        />
-
-        <style jsx global>{`
-          @keyframes spin {
-            from {
-              transform: rotate(0deg);
-            }
-            to {
-              transform: rotate(360deg);
-            }
-          }
-          .spin {
-            animation: spin 1s linear infinite;
-          }
-        `}</style>
       </AppLayout>
     </ProtectedRoute>
   );

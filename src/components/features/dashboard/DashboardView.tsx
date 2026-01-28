@@ -95,7 +95,7 @@ export function DashboardView() {
 
   return (
     <FadeIn>
-      <Box sx={{ position: 'relative', minHeight: '100%' }}>
+      <Box sx={{ p: { xs: 2, sm: 3 }, position: 'relative', minHeight: '100%' }}>
         {/* Background Logo */}
         <Box
           sx={{
@@ -187,9 +187,6 @@ export function DashboardView() {
                 overduePayments={overduePayments}
                 onViewOverdue={() => router.push('/financeiro')}
               />
-
-              {/* Attendance Chart */}
-              <AttendanceChart />
             </Box>
           </>
         ) : (
@@ -249,12 +246,9 @@ export function DashboardView() {
             {/* Desktop Main Content Grid */}
             <SlideIn direction="up" delay={0.4}>
               <Grid container spacing={{ xs: 2, sm: 3 }}>
-                {/* Left Column: Quick Actions + Attendance Chart */}
+                {/* Left Column: Quick Actions */}
                 <Grid size={{ xs: 12, md: 6, lg: 4 }}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: { xs: 2, sm: 3 } }}>
-                    <QuickActions onAction={handleQuickAction} />
-                    <AttendanceChart />
-                  </Box>
+                  <QuickActions onAction={handleQuickAction} />
                 </Grid>
 
                 {/* Center Column: Revenue Overview */}

@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 10. Verify amount matches order total
-    if (orderData.total !== amount) {
+    if (orderData.totalAmount !== amount) {
       return createErrorResponse('Amount does not match order total', 400);
     }
 

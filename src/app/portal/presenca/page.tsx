@@ -75,30 +75,11 @@ export default function PortalPresencaPage() {
 
   return (
     <Box>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Typography
-          variant="h6"
-          fontWeight={600}
-          color="text.primary"
-          sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
-        >
-          Minhas Presenças
-        </Typography>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
-        >
-          Acompanhe seu histórico de treinos
-        </Typography>
-      </Box>
-
       {/* Stats Cards */}
       <Box
         sx={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(2, 1fr)',
+          gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' },
           gap: { xs: 1.5, sm: 2 },
           mb: 3,
         }}
@@ -155,82 +136,90 @@ export default function PortalPresencaPage() {
         </Box>
       </Box>
 
-      {/* Calendar View */}
+      {/* Calendar + History Container */}
       <Box
         sx={{
-          p: { xs: 2, sm: 2.5 },
-          mb: 3,
-          bgcolor: '#fff',
-          borderRadius: 2,
-          border: '1px solid',
-          borderColor: 'grey.200',
+          display: { xs: 'flex', md: 'grid' },
+          flexDirection: 'column',
+          gridTemplateColumns: { md: '1fr 1fr' },
+          gap: { xs: 3, md: 3 },
         }}
       >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
-          <Calendar size={16} color="#666" />
-          <Typography
-            variant="body2"
-            fontWeight={600}
-            color="text.primary"
-            sx={{ textTransform: 'capitalize', fontSize: { xs: '0.85rem', sm: '0.9rem' } }}
-          >
-            {format(new Date(), 'MMMM yyyy', { locale: ptBR })}
-          </Typography>
-        </Box>
-
-        {/* Week days header */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: { xs: 0.25, sm: 0.5 }, mb: 1 }}>
-          {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, idx) => (
+        {/* Calendar View */}
+        <Box
+          sx={{
+            p: { xs: 2, sm: 2.5 },
+            bgcolor: '#fff',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'grey.200',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+            <Calendar size={16} color="#666" />
             <Typography
-              key={`${day}-${idx}`}
-              variant="caption"
-              color="text.secondary"
-              sx={{ textAlign: 'center', fontSize: { xs: '0.65rem', sm: '0.7rem' }, fontWeight: 500 }}
+              variant="body2"
+              fontWeight={600}
+              color="text.primary"
+              sx={{ textTransform: 'capitalize', fontSize: { xs: '0.85rem', sm: '0.9rem' } }}
             >
-              {day}
+              {format(new Date(), 'MMMM yyyy', { locale: ptBR })}
             </Typography>
-          ))}
-        </Box>
+          </Box>
 
-        {/* Calendar grid */}
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: { xs: 0.25, sm: 0.5 } }}>
-          {/* Empty cells for days before month starts */}
-          {Array.from({ length: calendarDays[0]?.date.getDay() || 0 }).map((_, i) => (
-            <Box key={`empty-${i}`} sx={{ aspectRatio: '1' }} />
-          ))}
-          {calendarDays.map(({ date, hasAttendance }) => {
-            const isToday = isSameDay(date, new Date());
-            const isFuture = date > new Date();
-            return (
-              <Box
-                key={date.toISOString()}
-                sx={{
-                  aspectRatio: '1',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  borderRadius: { xs: 0.75, sm: 1 },
-                  bgcolor: hasAttendance ? '#111' : 'transparent',
-                  color: hasAttendance ? 'white' : isFuture ? 'text.disabled' : 'text.primary',
-                  border: isToday && !hasAttendance ? '2px solid' : 'none',
-                  borderColor: '#111',
-                }}
+          {/* Week days header */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: { xs: 0.25, sm: 0.5 }, mb: 1 }}>
+            {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((day, idx) => (
+              <Typography
+                key={`${day}-${idx}`}
+                variant="caption"
+                color="text.secondary"
+                sx={{ textAlign: 'center', fontSize: { xs: '0.65rem', sm: '0.7rem' }, fontWeight: 500 }}
               >
-                <Typography
-                  variant="caption"
-                  fontWeight={hasAttendance || isToday ? 600 : 400}
-                  sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
-                >
-                  {format(date, 'd')}
-                </Typography>
-              </Box>
-            );
-          })}
-        </Box>
-      </Box>
+                {day}
+              </Typography>
+            ))}
+          </Box>
 
-      {/* Recent Attendance List */}
-      <Box>
+          {/* Calendar grid */}
+          <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: { xs: 0.25, sm: 0.5 } }}>
+            {/* Empty cells for days before month starts */}
+            {Array.from({ length: calendarDays[0]?.date.getDay() || 0 }).map((_, i) => (
+              <Box key={`empty-${i}`} sx={{ aspectRatio: '1' }} />
+            ))}
+            {calendarDays.map(({ date, hasAttendance }) => {
+              const isToday = isSameDay(date, new Date());
+              const isFuture = date > new Date();
+              return (
+                <Box
+                  key={date.toISOString()}
+                  sx={{
+                    aspectRatio: '1',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    borderRadius: { xs: 0.75, sm: 1 },
+                    bgcolor: hasAttendance ? '#111' : 'transparent',
+                    color: hasAttendance ? 'white' : isFuture ? 'text.disabled' : 'text.primary',
+                    border: isToday && !hasAttendance ? '2px solid' : 'none',
+                    borderColor: '#111',
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    fontWeight={hasAttendance || isToday ? 600 : 400}
+                    sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                  >
+                    {format(date, 'd')}
+                  </Typography>
+                </Box>
+              );
+            })}
+          </Box>
+        </Box>
+
+        {/* Recent Attendance List */}
+        <Box>
         <Typography
           variant="body2"
           fontWeight={600}
@@ -310,6 +299,7 @@ export default function PortalPresencaPage() {
             ))}
           </Box>
         )}
+        </Box>
       </Box>
     </Box>
   );

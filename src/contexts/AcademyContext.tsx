@@ -56,58 +56,43 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
   const [error, setError] = useState<string | null>(null);
 
   // ============================================
-  // Load User's Academy Mapping
+  // Load Academy User Data (defined first - no dependencies on other callbacks)
   // ============================================
-  useEffect(() => {
-    if (authLoading) return;
+  const loadAcademyUser = useCallback(async (academyId: string) => {
+    if (!firebaseUser) return;
 
-    if (!firebaseUser || !isAuthenticated) {
-      setAcademyId(null);
-      setAcademy(null);
-      setAcademyUser(null);
-      setUserAcademies([]);
-      setIsLoading(false);
-      return;
-    }
+    try {
+      const userRef = doc(db, `academies/${academyId}/users`, firebaseUser.uid);
+      const userSnap = await getDoc(userRef);
 
-    const loadUserAcademyMapping = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        // Try to get user's academy mapping
-        const mappingRef = doc(db, 'userAcademyMapping', firebaseUser.uid);
-        const mappingSnap = await getDoc(mappingRef);
-
-        if (mappingSnap.exists()) {
-          const mapping = mappingSnap.data() as UserAcademyMapping;
-          setUserAcademies(mapping.academyIds || []);
-
-          // Load primary academy
-          const primaryId = mapping.primaryAcademyId || mapping.academyIds[0];
-          if (primaryId) {
-            await loadAcademy(primaryId);
-          }
-        } else {
-          // No mapping found - user might need to be assigned to an academy
-          // For backwards compatibility, check if there's a default academy
-          setUserAcademies([]);
-          setAcademyId(null);
-          setAcademy(null);
-        }
-      } catch (err) {
-        console.error('Error loading user academy mapping:', err);
-        setError('Erro ao carregar dados da academia');
-      } finally {
-        setIsLoading(false);
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        setAcademyUser({
+          id: userSnap.id,
+          email: data.email || firebaseUser.email || '',
+          displayName: data.displayName || firebaseUser.displayName || '',
+          photoUrl: data.photoUrl,
+          role: data.role || 'student',
+          phone: data.phone,
+          studentId: data.studentId,
+          linkedStudentIds: data.linkedStudentIds,
+          instructorId: data.instructorId,
+          pendingStudentLink: data.pendingStudentLink,
+          approvedAt: data.approvedAt?.toDate(),
+          createdAt: data.createdAt?.toDate() || new Date(),
+          updatedAt: data.updatedAt?.toDate() || new Date(),
+        });
+      } else {
+        console.log('[AcademyContext] No academy user document found for user:', firebaseUser.uid);
+        setAcademyUser(null);
       }
-    };
-
-    loadUserAcademyMapping();
-  }, [firebaseUser, isAuthenticated, authLoading]);
+    } catch (err) {
+      console.error('Error loading academy user:', err);
+    }
+  }, [firebaseUser]);
 
   // ============================================
-  // Load Academy Data
+  // Load Academy Data (depends on loadAcademyUser)
   // ============================================
   const loadAcademy = useCallback(async (id: string) => {
     if (!firebaseUser) return;
@@ -149,6 +134,8 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           storePublished: data.storePublished || false,
           storeWelcomeMessage: data.storeWelcomeMessage,
           storeMinOrderAmount: data.storeMinOrderAmount,
+          // Student Check-in
+          studentCheckinEnabled: data.studentCheckinEnabled || false,
           // Monitors
           monitorIds: data.monitorIds || [],
           // Subscription & Metadata
@@ -170,40 +157,58 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
       console.error('Error loading academy:', err);
       setError('Erro ao carregar dados da academia');
     }
-  }, [firebaseUser]);
+  }, [firebaseUser, loadAcademyUser]);
 
   // ============================================
-  // Load Academy User Data
+  // Load User's Academy Mapping (depends on loadAcademy)
   // ============================================
-  const loadAcademyUser = useCallback(async (academyId: string) => {
-    if (!firebaseUser) return;
+  useEffect(() => {
+    if (authLoading) return;
 
-    try {
-      const userRef = doc(db, `academies/${academyId}/users`, firebaseUser.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        setAcademyUser({
-          id: userSnap.id,
-          email: data.email || firebaseUser.email || '',
-          displayName: data.displayName || firebaseUser.displayName || '',
-          photoUrl: data.photoUrl,
-          role: data.role || 'student',
-          phone: data.phone,
-          studentId: data.studentId,
-          linkedStudentIds: data.linkedStudentIds,
-          instructorId: data.instructorId,
-          pendingStudentLink: data.pendingStudentLink,
-          approvedAt: data.approvedAt?.toDate(),
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-        });
-      }
-    } catch (err) {
-      console.error('Error loading academy user:', err);
+    if (!firebaseUser || !isAuthenticated) {
+      setAcademyId(null);
+      setAcademy(null);
+      setAcademyUser(null);
+      setUserAcademies([]);
+      setIsLoading(false);
+      return;
     }
-  }, [firebaseUser]);
+
+    const loadUserAcademyMapping = async () => {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // Try to get user's academy mapping
+        const mappingRef = doc(db, 'userAcademyMapping', firebaseUser.uid);
+        const mappingSnap = await getDoc(mappingRef);
+
+        if (mappingSnap.exists()) {
+          const mapping = mappingSnap.data() as UserAcademyMapping;
+          setUserAcademies(mapping.academyIds || []);
+
+          // Load primary academy
+          const primaryId = mapping.primaryAcademyId || mapping.academyIds[0];
+          if (primaryId) {
+            await loadAcademy(primaryId);
+          }
+        } else {
+          // No mapping found - user is not linked to any academy
+          console.log('[AcademyContext] No userAcademyMapping found for user:', firebaseUser.uid);
+          setUserAcademies([]);
+          setAcademyId(null);
+          setAcademy(null);
+        }
+      } catch (err) {
+        console.error('Error loading user academy mapping:', err);
+        setError('Erro ao carregar dados da academia');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadUserAcademyMapping();
+  }, [firebaseUser, isAuthenticated, authLoading, loadAcademy]);
 
   // ============================================
   // Set Active Academy
@@ -276,6 +281,8 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           storePublished: data.storePublished || false,
           storeWelcomeMessage: data.storeWelcomeMessage,
           storeMinOrderAmount: data.storeMinOrderAmount,
+          // Student Check-in
+          studentCheckinEnabled: data.studentCheckinEnabled || false,
           // Monitors
           monitorIds: data.monitorIds || [],
           // Subscription & Metadata

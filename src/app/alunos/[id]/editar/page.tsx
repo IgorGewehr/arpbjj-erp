@@ -369,7 +369,7 @@ export default function StudentEditPage() {
     return (
       <ProtectedRoute>
         <AppLayout title="Editar Aluno">
-          <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+          <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 900, mx: 'auto' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
               <Skeleton variant="circular" width={40} height={40} />
               <Skeleton variant="text" width={200} height={40} />
@@ -386,7 +386,8 @@ export default function StudentEditPage() {
     return (
       <ProtectedRoute>
         <AppLayout title="Aluno não encontrado">
-          <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
+          <Box sx={{ p: { xs: 2, sm: 3 } }}>
+            <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
             <User size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
             <Typography variant="h6" gutterBottom>
               Aluno não encontrado
@@ -395,6 +396,7 @@ export default function StudentEditPage() {
               Voltar para Lista
             </Button>
           </Paper>
+          </Box>
         </AppLayout>
       </ProtectedRoute>
     );
@@ -403,7 +405,7 @@ export default function StudentEditPage() {
   return (
     <ProtectedRoute>
       <AppLayout title="Editar Aluno">
-        <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+        <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 900, mx: 'auto' }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
             <IconButton onClick={() => router.back()} sx={{ bgcolor: 'grey.100' }}>

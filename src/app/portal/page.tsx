@@ -261,19 +261,20 @@ export default function PortalHomePage() {
           </FadeInView>
         )}
 
-        {/* Stats Carousel */}
+        {/* Stats Carousel (Mobile) / Grid (Desktop) */}
         <FadeInView direction="up" delay={150}>
           <Box sx={{ mb: 2.5 }}>
             <Box
               ref={scrollContainerRef}
               onScroll={handleStatsScroll}
               sx={{
-                display: 'flex',
+                display: { xs: 'flex', md: 'grid' },
+                gridTemplateColumns: { md: 'repeat(3, 1fr)' },
                 gap: 1.5,
-                overflowX: 'auto',
-                scrollSnapType: 'x mandatory',
+                overflowX: { xs: 'auto', md: 'visible' },
+                scrollSnapType: { xs: 'x mandatory', md: 'none' },
                 scrollBehavior: 'smooth',
-                pb: 1,
+                pb: { xs: 1, md: 0 },
                 '&::-webkit-scrollbar': { display: 'none' },
                 scrollbarWidth: 'none',
               }}
@@ -285,9 +286,9 @@ export default function PortalHomePage() {
                     key={stat.id}
                     elevation={0}
                     sx={{
-                      flex: '0 0 70%',
-                      minWidth: '70%',
-                      scrollSnapAlign: 'start',
+                      flex: { xs: '0 0 70%', md: 'unset' },
+                      minWidth: { xs: '70%', md: 'unset' },
+                      scrollSnapAlign: { xs: 'start', md: 'unset' },
                       p: 2.5,
                       borderRadius: 3,
                       bgcolor: '#fff',
@@ -320,8 +321,8 @@ export default function PortalHomePage() {
               })}
             </Box>
 
-            {/* Carousel Dots */}
-            <Box sx={{ display: 'flex', justifyContent: 'center', gap: 0.75, mt: 1.5 }}>
+            {/* Carousel Dots - Mobile Only */}
+            <Box sx={{ display: { xs: 'flex', md: 'none' }, justifyContent: 'center', gap: 0.75, mt: 1.5 }}>
               {statsCards.map((stat, index) => (
                 <Box
                   key={stat.id}
@@ -393,7 +394,7 @@ export default function PortalHomePage() {
               Acesso rapido
             </Typography>
 
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 1.5 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(4, 1fr)' }, gap: 1.5 }}>
               {quickLinks.map((item, index) => {
                 const Icon = item.icon;
                 return (

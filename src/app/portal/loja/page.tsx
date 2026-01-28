@@ -5,13 +5,6 @@ import { useRouter } from 'next/navigation';
 import {
   Box,
   Typography,
-  Paper,
-  Grid,
-  Card,
-  CardContent,
-  CardMedia,
-  CardActionArea,
-  Chip,
   TextField,
   InputAdornment,
   Skeleton,
@@ -19,7 +12,6 @@ import {
   Badge,
   IconButton,
   Dialog,
-  DialogTitle,
   DialogContent,
   DialogActions,
   FormControl,
@@ -37,14 +29,16 @@ import {
 } from 'lucide-react';
 import { useStoreCart } from '@/hooks';
 import { useAuth, useFeedback } from '@/components/providers';
-import { StoreProduct, StoreOrderItem, STORE_CATEGORY_LABELS } from '@/types';
+import { StoreProduct, CartItemInput, STORE_CATEGORY_LABELS } from '@/types';
 
 // ============================================
 // Cart Storage (localStorage)
+// Note: displayPrice is stored for UI display only
+// Actual prices are always fetched from server on checkout
 // ============================================
 const CART_KEY = 'marcusjj_cart';
 
-function getCart(): StoreOrderItem[] {
+function getCart(): CartItemInput[] {
   if (typeof window === 'undefined') return [];
   try {
     const cart = localStorage.getItem(CART_KEY);
@@ -54,7 +48,7 @@ function getCart(): StoreOrderItem[] {
   }
 }
 
-function saveCart(items: StoreOrderItem[]): void {
+function saveCart(items: CartItemInput[]): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(CART_KEY, JSON.stringify(items));
 }
@@ -76,80 +70,108 @@ function ProductCard({ product, onAddToCart }: ProductCardProps) {
   const isOutOfStock = product.stockType === 'in_stock' && (product.stockQuantity ?? 0) === 0;
 
   return (
-    <Card
+    <Box
+      onClick={() => !isOutOfStock && onAddToCart(product)}
       sx={{
-        borderRadius: 3,
+        borderRadius: 2,
         overflow: 'hidden',
+        bgcolor: '#fff',
+        border: '1px solid',
+        borderColor: 'grey.200',
         opacity: isOutOfStock ? 0.6 : 1,
-        transition: 'all 0.2s',
-        '&:hover': {
-          boxShadow: 4,
-          transform: 'translateY(-2px)',
-        },
+        cursor: isOutOfStock ? 'default' : 'pointer',
+        transition: 'all 0.15s ease',
+        '&:hover': !isOutOfStock ? {
+          borderColor: 'primary.main',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+        } : {},
       }}
     >
-      <CardActionArea onClick={() => !isOutOfStock && onAddToCart(product)} disabled={isOutOfStock}>
-        <CardMedia
-          component="div"
+      {/* Image */}
+      <Box
+        sx={{
+          height: { xs: 100, sm: 120 },
+          bgcolor: 'grey.50',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
+          overflow: 'hidden',
+        }}
+      >
+        {product.images.length > 0 ? (
+          <img
+            src={product.images[0]}
+            alt={product.name}
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+            }}
+          />
+        ) : (
+          <Package size={28} color="#D1D5DB" />
+        )}
+        {isOutOfStock && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              bgcolor: 'rgba(0,0,0,0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Typography sx={{ color: '#fff', fontSize: '0.7rem', fontWeight: 600 }}>
+              Esgotado
+            </Typography>
+          </Box>
+        )}
+      </Box>
+
+      {/* Content */}
+      <Box sx={{ p: 1.5 }}>
+        <Typography
           sx={{
-            height: 140,
-            bgcolor: 'grey.100',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
+            fontSize: { xs: '0.8rem', sm: '0.85rem' },
+            fontWeight: 600,
+            lineHeight: 1.3,
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            minHeight: { xs: '2.1rem', sm: '2.2rem' },
           }}
         >
-          {product.images.length > 0 ? (
-            <img
-              src={product.images[0]}
-              alt={product.name}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-              }}
-            />
-          ) : (
-            <Package size={40} color="#9CA3AF" />
-          )}
-          {isOutOfStock && (
-            <Box
-              sx={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                bgcolor: 'error.main',
-                color: 'white',
-                px: 1,
-                py: 0.5,
-                borderRadius: 1,
-                fontSize: '0.7rem',
-                fontWeight: 600,
-              }}
-            >
-              Esgotado
-            </Box>
-          )}
-        </CardMedia>
-        <CardContent sx={{ p: 2 }}>
-          <Typography variant="body2" fontWeight={600} noWrap>
-            {product.name}
+          {product.name}
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 1 }}>
+          <Typography
+            sx={{
+              fontSize: { xs: '0.95rem', sm: '1rem' },
+              fontWeight: 700,
+              color: 'primary.main',
+            }}
+          >
+            R$ {(product.price / 100).toFixed(2).replace('.', ',')}
           </Typography>
-          <Typography variant="h6" color="primary" fontWeight={700} sx={{ mt: 0.5 }}>
-            R$ {(product.price / 100).toFixed(2)}
+          <Typography
+            sx={{
+              fontSize: '0.6rem',
+              color: 'text.secondary',
+              bgcolor: 'grey.100',
+              px: 0.75,
+              py: 0.25,
+              borderRadius: 0.5,
+            }}
+          >
+            {STORE_CATEGORY_LABELS[product.category]}
           </Typography>
-          <Box sx={{ display: 'flex', gap: 0.5, mt: 1, flexWrap: 'wrap' }}>
-            <Chip
-              label={STORE_CATEGORY_LABELS[product.category]}
-              size="small"
-              variant="outlined"
-              sx={{ fontSize: '0.65rem', height: 20 }}
-            />
-          </Box>
-        </CardContent>
-      </CardActionArea>
-    </Card>
+        </Box>
+      </Box>
+    </Box>
   );
 }
 
@@ -160,7 +182,7 @@ interface ProductDialogProps {
   product: StoreProduct | null;
   open: boolean;
   onClose: () => void;
-  onAddToCart: (item: StoreOrderItem) => void;
+  onAddToCart: (item: CartItemInput) => void;
 }
 
 function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogProps) {
@@ -175,7 +197,7 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
       productId: product.id,
       productName: product.name,
       quantity,
-      unitPrice: product.price,
+      displayPrice: product.price,
       size: selectedSize || undefined,
       color: selectedColor || undefined,
     });
@@ -191,25 +213,22 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
   const maxQuantity = product.stockType === 'in_stock' ? (product.stockQuantity ?? 0) : 99;
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle sx={{ pb: 1 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <Typography variant="h6" fontWeight={600}>
-            {product.name}
-          </Typography>
-          <IconButton size="small" onClick={onClose}>
-            <X size={18} />
-          </IconButton>
-        </Box>
-      </DialogTitle>
-      <DialogContent>
-        {product.images.length > 0 && (
+    <Dialog
+      open={open}
+      onClose={onClose}
+      maxWidth="xs"
+      fullWidth
+      PaperProps={{
+        sx: { borderRadius: 3 },
+      }}
+    >
+      {/* Image */}
+      {product.images.length > 0 && (
+        <Box sx={{ position: 'relative' }}>
           <Box
             sx={{
-              height: 200,
-              borderRadius: 2,
-              overflow: 'hidden',
-              mb: 2,
+              height: 180,
+              bgcolor: 'grey.100',
             }}
           >
             <img
@@ -222,95 +241,151 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
               }}
             />
           </Box>
+          <IconButton
+            size="small"
+            onClick={onClose}
+            sx={{
+              position: 'absolute',
+              top: 8,
+              right: 8,
+              bgcolor: 'rgba(255,255,255,0.9)',
+              '&:hover': { bgcolor: '#fff' },
+            }}
+          >
+            <X size={16} />
+          </IconButton>
+        </Box>
+      )}
+
+      <DialogContent sx={{ p: 2.5 }}>
+        {!product.images.length && (
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <IconButton size="small" onClick={onClose}>
+              <X size={16} />
+            </IconButton>
+          </Box>
         )}
 
+        <Typography sx={{ fontSize: '1.1rem', fontWeight: 600, mb: 0.5 }}>
+          {product.name}
+        </Typography>
+
+        <Typography
+          sx={{
+            fontSize: '1.25rem',
+            fontWeight: 700,
+            color: 'primary.main',
+            mb: 1.5,
+          }}
+        >
+          R$ {(product.price / 100).toFixed(2).replace('.', ',')}
+        </Typography>
+
         {product.description && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+          <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary', mb: 2 }}>
             {product.description}
           </Typography>
         )}
 
-        <Typography variant="h5" color="primary" fontWeight={700} sx={{ mb: 2 }}>
-          R$ {(product.price / 100).toFixed(2)}
-        </Typography>
-
-        <Grid container spacing={2}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           {product.sizes && product.sizes.length > 0 && (
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Tamanho</InputLabel>
-                <Select
-                  value={selectedSize}
-                  onChange={(e) => setSelectedSize(e.target.value)}
-                  label="Tamanho"
-                >
-                  {product.sizes.map((size) => (
-                    <MenuItem key={size} value={size}>
-                      {size}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+            <FormControl fullWidth size="small">
+              <InputLabel>Tamanho</InputLabel>
+              <Select
+                value={selectedSize}
+                onChange={(e) => setSelectedSize(e.target.value)}
+                label="Tamanho"
+              >
+                {product.sizes.map((size) => (
+                  <MenuItem key={size} value={size}>
+                    {size}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           )}
 
           {product.colors && product.colors.length > 0 && (
-            <Grid size={{ xs: 12 }}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Cor</InputLabel>
-                <Select
-                  value={selectedColor}
-                  onChange={(e) => setSelectedColor(e.target.value)}
-                  label="Cor"
-                >
-                  {product.colors.map((color) => (
-                    <MenuItem key={color} value={color}>
-                      {color}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+            <FormControl fullWidth size="small">
+              <InputLabel>Cor</InputLabel>
+              <Select
+                value={selectedColor}
+                onChange={(e) => setSelectedColor(e.target.value)}
+                label="Cor"
+              >
+                {product.colors.map((color) => (
+                  <MenuItem key={color} value={color}>
+                    {color}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
           )}
 
-          <Grid size={{ xs: 12 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Typography variant="body2" fontWeight={500}>
-                Quantidade:
+          {/* Quantity */}
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              p: 1.5,
+              bgcolor: 'grey.50',
+              borderRadius: 1.5,
+            }}
+          >
+            <Typography sx={{ fontSize: '0.85rem', fontWeight: 500 }}>
+              Quantidade
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <IconButton
+                size="small"
+                onClick={() => setQuantity(Math.max(1, quantity - 1))}
+                disabled={quantity <= 1}
+                sx={{
+                  width: 28,
+                  height: 28,
+                  border: '1px solid',
+                  borderColor: 'grey.300',
+                }}
+              >
+                <Minus size={14} />
+              </IconButton>
+              <Typography sx={{ fontSize: '0.95rem', fontWeight: 600, minWidth: 24, textAlign: 'center' }}>
+                {quantity}
               </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <IconButton
-                  size="small"
-                  onClick={() => setQuantity(Math.max(1, quantity - 1))}
-                  disabled={quantity <= 1}
-                >
-                  <Minus size={16} />
-                </IconButton>
-                <Typography variant="body1" fontWeight={600} sx={{ minWidth: 24, textAlign: 'center' }}>
-                  {quantity}
-                </Typography>
-                <IconButton
-                  size="small"
-                  onClick={() => setQuantity(Math.min(maxQuantity, quantity + 1))}
-                  disabled={quantity >= maxQuantity}
-                >
-                  <Plus size={16} />
-                </IconButton>
-              </Box>
+              <IconButton
+                size="small"
+                onClick={() => setQuantity(Math.min(maxQuantity, quantity + 1))}
+                disabled={quantity >= maxQuantity}
+                sx={{
+                  width: 28,
+                  height: 28,
+                  border: '1px solid',
+                  borderColor: 'grey.300',
+                }}
+              >
+                <Plus size={14} />
+              </IconButton>
             </Box>
-          </Grid>
-        </Grid>
+          </Box>
+        </Box>
       </DialogContent>
-      <DialogActions sx={{ p: 2, pt: 0 }}>
+
+      <DialogActions sx={{ p: 2.5, pt: 0 }}>
         <Button
           variant="contained"
           fullWidth
-          startIcon={<ShoppingCart size={18} />}
+          startIcon={<ShoppingCart size={16} />}
           onClick={handleAdd}
           disabled={
             (product.sizes && product.sizes.length > 0 && !selectedSize) ||
             (product.colors && product.colors.length > 0 && !selectedColor)
           }
+          sx={{
+            py: 1.25,
+            borderRadius: 2,
+            fontSize: '0.9rem',
+          }}
         >
           Adicionar ao Carrinho
         </Button>
@@ -324,20 +399,41 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
 // ============================================
 function ProductsSkeleton() {
   return (
-    <Grid container spacing={2}>
-      {[1, 2, 3, 4].map((i) => (
-        <Grid size={{ xs: 6 }} key={i}>
-          <Card sx={{ borderRadius: 3 }}>
-            <Skeleton variant="rectangular" height={140} />
-            <CardContent sx={{ p: 2 }}>
-              <Skeleton variant="text" width="80%" />
-              <Skeleton variant="text" width="50%" />
-              <Skeleton variant="rounded" width={60} height={20} sx={{ mt: 1 }} />
-            </CardContent>
-          </Card>
-        </Grid>
+    <Box
+      sx={{
+        display: 'grid',
+        gridTemplateColumns: {
+          xs: 'repeat(2, 1fr)',
+          sm: 'repeat(3, 1fr)',
+          md: 'repeat(4, 1fr)',
+          lg: 'repeat(5, 1fr)',
+        },
+        gap: { xs: 1.5, sm: 2 },
+      }}
+    >
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <Box
+          key={i}
+          sx={{
+            borderRadius: 2,
+            overflow: 'hidden',
+            bgcolor: '#fff',
+            border: '1px solid',
+            borderColor: 'grey.200',
+          }}
+        >
+          <Skeleton variant="rectangular" height={100} />
+          <Box sx={{ p: 1.5 }}>
+            <Skeleton variant="text" width="90%" height={18} />
+            <Skeleton variant="text" width="60%" height={18} />
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1 }}>
+              <Skeleton variant="text" width="40%" height={20} />
+              <Skeleton variant="rounded" width={50} height={16} />
+            </Box>
+          </Box>
+        </Box>
       ))}
-    </Grid>
+    </Box>
   );
 }
 
@@ -352,7 +448,7 @@ export default function PortalLojaPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedProduct, setSelectedProduct] = useState<StoreProduct | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [cartItems, setCartItems] = useState<StoreOrderItem[]>(() => getCart());
+  const [cartItems, setCartItems] = useState<CartItemInput[]>(() => getCart());
 
   // Calculate cart count
   const cartCount = useMemo(() => {
@@ -376,7 +472,7 @@ export default function PortalLojaPage() {
     setDialogOpen(true);
   };
 
-  const handleAddToCart = useCallback((item: StoreOrderItem) => {
+  const handleAddToCart = useCallback((item: CartItemInput) => {
     setCartItems((prev) => {
       // Check if same product with same options exists
       const existingIndex = prev.findIndex(
@@ -386,7 +482,7 @@ export default function PortalLojaPage() {
           i.color === item.color
       );
 
-      let newItems: StoreOrderItem[];
+      let newItems: CartItemInput[];
       if (existingIndex >= 0) {
         // Update quantity
         newItems = [...prev];
@@ -434,22 +530,22 @@ export default function PortalLojaPage() {
   }
 
   return (
-    <Box>
+    <Box sx={{ p: { xs: 2, sm: 3 } }}>
       {/* Header */}
       <Box
         sx={{
           display: 'flex',
           justifyContent: 'space-between',
-          alignItems: 'flex-start',
-          mb: 2,
+          alignItems: 'center',
+          mb: 3,
         }}
       >
         <Box>
-          <Typography variant="h5" fontWeight={700}>
+          <Typography sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' }, fontWeight: 700 }}>
             Loja
           </Typography>
           {welcomeMessage && (
-            <Typography variant="body2" color="text.secondary">
+            <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary', mt: 0.25 }}>
               {welcomeMessage}
             </Typography>
           )}
@@ -458,11 +554,13 @@ export default function PortalLojaPage() {
           <IconButton
             onClick={handleGoToCart}
             sx={{
-              bgcolor: 'grey.100',
-              '&:hover': { bgcolor: 'grey.200' },
+              bgcolor: '#fff',
+              border: '1px solid',
+              borderColor: 'grey.200',
+              '&:hover': { bgcolor: 'grey.50' },
             }}
           >
-            <ShoppingCart size={20} />
+            <ShoppingCart size={18} />
           </IconButton>
         </Badge>
       </Box>
@@ -476,41 +574,60 @@ export default function PortalLojaPage() {
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
-              <Search size={18} />
+              <Search size={16} color="#9CA3AF" />
             </InputAdornment>
           ),
         }}
         size="small"
-        sx={{ mb: 3 }}
+        sx={{
+          mb: 3,
+          '& .MuiOutlinedInput-root': {
+            bgcolor: '#fff',
+            fontSize: '0.875rem',
+          },
+        }}
       />
 
       {/* Products Grid */}
       {isLoadingProducts ? (
         <ProductsSkeleton />
       ) : filteredProducts.length === 0 ? (
-        <Paper
+        <Box
           sx={{
             p: 4,
             textAlign: 'center',
-            borderRadius: 3,
+            bgcolor: '#fff',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'grey.200',
           }}
         >
-          <Package size={40} color="#9CA3AF" />
-          <Typography variant="body1" sx={{ mt: 2 }}>
+          <Package size={32} color="#D1D5DB" />
+          <Typography sx={{ mt: 1.5, fontSize: '0.9rem', color: 'text.secondary' }}>
             {searchQuery ? 'Nenhum produto encontrado' : 'Nenhum produto disponivel'}
           </Typography>
-        </Paper>
+        </Box>
       ) : (
-        <Grid container spacing={2}>
+        <Box
+          sx={{
+            display: 'grid',
+            gridTemplateColumns: {
+              xs: 'repeat(2, 1fr)',
+              sm: 'repeat(3, 1fr)',
+              md: 'repeat(4, 1fr)',
+              lg: 'repeat(5, 1fr)',
+            },
+            gap: { xs: 1.5, sm: 2 },
+          }}
+        >
           {filteredProducts.map((product) => (
-            <Grid size={{ xs: 6 }} key={product.id}>
-              <ProductCard
-                product={product}
-                onAddToCart={handleOpenProduct}
-              />
-            </Grid>
+            <ProductCard
+              key={product.id}
+              product={product}
+              onAddToCart={handleOpenProduct}
+            />
           ))}
-        </Grid>
+        </Box>
       )}
 
       {/* Cart FAB */}
@@ -518,25 +635,24 @@ export default function PortalLojaPage() {
         <Box
           sx={{
             position: 'fixed',
-            bottom: 80,
-            left: 16,
-            right: 16,
-            zIndex: 1000,
+            bottom: { xs: 80, md: 24 },
+            right: 24,
+            zIndex: 1200,
           }}
         >
           <Button
             variant="contained"
-            fullWidth
-            size="large"
-            startIcon={<ShoppingCart size={18} />}
+            startIcon={<ShoppingCart size={16} />}
             onClick={handleGoToCart}
             sx={{
-              py: 1.5,
-              borderRadius: 3,
-              boxShadow: 4,
+              py: 1.25,
+              px: 2.5,
+              borderRadius: 2,
+              boxShadow: '0 4px 14px rgba(0,0,0,0.15)',
+              fontSize: '0.85rem',
             }}
           >
-            Ver Carrinho ({cartCount} {cartCount === 1 ? 'item' : 'itens'})
+            Carrinho ({cartCount})
           </Button>
         </Box>
       )}

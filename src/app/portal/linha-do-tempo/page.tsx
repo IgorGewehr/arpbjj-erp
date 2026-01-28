@@ -22,11 +22,13 @@ import { ptBR } from 'date-fns/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
-import { achievementService } from '@/services/achievementService';
-import { studentService } from '@/services/studentService';
-import { attendanceService } from '@/services/attendanceService';
-import { competitionService } from '@/services/competitionService';
-import { Achievement } from '@/types';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { createAchievementService } from '@/services/achievementService';
+import { createStudentService } from '@/services/studentService';
+import { createAttendanceService } from '@/services/attendanceService';
+import { createCompetitionService } from '@/services/competitionService';
+import { createBeltProgressionService } from '@/services/beltProgressionService';
+import { Achievement, BeltProgression } from '@/types';
 import { FadeIn, ListItemAnimation } from '@/components/common/AnimatedComponents';
 import { TimelineSkeleton, StatsCardSkeleton } from '@/components/common/SkeletonComponents';
 import { EmptyTimelineIllustration } from '@/components/common/EmptyStateIllustrations';
@@ -247,21 +249,29 @@ export default function TimelinePage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user } = useAuth();
   const { error: showError } = useFeedback();
+  const { academyId } = useAcademy();
 
   const studentId = user?.studentId;
 
+  // Create service instances with the correct academyId
+  const studentService = useMemo(() => academyId ? createStudentService(academyId) : null, [academyId]);
+  const attendanceService = useMemo(() => academyId ? createAttendanceService(academyId) : null, [academyId]);
+  const competitionService = useMemo(() => academyId ? createCompetitionService(academyId) : null, [academyId]);
+  const achievementService = useMemo(() => academyId ? createAchievementService(academyId) : null, [academyId]);
+  const beltProgressionService = useMemo(() => academyId ? createBeltProgressionService(academyId) : null, [academyId]);
+
   // Fetch student data
   const { data: student } = useQuery({
-    queryKey: ['student', studentId],
-    queryFn: () => studentService.getById(studentId!),
-    enabled: !!studentId,
+    queryKey: ['student', studentId, academyId],
+    queryFn: () => studentService!.getById(studentId!),
+    enabled: !!studentId && !!studentService,
   });
 
   // Fetch system attendance count
   const { data: systemAttendanceCount = 0 } = useQuery({
-    queryKey: ['studentAttendanceCount', studentId],
-    queryFn: () => attendanceService.getStudentAttendanceCount(studentId!),
-    enabled: !!studentId,
+    queryKey: ['studentAttendanceCount', studentId, academyId],
+    queryFn: () => attendanceService!.getStudentAttendanceCount(studentId!),
+    enabled: !!studentId && !!attendanceService,
   });
 
   // Calculate total attendance (system + initial)
@@ -285,9 +295,9 @@ export default function TimelinePage() {
 
   // Fetch competition results
   const { data: competitionResults = [] } = useQuery({
-    queryKey: ['studentCompetitionResults', studentId],
-    queryFn: () => competitionService.getResultsForStudent(studentId!),
-    enabled: !!studentId,
+    queryKey: ['studentCompetitionResults', studentId, academyId],
+    queryFn: () => competitionService!.getResultsForStudent(studentId!),
+    enabled: !!studentId && !!competitionService,
   });
 
   // Calculate medal stats
@@ -311,18 +321,52 @@ export default function TimelinePage() {
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Load achievements
+  // Load achievements and belt progressions (like Flutter does)
   useEffect(() => {
     const loadData = async () => {
-      if (!studentId) {
+      if (!studentId || !achievementService || !beltProgressionService) {
         setLoading(false);
         return;
       }
 
       try {
-        const data = await achievementService.getByStudent(studentId);
-        // Sort by date descending
-        const sorted = data.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        // Fetch both achievements and belt progressions
+        const [achievementsData, progressionsData] = await Promise.all([
+          achievementService.getByStudent(studentId),
+          beltProgressionService.getByStudent(studentId),
+        ]);
+
+        // Filter achievements to only competition and milestone
+        // (graduations come from belt progressions to avoid duplicates)
+        const filteredAchievements = achievementsData.filter(
+          (a) => a.type === 'competition' || a.type === 'milestone'
+        );
+
+        // Convert belt progressions to Achievement-like objects
+        const progressionAchievements: Achievement[] = progressionsData.map((p: BeltProgression) => {
+          const isBeltChange = p.previousBelt !== p.newBelt;
+          return {
+            id: `progression_${p.id}`,
+            studentId: p.studentId,
+            studentName: '',
+            type: isBeltChange ? 'graduation' : 'stripe',
+            title: isBeltChange
+              ? `Faixa ${beltLabels[p.newBelt] || p.newBelt}`
+              : `${p.newStripes}º Grau`,
+            description: p.notes,
+            date: new Date(p.promotionDate),
+            fromBelt: p.previousBelt,
+            toBelt: p.newBelt,
+            fromStripes: p.previousStripes,
+            toStripes: p.newStripes,
+            isPublic: true,
+            createdAt: new Date(p.createdAt),
+          } as Achievement;
+        });
+
+        // Combine and sort by date descending
+        const allEvents = [...filteredAchievements, ...progressionAchievements];
+        const sorted = allEvents.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         setAchievements(sorted);
       } catch (err) {
         showError('Erro ao carregar conquistas');
@@ -332,7 +376,7 @@ export default function TimelinePage() {
     };
 
     loadData();
-  }, [studentId, showError]);
+  }, [studentId, achievementService, beltProgressionService, showError]);
 
   // Group achievements by year
   const groupedByYear = achievements.reduce(

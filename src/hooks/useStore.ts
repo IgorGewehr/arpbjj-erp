@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createStoreService, CreateProductData, CreateOrderData } from '@/services/storeService';
 import { useFeedback, useAuth } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
-import { StoreProduct, StoreOrder, StoreOrderStatus, StoreOrderItem, FinancialPaymentLink } from '@/types';
+import { StoreProduct, StoreOrder, StoreOrderStatus, StoreOrderItem, CartItemInput, FinancialPaymentLink } from '@/types';
 
 // ============================================
 // Query Keys
@@ -195,14 +195,14 @@ export function useStore() {
   // Generate Payment Mutation
   // ============================================
   const generatePaymentMutation = useMutation({
-    mutationFn: async (orderId: string): Promise<FinancialPaymentLink | null> => {
+    mutationFn: async ({ orderId, method = 'PIX' }: { orderId: string; method?: 'PIX' | 'CARD' }): Promise<FinancialPaymentLink | null> => {
       if (!storeService) throw new Error('Store service not available');
-      return storeService.generateOrderPayment(orderId);
+      return storeService.generateOrderPayment(orderId, method);
     },
-    onSuccess: (paymentLink, orderId) => {
+    onSuccess: (paymentLink, { orderId, method }) => {
       if (paymentLink) {
         queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.order, orderId] });
-        success('QR Code PIX gerado com sucesso!');
+        success(method === 'CARD' ? 'Redirecionando para pagamento...' : 'QR Code PIX gerado com sucesso!');
       } else {
         showError('Erro ao gerar pagamento');
       }
@@ -259,7 +259,7 @@ export function useStore() {
     createOrder: createOrderMutation.mutateAsync,
     updateOrderStatus: updateOrderStatusMutation.mutateAsync,
     cancelOrder: cancelOrderMutation.mutateAsync,
-    generatePayment: generatePaymentMutation.mutateAsync,
+    generatePayment: (orderId: string, method?: 'PIX' | 'CARD') => generatePaymentMutation.mutateAsync({ orderId, method }),
 
     // Payment
     checkPaymentEnabled,
@@ -334,22 +334,29 @@ export function useStoreCart() {
   // Create Order Mutation
   // ============================================
   const createOrderMutation = useMutation({
-    mutationFn: async (items: StoreOrderItem[]) => {
+    mutationFn: async (items: CartItemInput[]) => {
       if (!storeService) throw new Error('Store service not available');
       if (!user?.studentId || !user?.displayName) throw new Error('User not authenticated');
 
+      // SECURITY: Only send productId, quantity, size, color to server
+      // Price will be fetched from database on server-side
       return storeService.createOrder({
         studentId: user.studentId,
         studentName: user.displayName,
-        items,
+        items: items.map(item => ({
+          productId: item.productId,
+          quantity: item.quantity,
+          size: item.size,
+          color: item.color,
+        })),
       });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.studentOrders] });
       success('Pedido realizado com sucesso!');
     },
-    onError: () => {
-      showError('Erro ao criar pedido');
+    onError: (error: Error) => {
+      showError(error.message || 'Erro ao criar pedido');
     },
   });
 
@@ -357,13 +364,13 @@ export function useStoreCart() {
   // Generate Payment Mutation
   // ============================================
   const generatePaymentMutation = useMutation({
-    mutationFn: async (orderId: string): Promise<FinancialPaymentLink | null> => {
+    mutationFn: async ({ orderId, method = 'PIX' }: { orderId: string; method?: 'PIX' | 'CARD' }): Promise<FinancialPaymentLink | null> => {
       if (!storeService) throw new Error('Store service not available');
-      return storeService.generateOrderPayment(orderId);
+      return storeService.generateOrderPayment(orderId, method);
     },
-    onSuccess: (paymentLink) => {
+    onSuccess: (paymentLink, { method }) => {
       if (paymentLink) {
-        success('QR Code PIX gerado!');
+        success(method === 'CARD' ? 'Redirecionando para pagamento...' : 'QR Code PIX gerado!');
       }
     },
     onError: () => {
@@ -389,12 +396,13 @@ export function useStoreCart() {
 
     // Actions
     createOrder: createOrderMutation.mutateAsync,
-    generatePayment: generatePaymentMutation.mutateAsync,
+    generatePayment: (orderId: string, method?: 'PIX' | 'CARD') => generatePaymentMutation.mutateAsync({ orderId, method }),
     getOrder,
 
     // Store info
     isStoreEnabled: academy?.storeEnabled ?? false,
     isStorePublished: academy?.storePublished ?? false,
+    isCreditCardEnabled: academy?.storeCreditCardEnabled ?? false,
     welcomeMessage: academy?.storeWelcomeMessage,
     minOrderAmount: academy?.storeMinOrderAmount,
 

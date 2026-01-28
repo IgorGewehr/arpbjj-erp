@@ -166,7 +166,7 @@ class StudentService {
     const q = query(this.studentsRef, ...filterConstraints);
     const snapshot = await getDocs(q);
 
-    let students = snapshot.docs.map(docToStudent);
+    const students = snapshot.docs.map(docToStudent);
 
     // Sort by total attendance count (descending) - most active first
     students.sort((a, b) => {

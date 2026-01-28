@@ -635,9 +635,8 @@ export interface Academy {
   pixKey?: string;
   pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
 
-  // AbacatePay Integration
+  // AbacatePay Integration (API key is global in env, not per-academy)
   abacatePayEnabled?: boolean;
-  abacatePayApiKey?: string;            // Encrypted API key
 
   // Auto-graduation Settings
   autoGraduationEnabled?: boolean;
@@ -648,9 +647,13 @@ export interface Academy {
   storePublished?: boolean;
   storeWelcomeMessage?: string;
   storeMinOrderAmount?: number;
+  storeCreditCardEnabled?: boolean;    // Enable credit card payments in store
 
   // Monitors (students with additional permissions)
   monitorIds?: string[];                // Array of studentIds that are monitors
+
+  // Student Check-in Settings
+  studentCheckinEnabled?: boolean;      // Allow students to self check-in
 
   // Subscription
   subscription?: {
@@ -868,6 +871,16 @@ export interface StoreOrderItem {
   color?: string;
 }
 
+// Cart Item Input - Used when adding to cart (price not trusted from client)
+export interface CartItemInput {
+  productId: string;
+  productName: string; // For display only, not trusted
+  quantity: number;
+  displayPrice: number; // For display only - NEVER used for order calculation
+  size?: string;
+  color?: string;
+}
+
 // Store Order
 export interface StoreOrder {
   id: string;
@@ -919,3 +932,29 @@ export const STORE_ORDER_STATUS_COLORS: Record<StoreOrderStatus, 'default' | 'wa
   delivered: 'success',
   cancelled: 'error',
 };
+
+// ============================================
+// Student Check-in Types
+// ============================================
+export type CheckinStatus = 'pending' | 'confirmed' | 'rejected';
+
+export interface Checkin {
+  id: string;
+  studentId: string;
+  studentName: string;
+  classId: string;
+  className: string;
+  scheduleDate: Date;                   // Training date (normalized to noon)
+  scheduleDayOfWeek: number;            // 0-6 (Sunday-Saturday)
+  scheduleStartTime: string;            // "HH:mm"
+  scheduleEndTime: string;              // "HH:mm"
+  checkinTime: Date;                    // When check-in was made
+  status: CheckinStatus;
+
+  // Confirmation info (when admin/instructor confirms)
+  confirmedBy?: string;                 // User ID who confirmed
+  confirmedByName?: string;
+  confirmedAt?: Date;
+
+  createdAt: Date;
+}

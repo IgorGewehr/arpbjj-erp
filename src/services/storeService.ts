@@ -42,10 +42,17 @@ export interface CreateProductData {
   active?: boolean;
 }
 
+export interface CreateOrderItemInput {
+  productId: string;
+  quantity: number;
+  size?: string;
+  color?: string;
+}
+
 export interface CreateOrderData {
   studentId: string;
   studentName: string;
-  items: StoreOrderItem[];
+  items: CreateOrderItemInput[];
   notes?: string;
 }
 
@@ -69,17 +76,11 @@ class StoreService {
   }
 
   // ============================================
-  // Get Academy API Key
+  // Get Global API Key (from environment)
   // ============================================
-  private async getApiKey(): Promise<string | null> {
-    const academyRef = doc(db, 'academies', this.academyId);
-    const academySnap = await getDoc(academyRef);
-
-    if (!academySnap.exists()) {
-      return null;
-    }
-
-    return academySnap.data().abacatePayApiKey || null;
+  private getApiKey(): string | null {
+    // API Key is global (single AbacatePay account for all academies)
+    return process.env.ABACATEPAY_API_KEY || null;
   }
 
   // ============================================
@@ -108,14 +109,13 @@ class StoreService {
   }
 
   async getActiveProducts(): Promise<StoreProduct[]> {
-    const q = query(
-      this.productsRef,
-      where('active', '==', true),
-      orderBy('createdAt', 'desc')
-    );
+    // Fetch all products and filter client-side to avoid composite index requirement
+    const q = query(this.productsRef, orderBy('createdAt', 'desc'));
     const snapshot = await getDocs(q);
 
-    return snapshot.docs.map((doc) => this.mapProductDoc(doc));
+    return snapshot.docs
+      .map((doc) => this.mapProductDoc(doc))
+      .filter((product) => product.active === true);
   }
 
   async getProductById(id: string): Promise<StoreProduct | null> {
@@ -206,8 +206,57 @@ class StoreService {
   // ============================================
 
   async createOrder(data: CreateOrderData): Promise<StoreOrder> {
-    // Calculate total
-    const totalAmount = data.items.reduce(
+    // SECURITY: Fetch product prices from database - NEVER trust client prices
+    const validatedItems: StoreOrderItem[] = [];
+
+    for (const item of data.items) {
+      const product = await this.getProductById(item.productId);
+
+      if (!product) {
+        throw new Error(`Produto não encontrado: ${item.productId}`);
+      }
+
+      if (!product.active) {
+        throw new Error(`Produto indisponível: ${product.name}`);
+      }
+
+      // Validate stock for in_stock products
+      if (product.stockType === 'in_stock') {
+        const availableStock = product.stockQuantity ?? 0;
+        if (availableStock < item.quantity) {
+          throw new Error(
+            `Estoque insuficiente para "${product.name}". Disponível: ${availableStock}, Solicitado: ${item.quantity}`
+          );
+        }
+      }
+
+      // Validate size if product has sizes
+      if (product.sizes && product.sizes.length > 0 && item.size) {
+        if (!product.sizes.includes(item.size)) {
+          throw new Error(`Tamanho inválido para "${product.name}": ${item.size}`);
+        }
+      }
+
+      // Validate color if product has colors
+      if (product.colors && product.colors.length > 0 && item.color) {
+        if (!product.colors.includes(item.color)) {
+          throw new Error(`Cor inválida para "${product.name}": ${item.color}`);
+        }
+      }
+
+      // Build validated item with SERVER-SIDE price
+      validatedItems.push({
+        productId: product.id,
+        productName: product.name,
+        quantity: item.quantity,
+        unitPrice: product.price, // SECURITY: Always use database price
+        size: item.size,
+        color: item.color,
+      });
+    }
+
+    // Calculate total from validated items (server-side prices)
+    const totalAmount = validatedItems.reduce(
       (sum, item) => sum + item.unitPrice * item.quantity,
       0
     );
@@ -216,7 +265,7 @@ class StoreService {
       academyId: this.academyId,
       studentId: data.studentId,
       studentName: data.studentName,
-      items: data.items,
+      items: validatedItems,
       totalAmount,
       status: 'pending_payment' as StoreOrderStatus,
       notes: data.notes || '',
@@ -344,7 +393,7 @@ class StoreService {
   // PAYMENT
   // ============================================
 
-  async generateOrderPayment(orderId: string): Promise<FinancialPaymentLink | null> {
+  async generateOrderPayment(orderId: string, method: 'PIX' | 'CARD' = 'PIX'): Promise<FinancialPaymentLink | null> {
     const order = await this.getOrderById(orderId);
 
     if (!order) {
@@ -357,10 +406,10 @@ class StoreService {
       return null;
     }
 
-    const apiKey = await this.getApiKey();
+    const apiKey = this.getApiKey();
 
     if (!apiKey) {
-      console.error('AbacatePay API key not configured');
+      console.error('ABACATEPAY_API_KEY not configured in environment');
       return null;
     }
 
@@ -373,7 +422,7 @@ class StoreService {
         },
         body: JSON.stringify({
           frequency: 'ONE_TIME',
-          methods: ['PIX'],
+          methods: [method],
           products: order.items.map(item => ({
             externalId: item.productId,
             name: item.productName,
@@ -401,20 +450,37 @@ class StoreService {
 
       // Update order with payment info
       const docRef = collections.storeOrder(this.academyId, orderId);
-      await updateDoc(docRef, {
-        abacatePayTransactionId: data.data.id,
-        pixCode: data.data.pix?.brcode,
-        qrCodeUrl: data.data.pix?.qrcode,
-        paymentMethod: 'pix',
-        updatedAt: serverTimestamp(),
-      });
 
-      return {
-        pixCode: data.data.pix?.brcode || '',
-        qrCodeUrl: data.data.pix?.qrcode || '',
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-        createdAt: new Date(),
-      };
+      if (method === 'PIX') {
+        await updateDoc(docRef, {
+          abacatePayTransactionId: data.data.id,
+          pixCode: data.data.pix?.brcode,
+          qrCodeUrl: data.data.pix?.qrcode,
+          paymentMethod: 'pix',
+          updatedAt: serverTimestamp(),
+        });
+
+        return {
+          pixCode: data.data.pix?.brcode || '',
+          qrCodeUrl: data.data.pix?.qrcode || '',
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
+          createdAt: new Date(),
+        };
+      } else {
+        // For CARD, AbacatePay returns a checkout URL
+        await updateDoc(docRef, {
+          abacatePayTransactionId: data.data.id,
+          paymentMethod: 'credit_card',
+          updatedAt: serverTimestamp(),
+        });
+
+        return {
+          pixCode: '', // Not used for card
+          qrCodeUrl: data.data.url || '', // Checkout URL for card
+          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+          createdAt: new Date(),
+        };
+      }
     } catch (error) {
       console.error('Error generating payment:', error);
       return null;

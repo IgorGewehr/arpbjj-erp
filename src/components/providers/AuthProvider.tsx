@@ -351,8 +351,11 @@ export function AuthProvider({ children }: AuthProviderProps) {
   // Computed Values
   // ============================================
   const isAuthenticated = useMemo(() => !!user, [user]);
-  const isAdmin = useMemo(() => user?.role === 'admin', [user]);
-  const isInstructor = useMemo(() => user?.role === 'instructor' || user?.role === 'admin', [user]);
+  // DEPRECATED: These values are always false because user.role is not loaded from academy context
+  // Use usePermissions() from PermissionProvider instead for role-based checks
+  // These are kept for backwards compatibility but should not be relied upon
+  const isAdmin = useMemo(() => false, []); // user.role is always 'student' here
+  const isInstructor = useMemo(() => false, []); // user.role is always 'student' here
   const isFreeUser = useMemo(() => globalUser?.accountType === 'free', [globalUser]);
 
   // ============================================

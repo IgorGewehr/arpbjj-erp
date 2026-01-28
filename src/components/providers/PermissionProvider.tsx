@@ -8,6 +8,7 @@ import {
   ReactNode,
 } from 'react';
 import { useAuth } from './AuthProvider';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { Permission, UserRole, Resource, Action } from '@/types';
 import {
   hasPermission,
@@ -67,8 +68,11 @@ interface PermissionProviderProps {
 
 export function PermissionProvider({ children }: PermissionProviderProps) {
   const { user, isAuthenticated } = useAuth();
+  const { academyUser } = useAcademy();
 
-  const role = user?.role || null;
+  // IMPORTANT: Role comes from academyUser (academy-specific), NOT from global user
+  // This allows a user to be admin in one academy but student in another
+  const role = academyUser?.role || null;
 
   // ============================================
   // Permission Check Functions
@@ -155,20 +159,20 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
   // Data Access Checks
   // ============================================
   const linkedStudentIds = useMemo(() => {
-    if (!user) return [];
+    if (!academyUser) return [];
 
     // For students, they can only access their own data
-    if (role === 'student' && user.studentId) {
-      return [user.studentId];
+    if (role === 'student' && academyUser.studentId) {
+      return [academyUser.studentId];
     }
 
     // For guardians, they can access their children's data
-    if (role === 'guardian' && user.linkedStudentIds) {
-      return user.linkedStudentIds;
+    if (role === 'guardian' && academyUser.linkedStudentIds) {
+      return academyUser.linkedStudentIds;
     }
 
     return [];
-  }, [user, role]);
+  }, [academyUser, role]);
 
   const canAccessStudentData = useCallback(
     (studentId: string): boolean => {
@@ -187,7 +191,7 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
   // Role Checks
   // ============================================
   const isAdmin = role === 'admin';
-  const isInstructor = role === 'instructor';
+  const isInstructor = role === 'instructor' || role === 'admin'; // Admin can do everything instructor can
   const isStudent = role === 'student';
   const isGuardian = role === 'guardian';
 

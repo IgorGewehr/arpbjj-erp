@@ -18,6 +18,7 @@ import {
 } from '@mui/material';
 import { Mail, Lock, Eye, EyeOff, GraduationCap, Sparkles, Shield } from 'lucide-react';
 import { useAuth } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -25,6 +26,7 @@ export default function LoginPage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   const isDarkMode = theme.palette.mode === 'dark';
   const { signIn, isAuthenticated, loading, error, clearError, user } = useAuth();
+  const { academyUser, isLoading: academyLoading } = useAcademy();
 
   const [mounted, setMounted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -39,14 +41,16 @@ export default function LoginPage() {
   });
   const [submitting, setSubmitting] = useState(false);
 
+  // Redirect based on academy-specific role (not global user role)
   useEffect(() => {
-    if (isAuthenticated && user) {
-      const redirectTo = user.role === 'student' ? '/portal'
-                       : user.role === 'guardian' ? '/responsavel'
+    if (isAuthenticated && user && !academyLoading && academyUser) {
+      const role = academyUser.role;
+      const redirectTo = role === 'student' ? '/portal'
+                       : role === 'guardian' ? '/responsavel'
                        : '/dashboard';
       router.push(redirectTo);
     }
-  }, [isAuthenticated, user, router]);
+  }, [isAuthenticated, user, academyUser, academyLoading, router]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -69,7 +73,10 @@ export default function LoginPage() {
     [formData, signIn]
   );
 
-  if (loading || !mounted) {
+  // Show loading while auth or academy context is loading
+  const isLoading = loading || (isAuthenticated && academyLoading);
+
+  if (isLoading || !mounted) {
     return (
       <Box
         sx={{

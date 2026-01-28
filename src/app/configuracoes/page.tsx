@@ -55,12 +55,14 @@ import {
   Shield,
   UserPlus,
   X,
+  UserCheck,
+  Settings,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useAuth, useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
-import { settingsService, AcademySettings, createSettingsService } from '@/services/settingsService';
+import { AcademySettings, createSettingsService } from '@/services/settingsService';
 import { attendanceService } from '@/services/attendanceService';
 import { createStudentService } from '@/services';
 import { Student } from '@/types';
@@ -70,6 +72,7 @@ import { storage } from '@/lib/firebase';
 // ============================================
 // Types
 // ============================================
+type ImageUploadField = 'logoUrl' | 'sidebarLogoUrl' | 'portalBackgroundUrl' | 'adminBackgroundUrl' | 'sidebarBackgroundUrl';
 
 // ============================================
 // Settings Section Component
@@ -116,6 +119,29 @@ function SettingsSection({ title, description, icon: Icon, children, loading }: 
         children
       )}
     </Paper>
+  );
+}
+
+// ============================================
+// Save Button Component
+// ============================================
+interface SaveButtonProps {
+  saving: boolean;
+  onClick: () => void;
+}
+
+function SaveButton({ saving, onClick }: SaveButtonProps) {
+  return (
+    <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
+      <Button
+        variant="contained"
+        startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
+        onClick={onClick}
+        disabled={saving}
+      >
+        {saving ? 'Salvando...' : 'Salvar'}
+      </Button>
+    </Box>
   );
 }
 
@@ -230,31 +256,18 @@ function ProfileTab() {
         </Grid>
       </Grid>
 
-      <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-        <Button
-          variant="contained"
-          startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
-          onClick={handleSave}
-          disabled={saving}
-        >
-          {saving ? 'Salvando...' : 'Salvar Alteracoes'}
-        </Button>
-      </Box>
+      <SaveButton saving={saving} onClick={handleSave} />
     </SettingsSection>
   );
 }
 
 // ============================================
-// Academy Tab
+// Shared Settings Hook
 // ============================================
-type ImageUploadField = 'logoUrl' | 'sidebarLogoUrl' | 'portalBackgroundUrl' | 'adminBackgroundUrl' | 'sidebarBackgroundUrl';
-
-function AcademyTab() {
-  const theme = useTheme();
+function useSettingsData() {
+  const { academyId, refreshAcademy } = useAcademy();
   const { success, error } = useFeedback();
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState<ImageUploadField | null>(null);
   const [loading, setLoading] = useState(true);
   const [settings, setSettings] = useState<AcademySettings>({
     name: '',
@@ -276,18 +289,24 @@ function AcademyTab() {
     autoGraduationEnabled: false,
     autoGraduationAttendances: 50,
     abacatePayEnabled: false,
-    abacatePayApiKey: '',
     storeEnabled: false,
     storePublished: false,
     storeWelcomeMessage: '',
     storeMinOrderAmount: 0,
+    storeCreditCardEnabled: false,
+    studentCheckinEnabled: false,
   });
 
-  // Load settings from Firestore
   useEffect(() => {
     const loadSettings = async () => {
+      if (!academyId) {
+        setLoading(false);
+        return;
+      }
+
       try {
-        const data = await settingsService.getAcademySettings();
+        const service = createSettingsService(academyId);
+        const data = await service.getAcademySettings();
         if (data) {
           setSettings({
             name: data.name || '',
@@ -309,11 +328,12 @@ function AcademyTab() {
             autoGraduationEnabled: data.autoGraduationEnabled || false,
             autoGraduationAttendances: data.autoGraduationAttendances || 50,
             abacatePayEnabled: data.abacatePayEnabled || false,
-            abacatePayApiKey: data.abacatePayApiKey || '',
             storeEnabled: data.storeEnabled || false,
             storePublished: data.storePublished || false,
             storeWelcomeMessage: data.storeWelcomeMessage || '',
             storeMinOrderAmount: data.storeMinOrderAmount || 0,
+            storeCreditCardEnabled: data.storeCreditCardEnabled || false,
+            studentCheckinEnabled: data.studentCheckinEnabled || false,
           });
         }
       } catch (err) {
@@ -324,19 +344,53 @@ function AcademyTab() {
     };
 
     loadSettings();
-  }, [error]);
+  }, [academyId, error]);
+
+  const handleSave = useCallback(async () => {
+    if (!academyId) return;
+
+    setSaving(true);
+    try {
+      const service = createSettingsService(academyId);
+      await service.saveAcademySettings(settings);
+      await refreshAcademy();
+      success('Configuracoes salvas!');
+    } catch (err) {
+      error('Erro ao salvar configuracoes');
+    } finally {
+      setSaving(false);
+    }
+  }, [academyId, settings, refreshAcademy, success, error]);
+
+  return {
+    settings,
+    setSettings,
+    saving,
+    loading,
+    handleSave,
+    academyId,
+  };
+}
+
+// ============================================
+// Academy Tab (Basic Info)
+// ============================================
+function AcademyTab() {
+  const theme = useTheme();
+  const { error, success } = useFeedback();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState<ImageUploadField | null>(null);
+  const { settings, setSettings, saving, loading, handleSave, academyId } = useSettingsData();
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, field: ImageUploadField) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       error('Por favor, selecione uma imagem');
       return;
     }
 
-    // Validate file size (max 2MB)
     if (file.size > 2 * 1024 * 1024) {
       error('A imagem deve ter no maximo 2MB');
       return;
@@ -350,7 +404,203 @@ function AcademyTab() {
       const downloadURL = await getDownloadURL(storageRef);
 
       setSettings(prev => ({ ...prev, [field]: downloadURL }));
-      success('Imagem atualizada!');
+      success('Imagem atualizada! Nao esqueca de clicar em Salvar.');
+    } catch (err) {
+      console.error('Error uploading image:', err);
+      error('Erro ao fazer upload da imagem');
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  return (
+    <SettingsSection
+      title="Dados da Academia"
+      description="Informacoes gerais da sua academia"
+      icon={Building2}
+      loading={loading}
+    >
+      {/* Logo Upload */}
+      <Box sx={{ mb: 4 }}>
+        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+          Logo da Academia
+        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+          <Box
+            sx={{
+              width: 120,
+              height: 120,
+              borderRadius: 2,
+              border: '2px dashed',
+              borderColor: 'divider',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              overflow: 'hidden',
+              bgcolor: 'action.hover',
+            }}
+          >
+            {settings.logoUrl ? (
+              <img
+                src={settings.logoUrl}
+                alt="Logo"
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+              />
+            ) : (
+              <ImageIcon size={40} color={theme.palette.text.disabled} />
+            )}
+          </Box>
+          <Box>
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={(e) => handleImageUpload(e, 'logoUrl')}
+              accept="image/*"
+              style={{ display: 'none' }}
+            />
+            <Button
+              variant="outlined"
+              startIcon={uploading === 'logoUrl' ? <CircularProgress size={16} /> : <Upload size={18} />}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={uploading !== null}
+              sx={{ mb: 1 }}
+            >
+              {uploading === 'logoUrl' ? 'Enviando...' : 'Enviar Logo'}
+            </Button>
+            <Typography variant="caption" color="text.secondary" display="block">
+              PNG, JPG ou SVG. Max 2MB.
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <TextField
+            fullWidth
+            label="Nome da Academia"
+            value={settings.name}
+            onChange={(e) => setSettings({ ...settings, name: e.target.value })}
+            required
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <TextField
+            fullWidth
+            label="CNPJ"
+            value={settings.cnpj}
+            onChange={(e) => setSettings({ ...settings, cnpj: e.target.value })}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <TextField
+            fullWidth
+            label="Email"
+            type="email"
+            value={settings.email}
+            onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Mail size={18} />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <TextField
+            fullWidth
+            label="Telefone"
+            value={settings.phone}
+            onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Phone size={18} />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Grid>
+        <Grid size={{ xs: 12 }}>
+          <TextField
+            fullWidth
+            label="Endereco"
+            value={settings.address}
+            onChange={(e) => setSettings({ ...settings, address: e.target.value })}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <MapPin size={18} />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <TextField
+            fullWidth
+            label="Cidade"
+            value={settings.city}
+            onChange={(e) => setSettings({ ...settings, city: e.target.value })}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <TextField
+            fullWidth
+            label="Estado"
+            value={settings.state}
+            onChange={(e) => setSettings({ ...settings, state: e.target.value })}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <TextField
+            fullWidth
+            label="CEP"
+            value={settings.zipCode}
+            onChange={(e) => setSettings({ ...settings, zipCode: e.target.value })}
+          />
+        </Grid>
+      </Grid>
+
+      <SaveButton saving={saving} onClick={handleSave} />
+    </SettingsSection>
+  );
+}
+
+// ============================================
+// Appearance Tab
+// ============================================
+function AppearanceTab() {
+  const theme = useTheme();
+  const { error, success } = useFeedback();
+  const [uploading, setUploading] = useState<ImageUploadField | null>(null);
+  const { settings, setSettings, saving, loading, handleSave } = useSettingsData();
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, field: ImageUploadField) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      error('Por favor, selecione uma imagem');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      error('A imagem deve ter no maximo 2MB');
+      return;
+    }
+
+    setUploading(field);
+    try {
+      const timestamp = Date.now();
+      const storageRef = ref(storage, `academy/${field}_${timestamp}`);
+      await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(storageRef);
+
+      setSettings(prev => ({ ...prev, [field]: downloadURL }));
+      success('Imagem atualizada! Nao esqueca de clicar em Salvar.');
     } catch (err) {
       console.error('Error uploading image:', err);
       error('Erro ao fazer upload da imagem');
@@ -363,500 +613,441 @@ function AcademyTab() {
     setSettings(prev => ({ ...prev, [field]: '' }));
   };
 
-  const handleSave = useCallback(async () => {
-    setSaving(true);
-    try {
-      await settingsService.saveAcademySettings(settings);
-      success('Configuracoes da academia salvas!');
-    } catch (err) {
-      error('Erro ao salvar configuracoes');
-    } finally {
-      setSaving(false);
-    }
-  }, [settings, success, error]);
+  const ImageUploadBox = ({ field, label, description, width = 80, height = 80 }: {
+    field: ImageUploadField;
+    label: string;
+    description: string;
+    width?: number;
+    height?: number;
+  }) => (
+    <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
+      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+        {label}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+        {description}
+      </Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box
+          sx={{
+            width,
+            height,
+            borderRadius: 2,
+            border: '2px dashed',
+            borderColor: 'divider',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            bgcolor: 'action.hover',
+          }}
+        >
+          {settings[field] ? (
+            <img
+              src={settings[field]}
+              alt={label}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          ) : (
+            <ImageIcon size={24} color={theme.palette.text.disabled} />
+          )}
+        </Box>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+          <input
+            type="file"
+            id={`${field}-input`}
+            onChange={(e) => handleImageUpload(e, field)}
+            accept="image/*"
+            style={{ display: 'none' }}
+          />
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={uploading === field ? <CircularProgress size={14} /> : <Upload size={16} />}
+            onClick={() => document.getElementById(`${field}-input`)?.click()}
+            disabled={uploading !== null}
+          >
+            {uploading === field ? 'Enviando...' : 'Enviar'}
+          </Button>
+          {settings[field] && (
+            <Button
+              variant="text"
+              size="small"
+              color="error"
+              startIcon={<Trash2 size={14} />}
+              onClick={() => handleRemoveImage(field)}
+            >
+              Remover
+            </Button>
+          )}
+        </Box>
+      </Box>
+    </Box>
+  );
 
   return (
-    <>
-      <SettingsSection
-        title="Dados da Academia"
-        description="Informacoes gerais da sua academia"
-        icon={Building2}
-        loading={loading}
-      >
-        {/* Logo Upload */}
-        <Box sx={{ mb: 4 }}>
-          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
-            Logo da Academia
-          </Typography>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-            <Box
-              sx={{
-                width: 120,
-                height: 120,
-                borderRadius: 2,
-                border: '2px dashed',
-                borderColor: 'divider',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden',
-                bgcolor: 'action.hover',
-              }}
-            >
-              {settings.logoUrl ? (
-                <img
-                  src={settings.logoUrl}
-                  alt="Logo"
-                  style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                />
-              ) : (
-                <ImageIcon size={40} color={theme.palette.text.disabled} />
-              )}
-            </Box>
-            <Box>
-              <input
-                type="file"
-                ref={fileInputRef}
-                onChange={(e) => handleImageUpload(e, 'logoUrl')}
-                accept="image/*"
-                style={{ display: 'none' }}
-              />
-              <Button
-                variant="outlined"
-                startIcon={uploading === 'logoUrl' ? <CircularProgress size={16} /> : <Upload size={18} />}
-                onClick={() => fileInputRef.current?.click()}
-                disabled={uploading !== null}
-                sx={{ mb: 1 }}
-              >
-                {uploading === 'logoUrl' ? 'Enviando...' : 'Enviar Logo'}
-              </Button>
-              <Typography variant="caption" color="text.secondary" display="block">
-                PNG, JPG ou SVG. Max 2MB.
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
+    <SettingsSection
+      title="Aparencia"
+      description="Personalize a aparencia do portal e painel administrativo"
+      icon={Palette}
+      loading={loading}
+    >
+      {/* Portal Slogan */}
+      <Box sx={{ mb: 4 }}>
+        <TextField
+          fullWidth
+          label="Slogan do Portal"
+          value={settings.portalSlogan}
+          onChange={(e) => setSettings({ ...settings, portalSlogan: e.target.value })}
+          placeholder="Ex: Vamos avante, ombro a ombro"
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Type size={18} />
+              </InputAdornment>
+            ),
+          }}
+          helperText="Frase exibida na barra superior do portal do aluno junto com o nome da academia"
+        />
+      </Box>
 
-        <Grid container spacing={3}>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              fullWidth
-              label="Nome da Academia"
-              value={settings.name}
-              onChange={(e) => setSettings({ ...settings, name: e.target.value })}
-              required
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              fullWidth
-              label="CNPJ"
-              value={settings.cnpj}
-              onChange={(e) => setSettings({ ...settings, cnpj: e.target.value })}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              fullWidth
-              label="Email"
-              type="email"
-              value={settings.email}
-              onChange={(e) => setSettings({ ...settings, email: e.target.value })}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Mail size={18} />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              fullWidth
-              label="Telefone"
-              value={settings.phone}
-              onChange={(e) => setSettings({ ...settings, phone: e.target.value })}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Phone size={18} />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid size={{ xs: 12 }}>
-            <TextField
-              fullWidth
-              label="Endereco"
-              value={settings.address}
-              onChange={(e) => setSettings({ ...settings, address: e.target.value })}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <MapPin size={18} />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TextField
-              fullWidth
-              label="Cidade"
-              value={settings.city}
-              onChange={(e) => setSettings({ ...settings, city: e.target.value })}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TextField
-              fullWidth
-              label="Estado"
-              value={settings.state}
-              onChange={(e) => setSettings({ ...settings, state: e.target.value })}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <TextField
-              fullWidth
-              label="CEP"
-              value={settings.zipCode}
-              onChange={(e) => setSettings({ ...settings, zipCode: e.target.value })}
-            />
-          </Grid>
+      <Divider sx={{ my: 3 }} />
+
+      {/* Image Uploads Grid */}
+      <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+        Imagens Personalizadas
+      </Typography>
+
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <ImageUploadBox
+            field="sidebarLogoUrl"
+            label="Logo da Sidebar"
+            description="Logo alternativo para a sidebar (opcional)"
+            width={80}
+            height={80}
+          />
         </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <ImageUploadBox
+            field="portalBackgroundUrl"
+            label="Background do Portal do Aluno"
+            description="Imagem de fundo para o portal do aluno"
+            width={120}
+            height={80}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <ImageUploadBox
+            field="adminBackgroundUrl"
+            label="Background do Painel Admin"
+            description="Imagem de fundo para o painel do professor/admin"
+            width={120}
+            height={80}
+          />
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <ImageUploadBox
+            field="sidebarBackgroundUrl"
+            label="Background da Sidebar"
+            description="Imagem de fundo para a sidebar lateral"
+            width={80}
+            height={100}
+          />
+        </Grid>
+      </Grid>
 
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            variant="contained"
-            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? 'Salvando...' : 'Salvar'}
-          </Button>
-        </Box>
-      </SettingsSection>
+      <SaveButton saving={saving} onClick={handleSave} />
+    </SettingsSection>
+  );
+}
 
-      {/* Appearance Settings */}
-      <SettingsSection
-        title="Aparencia"
-        description="Personalize a aparencia do portal e painel administrativo"
-        icon={Palette}
-        loading={loading}
-      >
-        {/* Portal Slogan */}
-        <Box sx={{ mb: 4 }}>
+// ============================================
+// Payments Tab
+// ============================================
+function PaymentsTab() {
+  const theme = useTheme();
+  const { settings, setSettings, saving, loading, handleSave } = useSettingsData();
+
+  return (
+    <SettingsSection
+      title="Pagamentos"
+      description="PIX e integracao de pagamentos"
+      icon={Wallet}
+      loading={loading}
+    >
+      <Grid container spacing={3}>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <FormControl fullWidth>
+            <InputLabel>Tipo de Chave PIX</InputLabel>
+            <Select
+              value={settings.pixKeyType || 'cpf'}
+              onChange={(e) =>
+                setSettings({ ...settings, pixKeyType: e.target.value as AcademySettings['pixKeyType'] })
+              }
+              label="Tipo de Chave PIX"
+            >
+              <MenuItem value="cpf">CPF</MenuItem>
+              <MenuItem value="cnpj">CNPJ</MenuItem>
+              <MenuItem value="email">Email</MenuItem>
+              <MenuItem value="phone">Telefone</MenuItem>
+              <MenuItem value="random">Chave Aleatoria</MenuItem>
+            </Select>
+          </FormControl>
+        </Grid>
+        <Grid size={{ xs: 12, md: 8 }}>
           <TextField
             fullWidth
-            label="Slogan do Portal"
-            value={settings.portalSlogan}
-            onChange={(e) => setSettings({ ...settings, portalSlogan: e.target.value })}
-            placeholder="Ex: Vamos avante, ombro a ombro"
+            label="Chave PIX"
+            value={settings.pixKey}
+            onChange={(e) => setSettings({ ...settings, pixKey: e.target.value })}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
-                  <Type size={18} />
+                  <CreditCard size={18} />
                 </InputAdornment>
               ),
             }}
-            helperText="Frase exibida na barra superior do portal do aluno junto com o nome da academia"
+            helperText="Chave PIX para recebimento de pagamentos e saques"
           />
-        </Box>
-
-        <Divider sx={{ my: 3 }} />
-
-        {/* Image Uploads Grid */}
-        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
-          Imagens Personalizadas
-        </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-          Configure as imagens de logo e backgrounds do sistema
-        </Typography>
-
-        <Grid container spacing={3}>
-          {/* Sidebar Logo */}
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
-                Logo da Sidebar
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-                Logo alternativo para a sidebar (opcional)
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box
-                  sx={{
-                    width: 80,
-                    height: 80,
-                    borderRadius: 2,
-                    border: '2px dashed',
-                    borderColor: 'divider',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    bgcolor: 'action.hover',
-                  }}
-                >
-                  {settings.sidebarLogoUrl ? (
-                    <img
-                      src={settings.sidebarLogoUrl}
-                      alt="Sidebar Logo"
-                      style={{ width: '100%', height: '100%', objectFit: 'contain' }}
-                    />
-                  ) : (
-                    <ImageIcon size={24} color={theme.palette.text.disabled} />
-                  )}
-                </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <input
-                    type="file"
-                    id="sidebarLogo-input"
-                    onChange={(e) => handleImageUpload(e, 'sidebarLogoUrl')}
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={uploading === 'sidebarLogoUrl' ? <CircularProgress size={14} /> : <Upload size={16} />}
-                    onClick={() => document.getElementById('sidebarLogo-input')?.click()}
-                    disabled={uploading !== null}
-                  >
-                    {uploading === 'sidebarLogoUrl' ? 'Enviando...' : 'Enviar'}
-                  </Button>
-                  {settings.sidebarLogoUrl && (
-                    <Button
-                      variant="text"
-                      size="small"
-                      color="error"
-                      startIcon={<Trash2 size={14} />}
-                      onClick={() => handleRemoveImage('sidebarLogoUrl')}
-                    >
-                      Remover
-                    </Button>
-                  )}
-                </Box>
-              </Box>
-            </Box>
-          </Grid>
-
-          {/* Portal Background */}
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
-                Background do Portal do Aluno
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-                Imagem de fundo para o portal do aluno
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box
-                  sx={{
-                    width: 120,
-                    height: 80,
-                    borderRadius: 2,
-                    border: '2px dashed',
-                    borderColor: 'divider',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    bgcolor: 'action.hover',
-                  }}
-                >
-                  {settings.portalBackgroundUrl ? (
-                    <img
-                      src={settings.portalBackgroundUrl}
-                      alt="Portal Background"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <ImageIcon size={24} color={theme.palette.text.disabled} />
-                  )}
-                </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <input
-                    type="file"
-                    id="portalBackground-input"
-                    onChange={(e) => handleImageUpload(e, 'portalBackgroundUrl')}
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={uploading === 'portalBackgroundUrl' ? <CircularProgress size={14} /> : <Upload size={16} />}
-                    onClick={() => document.getElementById('portalBackground-input')?.click()}
-                    disabled={uploading !== null}
-                  >
-                    {uploading === 'portalBackgroundUrl' ? 'Enviando...' : 'Enviar'}
-                  </Button>
-                  {settings.portalBackgroundUrl && (
-                    <Button
-                      variant="text"
-                      size="small"
-                      color="error"
-                      startIcon={<Trash2 size={14} />}
-                      onClick={() => handleRemoveImage('portalBackgroundUrl')}
-                    >
-                      Remover
-                    </Button>
-                  )}
-                </Box>
-              </Box>
-            </Box>
-          </Grid>
-
-          {/* Admin Background */}
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
-                Background do Painel Admin
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-                Imagem de fundo para o painel do professor/admin
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box
-                  sx={{
-                    width: 120,
-                    height: 80,
-                    borderRadius: 2,
-                    border: '2px dashed',
-                    borderColor: 'divider',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    bgcolor: 'action.hover',
-                  }}
-                >
-                  {settings.adminBackgroundUrl ? (
-                    <img
-                      src={settings.adminBackgroundUrl}
-                      alt="Admin Background"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <ImageIcon size={24} color={theme.palette.text.disabled} />
-                  )}
-                </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <input
-                    type="file"
-                    id="adminBackground-input"
-                    onChange={(e) => handleImageUpload(e, 'adminBackgroundUrl')}
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={uploading === 'adminBackgroundUrl' ? <CircularProgress size={14} /> : <Upload size={16} />}
-                    onClick={() => document.getElementById('adminBackground-input')?.click()}
-                    disabled={uploading !== null}
-                  >
-                    {uploading === 'adminBackgroundUrl' ? 'Enviando...' : 'Enviar'}
-                  </Button>
-                  {settings.adminBackgroundUrl && (
-                    <Button
-                      variant="text"
-                      size="small"
-                      color="error"
-                      startIcon={<Trash2 size={14} />}
-                      onClick={() => handleRemoveImage('adminBackgroundUrl')}
-                    >
-                      Remover
-                    </Button>
-                  )}
-                </Box>
-              </Box>
-            </Box>
-          </Grid>
-
-          {/* Sidebar Background */}
-          <Grid size={{ xs: 12, md: 6 }}>
-            <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
-              <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
-                Background da Sidebar
-              </Typography>
-              <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-                Imagem de fundo para a sidebar lateral
-              </Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Box
-                  sx={{
-                    width: 80,
-                    height: 100,
-                    borderRadius: 2,
-                    border: '2px dashed',
-                    borderColor: 'divider',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    bgcolor: 'action.hover',
-                  }}
-                >
-                  {settings.sidebarBackgroundUrl ? (
-                    <img
-                      src={settings.sidebarBackgroundUrl}
-                      alt="Sidebar Background"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  ) : (
-                    <ImageIcon size={24} color={theme.palette.text.disabled} />
-                  )}
-                </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <input
-                    type="file"
-                    id="sidebarBackground-input"
-                    onChange={(e) => handleImageUpload(e, 'sidebarBackgroundUrl')}
-                    accept="image/*"
-                    style={{ display: 'none' }}
-                  />
-                  <Button
-                    variant="outlined"
-                    size="small"
-                    startIcon={uploading === 'sidebarBackgroundUrl' ? <CircularProgress size={14} /> : <Upload size={16} />}
-                    onClick={() => document.getElementById('sidebarBackground-input')?.click()}
-                    disabled={uploading !== null}
-                  >
-                    {uploading === 'sidebarBackgroundUrl' ? 'Enviando...' : 'Enviar'}
-                  </Button>
-                  {settings.sidebarBackgroundUrl && (
-                    <Button
-                      variant="text"
-                      size="small"
-                      color="error"
-                      startIcon={<Trash2 size={14} />}
-                      onClick={() => handleRemoveImage('sidebarBackgroundUrl')}
-                    >
-                      Remover
-                    </Button>
-                  )}
-                </Box>
-              </Box>
-            </Box>
-          </Grid>
         </Grid>
+      </Grid>
 
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            variant="contained"
-            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? 'Salvando...' : 'Salvar'}
-          </Button>
+      <Divider sx={{ my: 3 }} />
+
+      {/* AbacatePay Integration */}
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Zap size={20} color={theme.palette.warning.main} />
+          <Box>
+            <Typography variant="subtitle1" fontWeight={600}>
+              Pagamento pela Plataforma
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Permita que alunos paguem mensalidades diretamente pelo app via PIX
+            </Typography>
+          </Box>
         </Box>
-      </SettingsSection>
 
+        <FormControlLabel
+          control={
+            <Switch
+              checked={settings.abacatePayEnabled}
+              onChange={(e) =>
+                setSettings({ ...settings, abacatePayEnabled: e.target.checked })
+              }
+              color="primary"
+            />
+          }
+          label="Ativar pagamentos pela plataforma"
+        />
+
+        {settings.abacatePayEnabled && (
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="success" sx={{ borderRadius: 2 }}>
+              <Typography variant="body2">
+                <strong>Pagamentos Ativos!</strong> - Alunos podem pagar via PIX e voce sera notificado imediatamente.
+                Os valores serao creditados na sua carteira e podem ser sacados para sua chave PIX.
+              </Typography>
+            </Alert>
+          </Box>
+        )}
+      </Box>
+
+      <SaveButton saving={saving} onClick={handleSave} />
+    </SettingsSection>
+  );
+}
+
+// ============================================
+// Store Tab
+// ============================================
+function StoreTab() {
+  const { settings, setSettings, saving, loading, handleSave } = useSettingsData();
+
+  return (
+    <SettingsSection
+      title="Loja"
+      description="Venda uniformes, equipamentos e acessorios para seus alunos"
+      icon={Store}
+      loading={loading}
+    >
+      <Box sx={{ mb: 3 }}>
+        <FormControlLabel
+          control={
+            <Switch
+              checked={settings.storeEnabled}
+              onChange={(e) =>
+                setSettings({ ...settings, storeEnabled: e.target.checked })
+              }
+              color="primary"
+            />
+          }
+          label={
+            <Box>
+              <Typography variant="body1" fontWeight={500}>
+                Habilitar Loja
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Ative para gerenciar produtos e receber pedidos
+              </Typography>
+            </Box>
+          }
+        />
+      </Box>
+
+      {settings.storeEnabled && (
+        <Box sx={{ pl: 2, borderLeft: '3px solid', borderColor: 'primary.main' }}>
+          <Grid container spacing={3}>
+            <Grid size={{ xs: 12 }}>
+              <TextField
+                fullWidth
+                label="Mensagem de Boas-vindas"
+                value={settings.storeWelcomeMessage || ''}
+                onChange={(e) =>
+                  setSettings({ ...settings, storeWelcomeMessage: e.target.value })
+                }
+                placeholder="Ex: Bem-vindo a nossa loja! Confira nossos produtos."
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <ShoppingBag size={18} />
+                    </InputAdornment>
+                  ),
+                }}
+                helperText="Mensagem exibida aos alunos na pagina da loja"
+              />
+            </Grid>
+            <Grid size={{ xs: 12, md: 6 }}>
+              <TextField
+                fullWidth
+                label="Valor Minimo do Pedido (R$)"
+                type="number"
+                value={(settings.storeMinOrderAmount || 0) / 100}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    storeMinOrderAmount: Math.round(parseFloat(e.target.value || '0') * 100),
+                  })
+                }
+                inputProps={{ min: 0, step: 0.01 }}
+                helperText="Deixe em 0 para sem valor minimo"
+              />
+            </Grid>
+          </Grid>
+
+          <Divider sx={{ my: 3 }} />
+
+          {/* Payment Methods */}
+          <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+            Metodos de Pagamento na Loja
+          </Typography>
+
+          <Box sx={{ mb: 3 }}>
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={settings.storeCreditCardEnabled}
+                  onChange={(e) =>
+                    setSettings({ ...settings, storeCreditCardEnabled: e.target.checked })
+                  }
+                  color="primary"
+                />
+              }
+              label={
+                <Box>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="body1" fontWeight={500}>
+                      Habilitar Cartao de Credito
+                    </Typography>
+                    <Chip label="Beta" size="small" color="warning" sx={{ height: 20, fontSize: '0.65rem' }} />
+                  </Box>
+                  <Typography variant="caption" color="text.secondary">
+                    Permite pagamento com cartao de credito (redirecionamento para checkout seguro)
+                  </Typography>
+                </Box>
+              }
+            />
+          </Box>
+
+          <Divider sx={{ my: 3 }} />
+
+          {/* Publish Store */}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+            <Box
+              sx={{
+                px: 2,
+                py: 1,
+                borderRadius: 2,
+                bgcolor: settings.storePublished ? 'success.50' : 'warning.50',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+              }}
+            >
+              <Box
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: '50%',
+                  bgcolor: settings.storePublished ? 'success.main' : 'warning.main',
+                }}
+              />
+              <Typography
+                variant="body2"
+                fontWeight={600}
+                color={settings.storePublished ? 'success.main' : 'warning.main'}
+              >
+                {settings.storePublished ? 'Loja Publicada' : 'Loja em Rascunho'}
+              </Typography>
+            </Box>
+          </Box>
+
+          <FormControlLabel
+            control={
+              <Switch
+                checked={settings.storePublished}
+                onChange={(e) =>
+                  setSettings({ ...settings, storePublished: e.target.checked })
+                }
+                color="success"
+              />
+            }
+            label={
+              <Box>
+                <Typography variant="body1" fontWeight={500}>
+                  Publicar Loja
+                </Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Quando publicada, os alunos poderao ver e comprar produtos
+                </Typography>
+              </Box>
+            }
+          />
+
+          {!settings.storePublished && (
+            <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
+              <Typography variant="body2">
+                Sua loja esta em modo rascunho. Adicione produtos em <strong>/loja</strong> e depois publique quando estiver pronta.
+              </Typography>
+            </Alert>
+          )}
+        </Box>
+      )}
+
+      <SaveButton saving={saving} onClick={handleSave} />
+    </SettingsSection>
+  );
+}
+
+// ============================================
+// Resources Tab (Auto-graduation, Check-in, Plans, etc)
+// ============================================
+function ResourcesTab() {
+  const { settings, setSettings, saving, loading, handleSave } = useSettingsData();
+
+  return (
+    <>
       {/* Auto-graduation Settings */}
       <SettingsSection
         title="Graduacao Automatica"
@@ -920,146 +1111,23 @@ function AcademyTab() {
           </Box>
         )}
 
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            variant="contained"
-            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? 'Salvando...' : 'Salvar'}
-          </Button>
-        </Box>
+        <SaveButton saving={saving} onClick={handleSave} />
       </SettingsSection>
 
-      {/* Financial Settings */}
+      {/* Student Check-in Settings */}
       <SettingsSection
-        title="Configuracoes Financeiras"
-        description="PIX e integracao de pagamentos"
-        icon={Wallet}
-        loading={loading}
-      >
-        <Grid container spacing={3}>
-          <Grid size={{ xs: 12, md: 4 }}>
-            <FormControl fullWidth>
-              <InputLabel>Tipo de Chave PIX</InputLabel>
-              <Select
-                value={settings.pixKeyType || 'cpf'}
-                onChange={(e) =>
-                  setSettings({ ...settings, pixKeyType: e.target.value as AcademySettings['pixKeyType'] })
-                }
-                label="Tipo de Chave PIX"
-              >
-                <MenuItem value="cpf">CPF</MenuItem>
-                <MenuItem value="cnpj">CNPJ</MenuItem>
-                <MenuItem value="email">Email</MenuItem>
-                <MenuItem value="phone">Telefone</MenuItem>
-                <MenuItem value="random">Chave Aleatoria</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, md: 8 }}>
-            <TextField
-              fullWidth
-              label="Chave PIX"
-              value={settings.pixKey}
-              onChange={(e) => setSettings({ ...settings, pixKey: e.target.value })}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <CreditCard size={18} />
-                  </InputAdornment>
-                ),
-              }}
-              helperText="Chave PIX para recebimento de pagamentos e saques"
-            />
-          </Grid>
-        </Grid>
-
-        <Divider sx={{ my: 3 }} />
-
-        {/* AbacatePay Integration */}
-        <Box>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-            <Zap size={20} color={theme.palette.warning.main} />
-            <Box>
-              <Typography variant="subtitle1" fontWeight={600}>
-                Pagamento pela Plataforma
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Permita que alunos paguem mensalidades diretamente pelo app via PIX
-              </Typography>
-            </Box>
-          </Box>
-
-          <FormControlLabel
-            control={
-              <Switch
-                checked={settings.abacatePayEnabled}
-                onChange={(e) =>
-                  setSettings({ ...settings, abacatePayEnabled: e.target.checked })
-                }
-                color="primary"
-              />
-            }
-            label="Ativar pagamentos pela plataforma"
-          />
-
-          {settings.abacatePayEnabled && (
-            <Box sx={{ mt: 2 }}>
-              <TextField
-                fullWidth
-                label="API Key AbacatePay"
-                type="password"
-                value={settings.abacatePayApiKey || ''}
-                onChange={(e) => setSettings({ ...settings, abacatePayApiKey: e.target.value })}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Zap size={18} />
-                    </InputAdornment>
-                  ),
-                }}
-                helperText="Sua chave de API do AbacatePay. Obtenha em abacatepay.com"
-                sx={{ mb: 2 }}
-              />
-
-              <Alert severity="success" sx={{ borderRadius: 2 }}>
-                <Typography variant="body2">
-                  <strong>Taxa: 0%</strong> - Alunos podem pagar via PIX e voce sera notificado imediatamente.
-                  Os valores serao depositados na sua chave PIX cadastrada acima.
-                </Typography>
-              </Alert>
-            </Box>
-          )}
-        </Box>
-
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            variant="contained"
-            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? 'Salvando...' : 'Salvar'}
-          </Button>
-        </Box>
-      </SettingsSection>
-
-      {/* Store Settings */}
-      <SettingsSection
-        title="Loja"
-        description="Venda uniformes, equipamentos e acessorios para seus alunos"
-        icon={Store}
+        title="Check-in de Alunos"
+        description="Permita que alunos marquem presenca pelo app"
+        icon={UserCheck}
         loading={loading}
       >
         <Box sx={{ mb: 3 }}>
           <FormControlLabel
             control={
               <Switch
-                checked={settings.storeEnabled}
+                checked={settings.studentCheckinEnabled}
                 onChange={(e) =>
-                  setSettings({ ...settings, storeEnabled: e.target.checked })
+                  setSettings({ ...settings, studentCheckinEnabled: e.target.checked })
                 }
                 color="primary"
               />
@@ -1067,135 +1135,37 @@ function AcademyTab() {
             label={
               <Box>
                 <Typography variant="body1" fontWeight={500}>
-                  Habilitar Loja
+                  Habilitar Check-in de Alunos
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Ative para gerenciar produtos e receber pedidos
+                  Alunos poderao fazer check-in pelo app para marcar presenca
                 </Typography>
               </Box>
             }
           />
         </Box>
 
-        {settings.storeEnabled && (
+        {settings.studentCheckinEnabled && (
           <Box sx={{ pl: 2, borderLeft: '3px solid', borderColor: 'primary.main' }}>
-            <Grid container spacing={3}>
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  fullWidth
-                  label="Mensagem de Boas-vindas"
-                  value={settings.storeWelcomeMessage || ''}
-                  onChange={(e) =>
-                    setSettings({ ...settings, storeWelcomeMessage: e.target.value })
-                  }
-                  placeholder="Ex: Bem-vindo a nossa loja! Confira nossos produtos."
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <ShoppingBag size={18} />
-                      </InputAdornment>
-                    ),
-                  }}
-                  helperText="Mensagem exibida aos alunos na pagina da loja"
-                />
-              </Grid>
-              <Grid size={{ xs: 12, md: 6 }}>
-                <TextField
-                  fullWidth
-                  label="Valor Minimo do Pedido (R$)"
-                  type="number"
-                  value={(settings.storeMinOrderAmount || 0) / 100}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      storeMinOrderAmount: Math.round(parseFloat(e.target.value || '0') * 100),
-                    })
-                  }
-                  inputProps={{ min: 0, step: 0.01 }}
-                  helperText="Deixe em 0 para sem valor minimo"
-                />
-              </Grid>
-            </Grid>
-
-            <Divider sx={{ my: 3 }} />
-
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-              <Box
-                sx={{
-                  px: 2,
-                  py: 1,
-                  borderRadius: 2,
-                  bgcolor: settings.storePublished ? 'success.50' : 'warning.50',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 1,
-                }}
-              >
-                <Box
-                  sx={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: '50%',
-                    bgcolor: settings.storePublished ? 'success.main' : 'warning.main',
-                  }}
-                />
-                <Typography
-                  variant="body2"
-                  fontWeight={600}
-                  color={settings.storePublished ? 'success.main' : 'warning.main'}
-                >
-                  {settings.storePublished ? 'Loja Publicada' : 'Loja em Rascunho'}
-                </Typography>
+            <Alert severity="info" sx={{ borderRadius: 2, mb: 2 }}>
+              <Typography variant="body2">
+                <strong>Como funciona:</strong>
+              </Typography>
+              <Box component="ul" sx={{ mt: 1, mb: 0, pl: 2 }}>
+                <li>Alunos podem fazer check-in de 30 minutos antes do inicio ate 1 hora apos o fim da aula</li>
+                <li>O check-in fica como &quot;pendente&quot; ate o professor confirmar</li>
+                <li>Na tela de chamada, o professor ve um botao &quot;Check-ins&quot; com os alunos que fizeram check-in</li>
+                <li>Ao confirmar, os check-ins sao convertidos em presencas oficiais</li>
               </Box>
-            </Box>
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={settings.storePublished}
-                  onChange={(e) =>
-                    setSettings({ ...settings, storePublished: e.target.checked })
-                  }
-                  color="success"
-                />
-              }
-              label={
-                <Box>
-                  <Typography variant="body1" fontWeight={500}>
-                    Publicar Loja
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Quando publicada, os alunos poderao ver e comprar produtos
-                  </Typography>
-                </Box>
-              }
-            />
-
-            {!settings.storePublished && (
-              <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
-                <Typography variant="body2">
-                  Sua loja esta em modo rascunho. Adicione produtos em <strong>/loja</strong> e depois publique quando estiver pronta.
-                </Typography>
-              </Alert>
-            )}
+            </Alert>
           </Box>
         )}
 
-        <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-          <Button
-            variant="contained"
-            startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? 'Salvando...' : 'Salvar'}
-          </Button>
-        </Box>
+        <SaveButton saving={saving} onClick={handleSave} />
       </SettingsSection>
     </>
   );
 }
-
 
 // ============================================
 // System Tab (Maintenance)
@@ -1330,7 +1300,6 @@ function MonitorsTab() {
   const [linkedStudents, setLinkedStudents] = useState<Student[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
 
-  // Load monitors and linked students
   useEffect(() => {
     const loadData = async () => {
       if (!academyId) {
@@ -1342,11 +1311,9 @@ function MonitorsTab() {
         const studentService = createStudentService(academyId);
         const allStudents = await studentService.getAll();
 
-        // Get students with linkedUserId (students who have linked accounts)
         const linked = allStudents.filter(s => s.linkedUserId && s.status === 'active');
         setLinkedStudents(linked);
 
-        // Get current monitors
         const monitorIds = academy?.monitorIds || [];
         const currentMonitors = allStudents.filter(s => monitorIds.includes(s.id));
         setMonitors(currentMonitors);
@@ -1369,14 +1336,7 @@ function MonitorsTab() {
       const settingsServiceInstance = createSettingsService(academyId);
       await settingsServiceInstance.addMonitor(selectedStudentId);
 
-      // Update local state
-      const addedStudent = linkedStudents.find(s => s.id === selectedStudentId);
-      if (addedStudent) {
-        setMonitors(prev => [...prev, addedStudent]);
-      }
       setSelectedStudentId('');
-
-      // Refresh academy data to update context
       await refreshAcademy();
 
       success('Monitor adicionado com sucesso!');
@@ -1396,10 +1356,6 @@ function MonitorsTab() {
       const settingsServiceInstance = createSettingsService(academyId);
       await settingsServiceInstance.removeMonitor(studentId);
 
-      // Update local state
-      setMonitors(prev => prev.filter(m => m.id !== studentId));
-
-      // Refresh academy data to update context
       await refreshAcademy();
 
       success('Monitor removido com sucesso!');
@@ -1411,7 +1367,6 @@ function MonitorsTab() {
     }
   };
 
-  // Filter out students who are already monitors
   const availableStudents = linkedStudents.filter(
     s => !monitors.some(m => m.id === s.id)
   );
@@ -1575,14 +1530,17 @@ export default function ConfiguracoesPage() {
   const tabs = [
     { label: 'Perfil', icon: User },
     { label: 'Academia', icon: Building2 },
-    { label: 'Monitores', icon: Shield },
+    { label: 'Aparencia', icon: Palette },
+    { label: 'Pagamentos', icon: Wallet },
+    { label: 'Loja', icon: Store },
+    { label: 'Recursos', icon: Settings },
     { label: 'Sistema', icon: Wrench },
   ];
 
   return (
     <ProtectedRoute>
       <AppLayout title="Configuracoes">
-        <Box>
+        <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
           <Box sx={{ mb: 3 }}>
             <Typography variant="h4" fontWeight={700}>
@@ -1605,8 +1563,8 @@ export default function ConfiguracoesPage() {
                     '& .MuiTab-root': {
                       justifyContent: 'flex-start',
                       textAlign: 'left',
-                      minHeight: 56,
-                      px: 3,
+                      minHeight: 48,
+                      px: 2.5,
                     },
                   }}
                 >
@@ -1632,8 +1590,11 @@ export default function ConfiguracoesPage() {
             <Grid size={{ xs: 12, md: 9 }}>
               {tabValue === 0 && <ProfileTab />}
               {tabValue === 1 && <AcademyTab />}
-              {tabValue === 2 && <MonitorsTab />}
-              {tabValue === 3 && <SystemTab />}
+              {tabValue === 2 && <AppearanceTab />}
+              {tabValue === 3 && <PaymentsTab />}
+              {tabValue === 4 && <StoreTab />}
+              {tabValue === 5 && <ResourcesTab />}
+              {tabValue === 6 && <SystemTab />}
             </Grid>
           </Grid>
         </Box>

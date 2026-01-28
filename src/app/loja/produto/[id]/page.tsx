@@ -84,7 +84,7 @@ export default function EditarProdutoPage() {
   const router = useRouter();
   const params = useParams();
   const productId = params.id as string;
-  const { academy } = useAcademy();
+  const { academy, isLoading: isAcademyLoading } = useAcademy();
   const { success, error: showError } = useFeedback();
   const { getProduct, updateProduct, isUpdatingProduct } = useStore();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -110,6 +110,9 @@ export default function EditarProdutoPage() {
 
   // Load product data
   useEffect(() => {
+    // Wait for academy to load
+    if (isAcademyLoading || !academy) return;
+
     const loadProduct = async () => {
       try {
         const product = await getProduct(productId);
@@ -137,7 +140,7 @@ export default function EditarProdutoPage() {
     };
 
     loadProduct();
-  }, [productId, getProduct, showError]);
+  }, [productId, getProduct, showError, isAcademyLoading, academy]);
 
   // Handlers
   const handleAddSize = () => {
@@ -254,11 +257,11 @@ export default function EditarProdutoPage() {
     }
   };
 
-  if (loading) {
+  if (loading || isAcademyLoading) {
     return (
       <ProtectedRoute>
         <AppLayout title="Editar Produto">
-          <Box sx={{ maxWidth: 800, mx: 'auto' }}>
+          <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 800, mx: 'auto' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
               <Skeleton variant="circular" width={40} height={40} />
               <Box>
@@ -307,7 +310,7 @@ export default function EditarProdutoPage() {
   return (
     <ProtectedRoute>
       <AppLayout title="Editar Produto">
-        <Box sx={{ maxWidth: 800, mx: 'auto' }}>
+        <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 800, mx: 'auto' }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
             <IconButton onClick={() => router.back()}>

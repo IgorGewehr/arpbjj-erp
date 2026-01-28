@@ -39,9 +39,8 @@ export interface AcademySettings {
   pixKey?: string;
   pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
 
-  // AbacatePay Integration
+  // AbacatePay Integration (API key is global in env, not per-academy)
   abacatePayEnabled?: boolean;
-  abacatePayApiKey?: string;
 
   // Auto-graduation Settings
   autoGraduationEnabled?: boolean;
@@ -52,6 +51,10 @@ export interface AcademySettings {
   storePublished?: boolean;
   storeWelcomeMessage?: string;
   storeMinOrderAmount?: number;
+  storeCreditCardEnabled?: boolean;  // Enable credit card payments in store
+
+  // Student Check-in Settings
+  studentCheckinEnabled?: boolean;
 
   // Monitors
   monitorIds?: string[];
@@ -101,13 +104,13 @@ class SettingsService {
           pixKey: data.pixKey,
           pixKeyType: data.pixKeyType,
           abacatePayEnabled: data.abacatePayEnabled || false,
-          abacatePayApiKey: data.abacatePayApiKey,
           autoGraduationEnabled: data.autoGraduationEnabled || false,
           autoGraduationAttendances: data.autoGraduationAttendances,
           storeEnabled: data.storeEnabled || false,
           storePublished: data.storePublished || false,
           storeWelcomeMessage: data.storeWelcomeMessage,
           storeMinOrderAmount: data.storeMinOrderAmount,
+          studentCheckinEnabled: data.studentCheckinEnabled || false,
           monitorIds: data.monitorIds || [],
           updatedAt: data.updatedAt?.toDate(),
         };
@@ -151,13 +154,13 @@ class SettingsService {
       if (settings.pixKey !== undefined) settingsData.pixKey = settings.pixKey;
       if (settings.pixKeyType !== undefined) settingsData.pixKeyType = settings.pixKeyType;
       if (settings.abacatePayEnabled !== undefined) settingsData.abacatePayEnabled = settings.abacatePayEnabled;
-      if (settings.abacatePayApiKey !== undefined) settingsData.abacatePayApiKey = settings.abacatePayApiKey;
       if (settings.autoGraduationEnabled !== undefined) settingsData.autoGraduationEnabled = settings.autoGraduationEnabled;
       if (settings.autoGraduationAttendances !== undefined) settingsData.autoGraduationAttendances = settings.autoGraduationAttendances;
       if (settings.storeEnabled !== undefined) settingsData.storeEnabled = settings.storeEnabled;
       if (settings.storePublished !== undefined) settingsData.storePublished = settings.storePublished;
       if (settings.storeWelcomeMessage !== undefined) settingsData.storeWelcomeMessage = settings.storeWelcomeMessage;
       if (settings.storeMinOrderAmount !== undefined) settingsData.storeMinOrderAmount = settings.storeMinOrderAmount;
+      if (settings.studentCheckinEnabled !== undefined) settingsData.studentCheckinEnabled = settings.studentCheckinEnabled;
 
       await setDoc(this.academyRef, settingsData, { merge: true });
     } catch (error) {
@@ -178,18 +181,13 @@ class SettingsService {
 
   // ============================================
   // Toggle AbacatePay
+  // API key is global (in environment variable), not per-academy
   // ============================================
-  async toggleAbacatePay(enabled: boolean, apiKey?: string): Promise<void> {
-    const updateData: Record<string, unknown> = {
+  async toggleAbacatePay(enabled: boolean): Promise<void> {
+    await updateDoc(this.academyRef, {
       abacatePayEnabled: enabled,
       updatedAt: serverTimestamp(),
-    };
-
-    if (apiKey !== undefined) {
-      updateData.abacatePayApiKey = apiKey;
-    }
-
-    await updateDoc(this.academyRef, updateData);
+    });
   }
 
   // ============================================
@@ -273,7 +271,6 @@ class SettingsService {
         pixKey: data.pixKey,
         pixKeyType: data.pixKeyType,
         abacatePayEnabled: data.abacatePayEnabled || false,
-        abacatePayApiKey: data.abacatePayApiKey,
         // Auto-graduation
         autoGraduationEnabled: data.autoGraduationEnabled || false,
         autoGraduationAttendances: data.autoGraduationAttendances,
@@ -282,6 +279,8 @@ class SettingsService {
         storePublished: data.storePublished || false,
         storeWelcomeMessage: data.storeWelcomeMessage,
         storeMinOrderAmount: data.storeMinOrderAmount,
+        // Student Check-in
+        studentCheckinEnabled: data.studentCheckinEnabled || false,
         // Monitors
         monitorIds: data.monitorIds || [],
         // Subscription & Metadata

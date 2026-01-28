@@ -1096,7 +1096,7 @@ export default function RelatoriosPage() {
   return (
     <ProtectedRoute>
       <AppLayout title="Relatorios">
-        <Box>
+        <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
           <Box
             sx={{

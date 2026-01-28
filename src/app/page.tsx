@@ -4,23 +4,29 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Box, CircularProgress } from '@mui/material';
 import { useAuth } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { getDefaultRoute } from '@/lib/permissions';
 
 export default function Home() {
   const router = useRouter();
   const { isAuthenticated, loading, user } = useAuth();
+  const { academyUser, isLoading: academyLoading } = useAcademy();
 
   useEffect(() => {
-    if (!loading) {
-      if (isAuthenticated && user) {
-        // Redirect based on user role
-        const defaultRoute = getDefaultRoute(user.role);
+    const isLoading = loading || (isAuthenticated && academyLoading);
+
+    if (!isLoading) {
+      if (isAuthenticated && user && academyUser) {
+        // Redirect based on academy-specific role
+        const defaultRoute = getDefaultRoute(academyUser.role);
         router.replace(defaultRoute);
-      } else {
+      } else if (!isAuthenticated) {
         router.replace('/login');
       }
+      // If authenticated but no academyUser, user may need to link account
+      // The ProtectedRoute will handle this case
     }
-  }, [isAuthenticated, loading, user, router]);
+  }, [isAuthenticated, loading, user, academyUser, academyLoading, router]);
 
   return (
     <Box

@@ -147,6 +147,15 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       '/portal/competicoes',
       '/portal/linha-do-tempo',
       '/portal/comportamento',
+      // Monitor routes (access controlled by isMonitor check in page components)
+      '/portal/chamada',
+      '/portal/alunos',
+      '/portal/alunos/[id]',
+      '/portal/alunos/[id]/editar',
+      '/portal/alunos/novo',
+      // Store (access controlled by academy storePublished flag)
+      '/portal/loja',
+      '/portal/loja/carrinho',
     ],
     defaultRoute: '/portal',
   },

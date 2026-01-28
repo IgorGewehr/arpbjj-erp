@@ -472,26 +472,7 @@ export default function StudentCompetitionsPage() {
   return (
     <FadeIn>
       <Box>
-        {/* Header */}
-        <Box sx={{ mb: 3 }}>
-          <Typography
-            variant="h6"
-            fontWeight={600}
-            color="text.primary"
-            sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
-          >
-            Competições
-          </Typography>
-          <Typography
-            variant="body2"
-            color="text.secondary"
-            sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
-          >
-            Veja as competições disponíveis e seus resultados
-          </Typography>
-        </Box>
-
-        {/* Medal Stats */}
+        {/* Medal Stats Card */}
         <SlideIn direction="up" delay={0.1}>
           <Box
             sx={{
@@ -567,7 +548,7 @@ export default function StudentCompetitionsPage() {
                   {medalStats.participations}
                 </Typography>
                 <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' } }}>
-                  Participações
+                  Participacoes
                 </Typography>
               </Box>
             </Box>

@@ -486,289 +486,295 @@ export default function PortalFinanceiroPage() {
     </Paper>
   );
 
+  const totalDebt = stats.pendingAmount + stats.overdueAmount;
+
   return (
     <Box>
-      {/* Header */}
-      <Box sx={{ mb: 3 }}>
-        <Typography
-          variant="h6"
-          fontWeight={600}
-          color="text.primary"
-          sx={{ fontSize: { xs: '1.1rem', sm: '1.25rem' } }}
-        >
-          Financeiro
-        </Typography>
-        <Typography
-          variant="body2"
-          color="text.secondary"
-          sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
-        >
-          Acompanhe suas mensalidades e pagamentos
-        </Typography>
-        {dueDay && (
+      {/* Main Balance Card with Gradient */}
+      <Box
+        sx={{
+          p: { xs: 2.5, sm: 3 },
+          mb: 3,
+          borderRadius: 3,
+          background: hasDebts
+            ? 'linear-gradient(135deg, #7C3AED 0%, #5B21B6 100%)'
+            : 'linear-gradient(135deg, #059669 0%, #047857 100%)',
+          boxShadow: hasDebts
+            ? '0 10px 40px rgba(124, 58, 237, 0.3)'
+            : '0 10px 40px rgba(5, 150, 105, 0.3)',
+          color: '#fff',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
           <Box
             sx={{
-              mt: 1.5,
-              px: 2,
-              py: 1,
-              bgcolor: 'primary.50',
-              borderRadius: 1,
-              display: 'inline-flex',
+              width: 40,
+              height: 40,
+              borderRadius: 2,
+              bgcolor: 'rgba(255,255,255,0.2)',
+              display: 'flex',
               alignItems: 'center',
-              gap: 1,
+              justifyContent: 'center',
             }}
           >
-            <Calendar size={14} color="#1976d2" />
-            <Typography variant="caption" color="primary.dark" fontWeight={600}>
-              Vencimento: Dia {dueDay} de cada mes
-            </Typography>
+            {hasDebts ? <DollarSign size={20} /> : <CheckCircle size={20} />}
           </Box>
+          <Typography sx={{ fontSize: '0.9rem', opacity: 0.9 }}>
+            {hasDebts ? 'Total em Aberto' : 'Tudo em Dia'}
+          </Typography>
+        </Box>
+
+        {isLoading ? (
+          <Skeleton variant="text" width={180} height={48} sx={{ bgcolor: 'rgba(255,255,255,0.2)' }} />
+        ) : (
+          <Typography
+            sx={{
+              fontSize: { xs: '2rem', sm: '2.5rem' },
+              fontWeight: 700,
+              letterSpacing: -1,
+              lineHeight: 1,
+            }}
+          >
+            {formatCurrency(totalDebt)}
+          </Typography>
+        )}
+
+        {hasDebts && !isLoading && (
+          <Typography sx={{ mt: 1, fontSize: '0.85rem', opacity: 0.85 }}>
+            {stats.pendingCount + stats.overdueCount} pagamento(s) pendente(s)
+          </Typography>
         )}
       </Box>
 
-      {/* Alert for overdue */}
-      {stats.overdueCount > 0 && (
+      {/* Stats Cards */}
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: 'repeat(3, 1fr)', sm: 'repeat(3, 1fr)' },
+          gap: { xs: 1, sm: 2 },
+          mb: 3,
+        }}
+      >
+        {/* Pending */}
         <Box
           sx={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: 1.5,
-            p: 2,
-            mb: 3,
-            bgcolor: '#FEE2E2',
+            p: { xs: 1.5, sm: 2 },
+            bgcolor: '#fff',
             borderRadius: 2,
-            border: '1px solid #FECACA',
+            border: '1px solid',
+            borderColor: 'grey.200',
           }}
         >
-          <AlertCircle size={18} color="#DC2626" style={{ flexShrink: 0, marginTop: 2 }} />
-          <Box sx={{ flex: 1 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Box
+              sx={{
+                width: { xs: 28, sm: 32 },
+                height: { xs: 28, sm: 32 },
+                borderRadius: 1.5,
+                bgcolor: '#FEF3C7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <Clock size={isMobile ? 14 : 16} color="#D97706" />
+            </Box>
             <Typography
-              variant="body2"
-              sx={{ color: '#991B1B', fontSize: { xs: '0.8rem', sm: '0.875rem' }, mb: pixKey ? 1 : 0 }}
+              sx={{
+                fontSize: { xs: '1.1rem', sm: '1.25rem' },
+                fontWeight: 700,
+              }}
             >
-              Voce tem {stats.overdueCount} pagamento{stats.overdueCount > 1 ? 's' : ''} em atraso
-              totalizando {formatCurrency(stats.overdueAmount)}.
+              {stats.pendingCount}
             </Typography>
-            {pixKey && (
-              <Button
-                size="small"
-                variant="outlined"
-                color="error"
-                startIcon={<Copy size={14} />}
-                onClick={handleCopyPix}
-                sx={{ fontSize: { xs: '0.75rem', sm: '0.8rem' } }}
-              >
-                Copiar PIX
-              </Button>
-            )}
-          </Box>
-        </Box>
-      )}
-
-      {/* Stats */}
-      <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, 1fr)' }, gap: { xs: 1.5, sm: 2 }, mb: 3 }}>
-        <Box
-          sx={{
-            p: { xs: 2, sm: 2.5 },
-            bgcolor: '#fff',
-            borderRadius: 2,
-            border: '1px solid',
-            borderColor: 'grey.200',
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2 } }}>
-            <Box
-              sx={{
-                width: { xs: 36, sm: 44 },
-                height: { xs: 36, sm: 44 },
-                borderRadius: 2,
-                bgcolor: '#FEF9C3',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <Clock size={isMobile ? 18 : 22} color="#D97706" />
-            </Box>
-            <Box>
-              {isLoading ? (
-                <Skeleton variant="text" width={80} height={24} />
-              ) : (
-                <Typography
-                  variant="h6"
-                  fontWeight={700}
-                  sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, lineHeight: 1.2 }}
-                >
-                  {formatCurrency(stats.pendingAmount)}
-                </Typography>
-              )}
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                Pendente ({stats.pendingCount})
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
-
-        <Box
-          sx={{
-            p: { xs: 2, sm: 2.5 },
-            bgcolor: '#fff',
-            borderRadius: 2,
-            border: '1px solid',
-            borderColor: stats.overdueCount > 0 ? 'error.main' : 'grey.200',
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2 } }}>
-            <Box
-              sx={{
-                width: { xs: 36, sm: 44 },
-                height: { xs: 36, sm: 44 },
-                borderRadius: 2,
-                bgcolor: '#FEE2E2',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <AlertCircle size={isMobile ? 18 : 22} color="#DC2626" />
-            </Box>
-            <Box>
-              {isLoading ? (
-                <Skeleton variant="text" width={80} height={24} />
-              ) : (
-                <Typography
-                  variant="h6"
-                  fontWeight={700}
-                  color="error.main"
-                  sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, lineHeight: 1.2 }}
-                >
-                  {formatCurrency(stats.overdueAmount)}
-                </Typography>
-              )}
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                Em Atraso ({stats.overdueCount})
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
-
-        <Box
-          sx={{
-            p: { xs: 2, sm: 2.5 },
-            bgcolor: '#fff',
-            borderRadius: 2,
-            border: '1px solid',
-            borderColor: 'grey.200',
-          }}
-        >
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, sm: 2 } }}>
-            <Box
-              sx={{
-                width: { xs: 36, sm: 44 },
-                height: { xs: 36, sm: 44 },
-                borderRadius: 2,
-                bgcolor: '#DCFCE7',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                flexShrink: 0,
-              }}
-            >
-              <CheckCircle size={isMobile ? 18 : 22} color="#16A34A" />
-            </Box>
-            <Box>
-              {isLoading ? (
-                <Skeleton variant="text" width={80} height={24} />
-              ) : (
-                <Typography
-                  variant="h6"
-                  fontWeight={700}
-                  color="success.main"
-                  sx={{ fontSize: { xs: '1rem', sm: '1.25rem' }, lineHeight: 1.2 }}
-                >
-                  {formatCurrency(stats.totalPaid)}
-                </Typography>
-              )}
-              <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                Total Pago ({stats.paidCount})
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
-      </Box>
-
-      {/* Payment Info */}
-      {hasDebts && pixKey && (
-        <Box
-          sx={{
-            p: { xs: 2, sm: 2.5 },
-            mb: 3,
-            bgcolor: '#EFF6FF',
-            borderRadius: 2,
-            border: '1px solid #BFDBFE',
-          }}
-        >
-          <Typography
-            variant="body2"
-            fontWeight={600}
-            sx={{ mb: 1.5, fontSize: { xs: '0.85rem', sm: '0.9rem' } }}
-          >
-            Dados para Pagamento
-          </Typography>
-          <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, gap: 2 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flex: 1 }}>
-              <CreditCard size={18} color="#1D4ED8" />
-              <Box>
-                <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                  Chave PIX
-                </Typography>
-                <Typography variant="body2" fontWeight={600} sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' } }}>
-                  {pixKey}
-                </Typography>
-              </Box>
-              <Button
-                size="small"
-                startIcon={<Copy size={12} />}
-                onClick={handleCopyPix}
-                sx={{ ml: 'auto', fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
-              >
-                Copiar
-              </Button>
-            </Box>
           </Box>
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ display: 'block', mt: 1.5, fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+            sx={{ fontSize: { xs: '0.65rem', sm: '0.7rem' } }}
           >
-            Apos o pagamento, envie o comprovante via WhatsApp para confirmar.
+            Pendentes
           </Typography>
+          {!isLoading && stats.pendingAmount > 0 && (
+            <Typography
+              sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' }, fontWeight: 600, mt: 0.5 }}
+            >
+              {formatCurrency(stats.pendingAmount)}
+            </Typography>
+          )}
+        </Box>
+
+        {/* Overdue */}
+        <Box
+          sx={{
+            p: { xs: 1.5, sm: 2 },
+            bgcolor: '#fff',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: stats.overdueCount > 0 ? 'rgba(220, 38, 38, 0.3)' : 'grey.200',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Box
+              sx={{
+                width: { xs: 28, sm: 32 },
+                height: { xs: 28, sm: 32 },
+                borderRadius: 1.5,
+                bgcolor: '#FEE2E2',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <AlertCircle size={isMobile ? 14 : 16} color="#DC2626" />
+            </Box>
+            <Typography
+              sx={{
+                fontSize: { xs: '1.1rem', sm: '1.25rem' },
+                fontWeight: 700,
+                color: stats.overdueCount > 0 ? 'error.main' : 'text.primary',
+              }}
+            >
+              {stats.overdueCount}
+            </Typography>
+          </Box>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontSize: { xs: '0.65rem', sm: '0.7rem' } }}
+          >
+            Atrasados
+          </Typography>
+          {!isLoading && stats.overdueAmount > 0 && (
+            <Typography
+              sx={{
+                fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                fontWeight: 600,
+                mt: 0.5,
+                color: 'error.main',
+              }}
+            >
+              {formatCurrency(stats.overdueAmount)}
+            </Typography>
+          )}
+        </Box>
+
+        {/* Paid */}
+        <Box
+          sx={{
+            p: { xs: 1.5, sm: 2 },
+            bgcolor: '#fff',
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'grey.200',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+            <Box
+              sx={{
+                width: { xs: 28, sm: 32 },
+                height: { xs: 28, sm: 32 },
+                borderRadius: 1.5,
+                bgcolor: '#DCFCE7',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+            >
+              <CheckCircle size={isMobile ? 14 : 16} color="#16A34A" />
+            </Box>
+            <Typography
+              sx={{
+                fontSize: { xs: '1.1rem', sm: '1.25rem' },
+                fontWeight: 700,
+                color: 'success.main',
+              }}
+            >
+              {stats.paidCount}
+            </Typography>
+          </Box>
+          <Typography
+            variant="caption"
+            color="text.secondary"
+            sx={{ fontSize: { xs: '0.65rem', sm: '0.7rem' } }}
+          >
+            Pagos
+          </Typography>
+        </Box>
+      </Box>
+
+      {/* PIX Info Card */}
+      {hasDebts && pixKey && (
+        <Box
+          sx={{
+            p: 2,
+            mb: 3,
+            borderRadius: 2,
+            background: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
+            color: '#fff',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+            <Box
+              sx={{
+                width: 44,
+                height: 44,
+                borderRadius: 2,
+                bgcolor: 'rgba(255,255,255,0.2)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0,
+              }}
+            >
+              <QrCode size={22} />
+            </Box>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+              <Typography sx={{ fontSize: '0.75rem', opacity: 0.85 }}>Chave PIX</Typography>
+              <Typography
+                sx={{
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                }}
+              >
+                {pixKey}
+              </Typography>
+            </Box>
+            <Button
+              size="small"
+              variant="contained"
+              startIcon={<Copy size={14} />}
+              onClick={handleCopyPix}
+              sx={{
+                bgcolor: '#fff',
+                color: '#1D4ED8',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' },
+                fontSize: '0.75rem',
+                flexShrink: 0,
+              }}
+            >
+              Copiar
+            </Button>
+          </Box>
         </Box>
       )}
 
       {/* Payments List/Table */}
-      {isMobile ? (
-        <Box>
-          <Typography
-            variant="body2"
-            fontWeight={600}
-            color="text.secondary"
-            sx={{
-              mb: 1.5,
-              fontSize: '0.75rem',
-              textTransform: 'uppercase',
-              letterSpacing: 0.5,
-            }}
-          >
-            Historico de Pagamentos
-          </Typography>
-          {renderMobilePaymentList()}
-        </Box>
-      ) : (
-        renderDesktopTable()
-      )}
+      <Box>
+        <Typography
+          sx={{
+            mb: 2,
+            fontSize: { xs: '0.9rem', sm: '1rem' },
+            fontWeight: 600,
+          }}
+        >
+          Historico de Pagamentos
+        </Typography>
+        {isMobile ? renderMobilePaymentList() : renderDesktopTable()}
+      </Box>
 
       {/* Payment Dialog */}
       <PaymentDialog

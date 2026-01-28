@@ -42,11 +42,14 @@ import {
   History,
   RefreshCw,
   UserPlus,
+  UserCheck,
 } from 'lucide-react';
 import { AttendanceCard, AttendanceCardSkeleton } from './AttendanceCard';
 import { MobileAttendanceList } from './MobileAttendanceList';
 import { QuickAddToClassDialog } from './QuickAddToClassDialog';
-import { useAttendance, useClasses } from '@/hooks';
+import { CheckinConfirmDialog } from '../checkin/CheckinConfirmDialog';
+import { useAttendance, useClasses, useCheckin } from '@/hooks';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useConfirmDialog } from '@/components/providers';
 import {
   format,
@@ -445,11 +448,26 @@ export function AttendanceGrid({
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [mobileCalendarOpen, setMobileCalendarOpen] = useState(false);
   const [quickAddDialogOpen, setQuickAddDialogOpen] = useState(false);
+  const [checkinDialogOpen, setCheckinDialogOpen] = useState(false);
   const [isAddingStudent, setIsAddingStudent] = useState(false);
   const { confirm } = useConfirmDialog();
+  const { academy } = useAcademy();
 
   // Hook for adding students to class
   const { toggleStudent } = useClasses();
+
+  // Check-in hooks
+  const {
+    usePendingCheckins,
+    removeCheckin,
+    addManualCheckin,
+    confirmCheckins,
+    isConfirmingCheckins,
+    isRemovingCheckin,
+    isAddingManualCheckin,
+  } = useCheckin();
+
+  const checkinEnabled = academy?.studentCheckinEnabled || false;
 
   const {
     students,
@@ -474,6 +492,12 @@ export function AttendanceGrid({
     isMutating,
     refresh,
   } = useAttendance({ autoDetectClass: true });
+
+  // Fetch pending check-ins for selected class and date
+  const { data: pendingCheckins = [] } = usePendingCheckins(
+    checkinEnabled ? selectedClassId : null,
+    selectedDate
+  );
 
   // Handle class change
   const handleClassChange = (event: SelectChangeEvent<string>) => {
@@ -586,6 +610,46 @@ export function AttendanceGrid({
     return selectedClass?.studentIds || [];
   }, [selectedClass]);
 
+  // Handle check-in operations
+  const handleRemoveCheckin = useCallback(
+    async (checkinId: string) => {
+      await removeCheckin(checkinId);
+    },
+    [removeCheckin]
+  );
+
+  const handleAddManualCheckin = useCallback(
+    async (student: Student) => {
+      if (!selectedClass || !selectedScheduleTime) return;
+
+      const dayOfWeek = selectedDate.getDay();
+      const schedule = selectedClass.schedule?.find(
+        s => s.dayOfWeek === dayOfWeek && s.startTime === selectedScheduleTime
+      );
+
+      if (!schedule) return;
+
+      await addManualCheckin({
+        studentId: student.id,
+        studentName: student.fullName,
+        classData: selectedClass,
+        scheduleStartTime: schedule.startTime,
+        scheduleEndTime: schedule.endTime,
+        scheduleDayOfWeek: dayOfWeek,
+        date: selectedDate,
+      });
+    },
+    [selectedClass, selectedScheduleTime, selectedDate, addManualCheckin]
+  );
+
+  const handleConfirmCheckins = useCallback(
+    async (checkinIds: string[]) => {
+      await confirmCheckins(checkinIds);
+      refresh();
+    },
+    [confirmCheckins, refresh]
+  );
+
   // Format selected date
   const formattedDate = useMemo(() => {
     return format(selectedDate, "EEEE, d 'de' MMMM", { locale: ptBR });
@@ -638,7 +702,7 @@ export function AttendanceGrid({
   }
 
   return (
-    <Box>
+    <Box sx={{ p: { xs: 2, sm: 3 } }}>
       {/* Header - Desktop Only */}
       <Box
         sx={{
@@ -985,6 +1049,25 @@ export function AttendanceGrid({
                   }}
                 />
 
+                {/* Check-ins Button */}
+                {checkinEnabled && pendingCheckins.length > 0 && (
+                  <Button
+                    variant="contained"
+                    size="small"
+                    onClick={() => setCheckinDialogOpen(true)}
+                    startIcon={<UserCheck size={16} />}
+                    sx={{
+                      bgcolor: '#16A34A',
+                      '&:hover': { bgcolor: '#15803D' },
+                      fontSize: '0.875rem',
+                      px: 2,
+                      textTransform: 'none',
+                    }}
+                  >
+                    Check-ins ({pendingCheckins.length})
+                  </Button>
+                )}
+
                 {/* Bulk Actions */}
                 <ButtonGroup variant="outlined" size="small">
                   <Button
@@ -1192,6 +1275,23 @@ export function AttendanceGrid({
         onAddAndMarkPresent={handleAddAndMarkPresent}
         isAdding={isAddingStudent}
       />
+
+      {/* Check-in Confirm Dialog */}
+      {checkinEnabled && (
+        <CheckinConfirmDialog
+          open={checkinDialogOpen}
+          onClose={() => setCheckinDialogOpen(false)}
+          selectedClass={selectedClass}
+          checkins={pendingCheckins}
+          allStudents={allActiveStudents}
+          onRemoveCheckin={handleRemoveCheckin}
+          onAddManualCheckin={handleAddManualCheckin}
+          onConfirmCheckins={handleConfirmCheckins}
+          isConfirming={isConfirmingCheckins}
+          isRemoving={isRemovingCheckin}
+          isAdding={isAddingManualCheckin}
+        />
+      )}
     </Box>
   );
 }

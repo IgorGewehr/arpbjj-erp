@@ -645,7 +645,7 @@ export default function StudentProfilePage() {
     return (
       <ProtectedRoute>
         <AppLayout title="Perfil do Aluno">
-          <Box>
+          <Box sx={{ p: { xs: 2, sm: 3 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
               <Skeleton variant="circular" width={40} height={40} />
               <Box sx={{ flex: 1 }}>
@@ -672,7 +672,8 @@ export default function StudentProfilePage() {
     return (
       <ProtectedRoute>
         <AppLayout title="Aluno nao encontrado">
-          <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
+          <Box sx={{ p: { xs: 2, sm: 3 } }}>
+            <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
             <User size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
             <Typography variant="h6" gutterBottom>
               Aluno nao encontrado
@@ -684,6 +685,7 @@ export default function StudentProfilePage() {
               Voltar para Lista
             </Button>
           </Paper>
+          </Box>
         </AppLayout>
       </ProtectedRoute>
     );
@@ -692,7 +694,7 @@ export default function StudentProfilePage() {
   return (
     <ProtectedRoute>
       <AppLayout title="Perfil do Aluno">
-        <Box>
+        <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
             <IconButton onClick={handleBack}>

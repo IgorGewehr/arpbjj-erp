@@ -9,3 +9,4 @@ export { useAcademySettings } from './useAcademySettings';
 export { useSwipeNavigation } from './useSwipeNavigation';
 export { useStore, useStoreCart } from './useStore';
 export { useIsMonitor } from './useIsMonitor';
+export { useCheckin } from './useCheckin';

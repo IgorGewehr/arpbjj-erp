@@ -118,7 +118,7 @@ service cloud.firestore {
       // Owner or admin can update academy settings
       allow update: if (isAcademyOwner(academyId) || isAcademyAdmin(academyId))
                     && !request.resource.data.diff(resource.data).affectedKeys()
-                        .hasAny(['ownerId', 'createdAt', 'abacatePayApiKey']);
+                        .hasAny(['ownerId', 'createdAt']);
 
       // Never allow delete or create from client
       allow create, delete: if false;

@@ -162,7 +162,7 @@ export function GraduationDashboard() {
     : 0;
 
   return (
-    <Box>
+    <Box sx={{ p: { xs: 2, sm: 3 } }}>
       {/* Header */}
       <Box sx={{ mb: { xs: 2, sm: 4 } }}>
         <Typography

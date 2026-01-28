@@ -11,6 +11,7 @@ export { settingsService, createSettingsService } from './settingsService';
 export { linkCodeService, createLinkCodeService } from './linkCodeService';
 export { competitionService, createCompetitionService } from './competitionService';
 export { competitionEnrollmentService, createCompetitionEnrollmentService } from './competitionEnrollmentService';
+export { createCheckinService } from './checkinService';
 
 // Multi-tenant services (factory functions only)
 export { createNotificationService } from './notificationService';

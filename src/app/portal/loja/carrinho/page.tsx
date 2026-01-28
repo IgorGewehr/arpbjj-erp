@@ -9,11 +9,6 @@ import {
   Button,
   IconButton,
   Divider,
-  Skeleton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  CircularProgress,
   Alert,
 } from '@mui/material';
 import {
@@ -23,20 +18,20 @@ import {
   Minus,
   ShoppingCart,
   CreditCard,
-  Copy,
-  CheckCircle,
 } from 'lucide-react';
-import QRCode from 'qrcode';
 import { useStoreCart } from '@/hooks';
-import { useFeedback, useAuth } from '@/components/providers';
-import { StoreOrderItem, FinancialPaymentLink } from '@/types';
+import { useFeedback } from '@/components/providers';
+import { CartItemInput } from '@/types';
+import { CheckoutDialog } from '@/components/features/store';
 
 // ============================================
 // Cart Storage (localStorage)
+// Note: displayPrice is stored for UI display only
+// Actual prices are always fetched from server on checkout
 // ============================================
 const CART_KEY = 'marcusjj_cart';
 
-function getCart(): StoreOrderItem[] {
+function getCart(): CartItemInput[] {
   if (typeof window === 'undefined') return [];
   try {
     const cart = localStorage.getItem(CART_KEY);
@@ -46,7 +41,7 @@ function getCart(): StoreOrderItem[] {
   }
 }
 
-function saveCart(items: StoreOrderItem[]): void {
+function saveCart(items: CartItemInput[]): void {
   if (typeof window === 'undefined') return;
   localStorage.setItem(CART_KEY, JSON.stringify(items));
 }
@@ -60,7 +55,7 @@ function clearCart(): void {
 // Cart Item Component
 // ============================================
 interface CartItemCardProps {
-  item: StoreOrderItem;
+  item: CartItemInput;
   onUpdateQuantity: (quantity: number) => void;
   onRemove: () => void;
 }
@@ -79,7 +74,7 @@ function CartItemCard({ item, onUpdateQuantity, onRemove }: CartItemCardProps) {
             </Typography>
           )}
           <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: 0.5 }}>
-            R$ {(item.unitPrice / 100).toFixed(2)} cada
+            R$ {(item.displayPrice / 100).toFixed(2)} cada
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
@@ -111,114 +106,13 @@ function CartItemCard({ item, onUpdateQuantity, onRemove }: CartItemCardProps) {
       <Divider sx={{ my: 1.5 }} />
       <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
         <Typography variant="body2" color="text.secondary">
-          Subtotal
+          Subtotal (estimado)
         </Typography>
         <Typography variant="body2" fontWeight={600}>
-          R$ {((item.unitPrice * item.quantity) / 100).toFixed(2)}
+          R$ {((item.displayPrice * item.quantity) / 100).toFixed(2)}
         </Typography>
       </Box>
     </Paper>
-  );
-}
-
-// ============================================
-// Payment Dialog
-// ============================================
-interface PaymentDialogProps {
-  open: boolean;
-  onClose: () => void;
-  paymentLink: FinancialPaymentLink | null;
-  isLoading: boolean;
-  orderId: string | null;
-}
-
-function PaymentDialog({ open, onClose, paymentLink, isLoading, orderId }: PaymentDialogProps) {
-  const { success } = useFeedback();
-  const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
-  const [copied, setCopied] = useState(false);
-
-  useEffect(() => {
-    if (paymentLink?.pixCode) {
-      QRCode.toDataURL(paymentLink.pixCode, { width: 256 })
-        .then(setQrCodeUrl)
-        .catch(console.error);
-    }
-  }, [paymentLink?.pixCode]);
-
-  const handleCopyCode = () => {
-    if (paymentLink?.pixCode) {
-      navigator.clipboard.writeText(paymentLink.pixCode);
-      setCopied(true);
-      success('Codigo PIX copiado!');
-      setTimeout(() => setCopied(false), 2000);
-    }
-  };
-
-  return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography variant="h6" fontWeight={600}>
-            Pagamento PIX
-          </Typography>
-          {orderId && (
-            <Typography variant="caption" color="text.secondary">
-              Pedido #{orderId.slice(-6).toUpperCase()}
-            </Typography>
-          )}
-        </Box>
-      </DialogTitle>
-      <DialogContent>
-        {isLoading ? (
-          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', py: 4 }}>
-            <CircularProgress />
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Gerando QR Code...
-            </Typography>
-          </Box>
-        ) : paymentLink ? (
-          <Box sx={{ textAlign: 'center' }}>
-            {qrCodeUrl ? (
-              <Box
-                sx={{
-                  p: 2,
-                  bgcolor: 'white',
-                  borderRadius: 2,
-                  display: 'inline-block',
-                  mb: 2,
-                }}
-              >
-                <img src={qrCodeUrl} alt="QR Code PIX" style={{ display: 'block' }} />
-              </Box>
-            ) : (
-              <Skeleton variant="rectangular" width={256} height={256} sx={{ mx: 'auto', mb: 2 }} />
-            )}
-
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-              Escaneie o QR Code ou copie o codigo PIX
-            </Typography>
-
-            <Button
-              variant="outlined"
-              fullWidth
-              startIcon={copied ? <CheckCircle size={18} /> : <Copy size={18} />}
-              onClick={handleCopyCode}
-              color={copied ? 'success' : 'primary'}
-            >
-              {copied ? 'Copiado!' : 'Copiar Codigo PIX'}
-            </Button>
-
-            <Alert severity="info" sx={{ mt: 2, textAlign: 'left' }}>
-              Apos o pagamento, seu pedido sera atualizado automaticamente.
-            </Alert>
-          </Box>
-        ) : (
-          <Alert severity="error">
-            Erro ao gerar pagamento. Tente novamente.
-          </Alert>
-        )}
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -228,26 +122,30 @@ function PaymentDialog({ open, onClose, paymentLink, isLoading, orderId }: Payme
 export default function CarrinhoPage() {
   const router = useRouter();
   const { success, error: showError } = useFeedback();
-  const { user } = useAuth();
-  const { createOrder, generatePayment, isCreatingOrder, isGeneratingPayment, minOrderAmount } = useStoreCart();
+  const {
+    createOrder,
+    generatePayment,
+    isCreatingOrder,
+    isGeneratingPayment,
+    minOrderAmount,
+    isCreditCardEnabled,
+  } = useStoreCart();
 
-  const [cartItems, setCartItems] = useState<StoreOrderItem[]>([]);
-  const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [paymentLink, setPaymentLink] = useState<FinancialPaymentLink | null>(null);
-  const [currentOrderId, setCurrentOrderId] = useState<string | null>(null);
+  const [cartItems, setCartItems] = useState<CartItemInput[]>([]);
+  const [checkoutDialogOpen, setCheckoutDialogOpen] = useState(false);
 
   // Load cart from localStorage
   useEffect(() => {
     setCartItems(getCart());
   }, []);
 
-  // Calculate total
-  const total = useMemo(() => {
-    return cartItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  // Calculate display total (for UI only - actual total calculated server-side)
+  const displayTotal = useMemo(() => {
+    return cartItems.reduce((sum, item) => sum + item.displayPrice * item.quantity, 0);
   }, [cartItems]);
 
-  // Check minimum order amount
-  const belowMinimum = !!(minOrderAmount && total < minOrderAmount);
+  // Check minimum order amount (using display total as estimate)
+  const belowMinimum = !!(minOrderAmount && displayTotal < minOrderAmount);
 
   // Handlers
   const handleBack = () => {
@@ -272,7 +170,7 @@ export default function CarrinhoPage() {
     success('Item removido do carrinho');
   }, [success]);
 
-  const handleCheckout = async () => {
+  const handleOpenCheckout = () => {
     if (cartItems.length === 0) {
       showError('Seu carrinho esta vazio');
       return;
@@ -283,27 +181,21 @@ export default function CarrinhoPage() {
       return;
     }
 
-    try {
-      // Create order
-      const order = await createOrder(cartItems);
-      setCurrentOrderId(order.id);
-
-      // Generate payment
-      setPaymentDialogOpen(true);
-      const payment = await generatePayment(order.id);
-      setPaymentLink(payment);
-
-      // Clear cart
-      clearCart();
-      setCartItems([]);
-    } catch (err) {
-      showError('Erro ao processar pedido');
-    }
+    setCheckoutDialogOpen(true);
   };
 
-  const handleClosePaymentDialog = () => {
-    setPaymentDialogOpen(false);
-    if (currentOrderId) {
+  const handleCreateOrder = async () => {
+    const order = await createOrder(cartItems);
+    // Clear cart after successful order creation
+    clearCart();
+    setCartItems([]);
+    return order;
+  };
+
+  const handleCloseCheckoutDialog = () => {
+    setCheckoutDialogOpen(false);
+    // If cart is empty (order was created), redirect to orders page
+    if (cartItems.length === 0) {
       router.push('/portal/loja/pedidos');
     }
   };
@@ -358,16 +250,16 @@ export default function CarrinhoPage() {
                 Itens ({cartItems.reduce((sum, i) => sum + i.quantity, 0)})
               </Typography>
               <Typography variant="body2">
-                R$ {(total / 100).toFixed(2)}
+                R$ {(displayTotal / 100).toFixed(2)}
               </Typography>
             </Box>
             <Divider sx={{ my: 1.5 }} />
             <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
               <Typography variant="subtitle1" fontWeight={600}>
-                Total
+                Total Estimado
               </Typography>
               <Typography variant="h6" color="primary" fontWeight={700}>
-                R$ {(total / 100).toFixed(2)}
+                R$ {(displayTotal / 100).toFixed(2)}
               </Typography>
             </Box>
 
@@ -377,22 +269,20 @@ export default function CarrinhoPage() {
               </Alert>
             )}
 
+            <Alert severity="info" sx={{ mt: 2, fontSize: '0.8rem' }} icon={false}>
+              Os precos e disponibilidade serao confirmados no momento do pedido.
+            </Alert>
+
             <Button
               variant="contained"
               fullWidth
               size="large"
-              startIcon={
-                isCreatingOrder ? (
-                  <CircularProgress size={18} color="inherit" />
-                ) : (
-                  <CreditCard size={18} />
-                )
-              }
-              onClick={handleCheckout}
-              disabled={isCreatingOrder || belowMinimum}
+              startIcon={<CreditCard size={18} />}
+              onClick={handleOpenCheckout}
+              disabled={belowMinimum}
               sx={{ mt: 2, py: 1.5, borderRadius: 2 }}
             >
-              {isCreatingOrder ? 'Processando...' : 'Finalizar Pedido'}
+              Finalizar Pedido
             </Button>
 
             <Button
@@ -407,13 +297,17 @@ export default function CarrinhoPage() {
         </>
       )}
 
-      {/* Payment Dialog */}
-      <PaymentDialog
-        open={paymentDialogOpen}
-        onClose={handleClosePaymentDialog}
-        paymentLink={paymentLink}
-        isLoading={isGeneratingPayment}
-        orderId={currentOrderId}
+      {/* Checkout Dialog */}
+      <CheckoutDialog
+        open={checkoutDialogOpen}
+        onClose={handleCloseCheckoutDialog}
+        cartItems={cartItems}
+        displayTotal={displayTotal}
+        onCreateOrder={handleCreateOrder}
+        onGeneratePayment={generatePayment}
+        isCreatingOrder={isCreatingOrder}
+        isGeneratingPayment={isGeneratingPayment}
+        isCreditCardEnabled={isCreditCardEnabled}
       />
     </Box>
   );

@@ -206,6 +206,61 @@ export default function StudentProfilePage() {
 
   return (
     <Box>
+      {/* Profile Summary Card */}
+      <Box
+        sx={{
+          p: { xs: 2, sm: 3 },
+          mb: 3,
+          bgcolor: '#fff',
+          borderRadius: 2,
+          border: '1px solid',
+          borderColor: 'grey.200',
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <Avatar
+            src={student.photoUrl}
+            sx={{ width: { xs: 48, sm: 56 }, height: { xs: 48, sm: 56 }, bgcolor: '#111', fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600 }}
+          >
+            {student.fullName.charAt(0)}
+          </Avatar>
+          <Box sx={{ flex: 1, minWidth: 0 }}>
+            <Typography variant="body1" fontWeight={600} noWrap sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
+              {student.fullName}
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+              <BeltDisplay belt={student.currentBelt} stripes={student.currentStripes} size="small" />
+              <Typography variant="caption" color="text.secondary">
+                {BELT_LABELS[student.currentBelt]} • {student.currentStripes} grau{student.currentStripes !== 1 ? 's' : ''}
+              </Typography>
+            </Box>
+          </Box>
+          {/* Stats inline on desktop */}
+          <Box sx={{ display: { xs: 'none', md: 'flex' }, gap: 4 }}>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="h5" fontWeight={700}>{attendanceCount}</Typography>
+              <Typography variant="caption" color="text.secondary">presencas</Typography>
+            </Box>
+            <Box sx={{ textAlign: 'center' }}>
+              <Typography variant="h5" fontWeight={700}>{trainingMonths}</Typography>
+              <Typography variant="caption" color="text.secondary">meses</Typography>
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Stats - Mobile only */}
+        <Box sx={{ display: { xs: 'flex', md: 'none' }, gap: 3, pt: 2, borderTop: '1px solid', borderColor: 'grey.100' }}>
+          <Box>
+            <Typography variant="h6" fontWeight={700}>{attendanceCount}</Typography>
+            <Typography variant="caption" color="text.secondary">presencas</Typography>
+          </Box>
+          <Box>
+            <Typography variant="h6" fontWeight={700}>{trainingMonths}</Typography>
+            <Typography variant="caption" color="text.secondary">meses</Typography>
+          </Box>
+        </Box>
+      </Box>
+
       {/* Mobile Navigation Links */}
       {isMobile && mobileNavLinks.length > 0 && (
         <Box sx={{ mb: 3 }}>
@@ -240,58 +295,6 @@ export default function StudentProfilePage() {
         </Box>
       )}
 
-      {/* Header */}
-      <Typography
-        variant="h6"
-        fontWeight={600}
-        sx={{ mb: 2, fontSize: { xs: '1rem', sm: '1.25rem' } }}
-      >
-        Meu Perfil
-      </Typography>
-
-      {/* Profile Summary */}
-      <Box
-        sx={{
-          p: { xs: 2, sm: 3 },
-          mb: 3,
-          bgcolor: '#fff',
-          borderRadius: 2,
-          border: '1px solid',
-          borderColor: 'grey.200',
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-          <Avatar
-            src={student.photoUrl}
-            sx={{ width: { xs: 48, sm: 56 }, height: { xs: 48, sm: 56 }, bgcolor: '#111', fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600 }}
-          >
-            {student.fullName.charAt(0)}
-          </Avatar>
-          <Box sx={{ flex: 1, minWidth: 0 }}>
-            <Typography variant="body1" fontWeight={600} noWrap sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
-              {student.fullName}
-            </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-              <BeltDisplay belt={student.currentBelt} stripes={student.currentStripes} size="small" />
-              <Typography variant="caption" color="text.secondary">
-                {BELT_LABELS[student.currentBelt]} • {student.currentStripes} grau{student.currentStripes !== 1 ? 's' : ''}
-              </Typography>
-            </Box>
-          </Box>
-        </Box>
-
-        <Box sx={{ display: 'flex', gap: 3, pt: 2, borderTop: '1px solid', borderColor: 'grey.100' }}>
-          <Box>
-            <Typography variant="h6" fontWeight={700}>{attendanceCount}</Typography>
-            <Typography variant="caption" color="text.secondary">presenças</Typography>
-          </Box>
-          <Box>
-            <Typography variant="h6" fontWeight={700}>{trainingMonths}</Typography>
-            <Typography variant="caption" color="text.secondary">meses</Typography>
-          </Box>
-        </Box>
-      </Box>
-
       {/* Read-only Info */}
       <Box sx={{ mb: 3 }}>
         <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1.5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
@@ -300,7 +303,7 @@ export default function StudentProfilePage() {
         <Box
           sx={{
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr 1fr', sm: '1fr 1fr 1fr' },
+            gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' },
             gap: 1.5,
             p: 2,
             bgcolor: 'grey.50',
@@ -308,7 +311,7 @@ export default function StudentProfilePage() {
           }}
         >
           <Box>
-            <Typography variant="caption" color="text.secondary">Início</Typography>
+            <Typography variant="caption" color="text.secondary">Inicio</Typography>
             <Typography variant="body2" fontWeight={500} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
               {format(student.startDate, "dd/MM/yyyy", { locale: ptBR })}
             </Typography>
@@ -319,12 +322,20 @@ export default function StudentProfilePage() {
               {student.status === 'active' ? 'Ativo' : student.status === 'injured' ? 'Lesionado' : 'Inativo'}
             </Typography>
           </Box>
-          <Box sx={{ gridColumn: { xs: 'span 2', sm: 'span 1' } }}>
+          <Box>
             <Typography variant="caption" color="text.secondary">Plano</Typography>
             <Typography variant="body2" fontWeight={500} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-              {hasValidPlan && plan ? `R$ ${plan.monthlyValue?.toLocaleString('pt-BR')}/mês` : 'Projeto Social'}
+              {hasValidPlan && plan ? plan.name : 'Projeto Social'}
             </Typography>
           </Box>
+          {hasValidPlan && plan && (
+            <Box>
+              <Typography variant="caption" color="text.secondary">Valor</Typography>
+              <Typography variant="body2" fontWeight={500} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+                R$ {plan.monthlyValue?.toLocaleString('pt-BR')}/mes
+              </Typography>
+            </Box>
+          )}
         </Box>
       </Box>
 
@@ -334,7 +345,7 @@ export default function StudentProfilePage() {
         <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1.5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
           Dados pessoais
         </Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mb: 3 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(3, 1fr)' }, gap: 1.5, mb: 3 }}>
           <TextField label="Apelido" value={form.nickname} onChange={handleChange('nickname')} size="small" fullWidth />
           <TextField
             label="Data de nascimento"
@@ -354,12 +365,12 @@ export default function StudentProfilePage() {
 
         {/* Address */}
         <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1.5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          Endereço
+          Endereco
         </Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 1.5, mb: 3 }}>
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 1.5, mb: 3 }}>
           <TextField label="CEP" value={form.zipCode} onChange={handleChange('zipCode')} size="small" fullWidth />
-          <TextField label="Rua" value={form.street} onChange={handleChange('street')} size="small" fullWidth sx={{ gridColumn: { xs: '1', sm: 'span 2' } }} />
-          <TextField label="Número" value={form.addressNumber} onChange={handleChange('addressNumber')} size="small" fullWidth />
+          <TextField label="Rua" value={form.street} onChange={handleChange('street')} size="small" fullWidth sx={{ gridColumn: { md: 'span 2' } }} />
+          <TextField label="Numero" value={form.addressNumber} onChange={handleChange('addressNumber')} size="small" fullWidth />
           <TextField label="Complemento" value={form.complement} onChange={handleChange('complement')} size="small" fullWidth />
           <TextField label="Bairro" value={form.neighborhood} onChange={handleChange('neighborhood')} size="small" fullWidth />
           <TextField label="Cidade" value={form.city} onChange={handleChange('city')} size="small" fullWidth />
@@ -368,13 +379,13 @@ export default function StudentProfilePage() {
 
         {/* Health */}
         <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1.5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          Saúde
+          Saude
         </Typography>
-        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5, mb: 3 }}>
-          <TextField label="Tipo sanguíneo" value={form.bloodType} onChange={handleChange('bloodType')} size="small" fullWidth placeholder="Ex: A+, O-" />
-          <TextField label="Alergias" value={form.allergies} onChange={handleChange('allergies')} size="small" fullWidth placeholder="Separar por vírgula" />
+        <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr', md: 'repeat(4, 1fr)' }, gap: 1.5, mb: 3 }}>
+          <TextField label="Tipo sanguineo" value={form.bloodType} onChange={handleChange('bloodType')} size="small" fullWidth placeholder="Ex: A+, O-" />
+          <TextField label="Alergias" value={form.allergies} onChange={handleChange('allergies')} size="small" fullWidth placeholder="Separar por virgula" />
           <TextField
-            label="Observações de saúde"
+            label="Observacoes de saude"
             value={form.healthNotes}
             onChange={handleChange('healthNotes')}
             size="small"
@@ -387,7 +398,7 @@ export default function StudentProfilePage() {
 
         {/* Emergency */}
         <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1.5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-          Contato de emergência
+          Contato de emergencia
         </Typography>
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 1fr' }, gap: 1.5, mb: 3 }}>
           <TextField label="Nome" value={form.emergencyName} onChange={handleChange('emergencyName')} size="small" fullWidth />

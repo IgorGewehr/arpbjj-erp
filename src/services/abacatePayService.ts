@@ -83,17 +83,12 @@ class AbacatePayService {
   }
 
   // ============================================
-  // Get Academy API Key
+  // Get Global API Key (from environment)
   // ============================================
-  private async getApiKey(): Promise<string | null> {
-    const academyRef = doc(db, 'academies', this.academyId);
-    const academySnap = await getDoc(academyRef);
-
-    if (!academySnap.exists()) {
-      return null;
-    }
-
-    return academySnap.data().abacatePayApiKey || null;
+  private getApiKey(): string | null {
+    // API Key is global (single AbacatePay account for all academies)
+    // Each academy has its own virtual wallet balance in Firestore
+    return process.env.ABACATEPAY_API_KEY || null;
   }
 
   // ============================================
@@ -120,7 +115,7 @@ class AbacatePayService {
     studentId: string,
     studentName: string
   ): Promise<FinancialPaymentLink | null> {
-    const apiKey = await this.getApiKey();
+    const apiKey = this.getApiKey();
 
     if (!apiKey) {
       console.error('AbacatePay API key not configured');
@@ -194,7 +189,7 @@ class AbacatePayService {
     studentName: string,
     cardData: CardPaymentData
   ): Promise<CardPaymentResult> {
-    const apiKey = await this.getApiKey();
+    const apiKey = this.getApiKey();
 
     if (!apiKey) {
       console.error('AbacatePay API key not configured');
@@ -457,7 +452,7 @@ class AbacatePayService {
       return null;
     }
 
-    const apiKey = await this.getApiKey();
+    const apiKey = this.getApiKey();
 
     if (!apiKey) {
       console.error('AbacatePay API key not configured');

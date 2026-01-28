@@ -66,7 +66,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Alunos', icon: Users, path: '/portal/alunos', requiresMonitor: true },
   { label: 'Loja', icon: ShoppingBag, path: '/portal/loja', requiresStore: true },
   { label: 'Horários', icon: Calendar, path: '/portal/horarios' },
-  { label: 'Histórico', icon: History, path: '/portal/linha-do-tempo' },
+  { label: 'Jornada', icon: History, path: '/portal/linha-do-tempo' },
   { label: 'Comportamento', icon: Star, path: '/portal/comportamento', requiresKids: true },
   { label: 'Financeiro', icon: DollarSign, path: '/portal/financeiro', requiresPlan: true },
 ];
@@ -319,7 +319,9 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
           pb: { xs: 10, md: 0 },
         }}
       >
-        <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 800, mx: 'auto' }}>
+        <Box sx={{
+          p: { xs: 2, sm: 3 },
+        }}>
           {children}
         </Box>
       </Box>

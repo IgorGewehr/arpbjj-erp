@@ -95,7 +95,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
   // ============================================
   // Fetch Revenue Stats (last 6 months)
   // ============================================
-  const { data: revenueStats } = useQuery({
+  const { data: revenueStats, isLoading: isRevenueLoading } = useQuery({
     queryKey: [QUERY_KEYS.revenue, academyId],
     queryFn: () => {
       const endDate = endOfMonth(new Date());
@@ -265,6 +265,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
 
     // Loading states
     isLoading,
+    isRevenueLoading,
     isCreating: createMutation.isPending,
     isMarkingPaid: markPaidMutation.isPending,
     isCanceling: cancelMutation.isPending,

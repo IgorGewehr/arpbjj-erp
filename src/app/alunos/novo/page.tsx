@@ -309,7 +309,7 @@ export default function StudentRegistrationPage() {
   return (
     <ProtectedRoute>
       <AppLayout title="Novo Aluno">
-        <Box sx={{ maxWidth: 900, mx: 'auto' }}>
+        <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 900, mx: 'auto' }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
             <IconButton onClick={() => router.back()} sx={{ bgcolor: 'grey.100' }}>

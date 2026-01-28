@@ -422,9 +422,27 @@ function AcademyTab() {
     >
       {/* Logo Upload */}
       <Box sx={{ mb: 4 }}>
-        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 2 }}>
+        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
           Logo da Academia
         </Typography>
+        <Box
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 0.5,
+            px: 1,
+            py: 0.5,
+            mb: 2,
+            bgcolor: 'info.50',
+            borderRadius: 1,
+            border: '1px solid',
+            borderColor: 'info.200',
+          }}
+        >
+          <Typography variant="caption" color="info.main" fontWeight={500}>
+            Tamanho ideal: 400x400px (fundo transparente)
+          </Typography>
+        </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 3 }}>
           <Box
             sx={{
@@ -613,20 +631,47 @@ function AppearanceTab() {
     setSettings(prev => ({ ...prev, [field]: '' }));
   };
 
-  const ImageUploadBox = ({ field, label, description, width = 80, height = 80 }: {
+  const ImageUploadBox = ({ field, label, description, width = 80, height = 80, recommendedSize, isLogo = false }: {
     field: ImageUploadField;
     label: string;
     description: string;
     width?: number;
     height?: number;
+    recommendedSize?: string;
+    isLogo?: boolean;
   }) => (
     <Box sx={{ p: 2, border: '1px solid', borderColor: 'divider', borderRadius: 2 }}>
       <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
         {label}
       </Typography>
-      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
+      <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1 }}>
         {description}
       </Typography>
+      {recommendedSize && (
+        <Box
+          sx={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 0.5,
+            px: 1,
+            py: 0.5,
+            mb: 2,
+            bgcolor: 'info.50',
+            borderRadius: 1,
+            border: '1px solid',
+            borderColor: 'info.200',
+          }}
+        >
+          <Typography variant="caption" color="info.main" fontWeight={500}>
+            Tamanho ideal: {recommendedSize}
+          </Typography>
+          {isLogo && (
+            <Typography variant="caption" color="info.main">
+              (fundo transparente)
+            </Typography>
+          )}
+        </Box>
+      )}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         <Box
           sx={{
@@ -718,6 +763,13 @@ function AppearanceTab() {
         Imagens Personalizadas
       </Typography>
 
+      <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
+        <Typography variant="body2">
+          <strong>Dica:</strong> Para melhor qualidade, use imagens PNG com fundo transparente para logos.
+          Para backgrounds, use imagens de alta resolucao no formato JPG ou PNG.
+        </Typography>
+      </Alert>
+
       <Grid container spacing={3}>
         <Grid size={{ xs: 12, md: 6 }}>
           <ImageUploadBox
@@ -726,6 +778,8 @@ function AppearanceTab() {
             description="Logo alternativo para a sidebar (opcional)"
             width={80}
             height={80}
+            recommendedSize="200x200px"
+            isLogo
           />
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
@@ -735,6 +789,7 @@ function AppearanceTab() {
             description="Imagem de fundo para o portal do aluno"
             width={120}
             height={80}
+            recommendedSize="1920x1080px"
           />
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
@@ -744,6 +799,7 @@ function AppearanceTab() {
             description="Imagem de fundo para o painel do professor/admin"
             width={120}
             height={80}
+            recommendedSize="1920x1080px"
           />
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>
@@ -753,6 +809,7 @@ function AppearanceTab() {
             description="Imagem de fundo para a sidebar lateral"
             width={80}
             height={100}
+            recommendedSize="400x900px"
           />
         </Grid>
       </Grid>

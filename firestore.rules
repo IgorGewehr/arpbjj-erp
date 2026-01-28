@@ -81,9 +81,15 @@ service cloud.firestore {
       allow read: if isAuthenticated() && request.auth.uid == userId;
 
       // Users can create their own document during registration
+      // Allow admin role ONLY if creating during academy creation (new user)
       allow create: if isAuthenticated() && request.auth.uid == userId
-                    && !request.resource.data.keys().hasAny(['role'])
-                    || request.resource.data.role == 'student';
+                    && (
+                      // Student registration (no role or role == student)
+                      (!request.resource.data.keys().hasAny(['role']) || request.resource.data.role == 'student')
+                      ||
+                      // Admin registration during academy creation
+                      (request.resource.data.role == 'admin' && request.resource.data.isActive == true)
+                    );
 
       // Users can update non-sensitive fields
       allow update: if isAuthenticated() && request.auth.uid == userId
@@ -104,8 +110,16 @@ service cloud.firestore {
       // Users can read their own mapping
       allow read: if isAuthenticated() && request.auth.uid == userId;
 
-      // Only admin functions can write (via Cloud Functions)
-      allow write: if false;
+      // Users can create their own mapping during academy creation
+      // Only if they are creating mapping for themselves with admin role
+      allow create: if isAuthenticated()
+                    && request.auth.uid == userId
+                    && request.resource.data.role == 'admin'
+                    && request.resource.data.academyIds.size() == 1
+                    && request.resource.data.primaryAcademyId == request.resource.data.academyIds[0];
+
+      // Only admin functions can update (via Cloud Functions)
+      allow update, delete: if false;
     }
 
     // ============================================
@@ -120,8 +134,39 @@ service cloud.firestore {
                     && !request.resource.data.diff(resource.data).affectedKeys()
                         .hasAny(['ownerId', 'createdAt']);
 
-      // Never allow delete or create from client
-      allow create, delete: if false;
+      // Allow academy creation - user must be setting themselves as owner
+      allow create: if isAuthenticated()
+                    && request.resource.data.ownerId == request.auth.uid
+                    && request.resource.data.slug == academyId
+                    && request.resource.data.name.size() >= 3;
+
+      // Never allow delete from client
+      allow delete: if false;
+
+      // ============================================
+      // Users Subcollection (Academy-scoped users)
+      // ============================================
+      match /users/{userId} {
+        // Staff can read all academy users
+        allow read: if isAcademyStaff(academyId);
+
+        // Users can read their own document
+        allow read: if isAuthenticated() && request.auth.uid == userId;
+
+        // Allow user to create their own document during academy creation
+        // This happens right after creating the academy, so we check if user is the owner
+        allow create: if isAuthenticated()
+                      && request.auth.uid == userId
+                      && request.resource.data.role == 'admin';
+
+        // Staff can update users (except sensitive fields)
+        allow update: if isAcademyStaff(academyId)
+                      && !request.resource.data.diff(resource.data).affectedKeys()
+                          .hasAny(['createdAt']);
+
+        // Never allow delete from client
+        allow delete: if false;
+      }
 
       // ============================================
       // Students Subcollection

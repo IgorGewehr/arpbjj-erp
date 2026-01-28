@@ -291,8 +291,12 @@ export function useStore() {
 export function useStoreCart() {
   const { success, error: showError } = useFeedback();
   const { user } = useAuth();
-  const { academy } = useAcademy();
+  const { academy, academyUser } = useAcademy();
   const queryClient = useQueryClient();
+
+  // Get studentId from academyUser (loaded from academy context)
+  const studentId = academyUser?.studentId;
+  const studentName = academyUser?.displayName || user?.displayName;
 
   // Create service instance
   const storeService = useMemo(() => {
@@ -321,12 +325,12 @@ export function useStoreCart() {
     isLoading: isLoadingOrders,
     refetch: refetchOrders,
   } = useQuery({
-    queryKey: [QUERY_KEYS.studentOrders, academy?.id, user?.studentId],
+    queryKey: [QUERY_KEYS.studentOrders, academy?.id, studentId],
     queryFn: () => {
-      if (!storeService || !user?.studentId) return Promise.resolve([]);
-      return storeService.getOrdersByStudent(user.studentId);
+      if (!storeService || !studentId) return Promise.resolve([]);
+      return storeService.getOrdersByStudent(studentId);
     },
-    enabled: !!storeService && !!user?.studentId,
+    enabled: !!storeService && !!studentId,
     staleTime: 1000 * 60 * 2,
   });
 
@@ -336,13 +340,13 @@ export function useStoreCart() {
   const createOrderMutation = useMutation({
     mutationFn: async (items: CartItemInput[]) => {
       if (!storeService) throw new Error('Store service not available');
-      if (!user?.studentId || !user?.displayName) throw new Error('User not authenticated');
+      if (!studentId || !studentName) throw new Error('Usuario nao vinculado a um aluno. Verifique seu perfil.');
 
       // SECURITY: Only send productId, quantity, size, color to server
       // Price will be fetched from database on server-side
       return storeService.createOrder({
-        studentId: user.studentId,
-        studentName: user.displayName,
+        studentId: studentId,
+        studentName: studentName,
         items: items.map(item => ({
           productId: item.productId,
           quantity: item.quantity,

@@ -160,6 +160,7 @@ class SettingsService {
       if (settings.storePublished !== undefined) settingsData.storePublished = settings.storePublished;
       if (settings.storeWelcomeMessage !== undefined) settingsData.storeWelcomeMessage = settings.storeWelcomeMessage;
       if (settings.storeMinOrderAmount !== undefined) settingsData.storeMinOrderAmount = settings.storeMinOrderAmount;
+      if (settings.storeCreditCardEnabled !== undefined) settingsData.storeCreditCardEnabled = settings.storeCreditCardEnabled;
       if (settings.studentCheckinEnabled !== undefined) settingsData.studentCheckinEnabled = settings.studentCheckinEnabled;
 
       await setDoc(this.academyRef, settingsData, { merge: true });

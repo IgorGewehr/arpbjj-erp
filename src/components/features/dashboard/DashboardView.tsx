@@ -13,8 +13,9 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useFinancial } from '@/hooks';
-import { studentService } from '@/services';
+import { createStudentService } from '@/services';
 import { StatCard } from './StatCard';
 import { QuickActions } from './QuickActions';
 import { RevenueOverview } from './RevenueOverview';
@@ -33,11 +34,17 @@ export function DashboardView() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const router = useRouter();
   const { user } = useAuth();
+  const { academyId } = useAcademy();
 
-  // Fetch student stats directly (not paginated)
+  // Fetch student stats directly (not paginated) - multi-tenant
   const { data: studentStats, isLoading: loadingStudents, refetch: refreshStudents } = useQuery({
-    queryKey: ['dashboard-student-stats'],
-    queryFn: () => studentService.getDashboardStats(),
+    queryKey: ['dashboard-student-stats', academyId],
+    queryFn: () => {
+      if (!academyId) return null;
+      const service = createStudentService(academyId);
+      return service.getDashboardStats();
+    },
+    enabled: !!academyId,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 

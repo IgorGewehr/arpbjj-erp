@@ -110,16 +110,27 @@ service cloud.firestore {
       // Users can read their own mapping
       allow read: if isAuthenticated() && request.auth.uid == userId;
 
-      // Users can create their own mapping during academy creation
-      // Only if they are creating mapping for themselves with admin role
+      // Users can create their own mapping:
+      // 1. During normal signup (empty mapping with no academies)
+      // 2. During academy creation (mapping with admin role)
       allow create: if isAuthenticated()
                     && request.auth.uid == userId
-                    && request.resource.data.role == 'admin'
-                    && request.resource.data.academyIds.size() == 1
-                    && request.resource.data.primaryAcademyId == request.resource.data.academyIds[0];
+                    && (
+                      // Empty mapping during normal signup
+                      (request.resource.data.academyIds.size() == 0)
+                      ||
+                      // Admin mapping during academy creation
+                      (request.resource.data.role == 'admin'
+                       && request.resource.data.academyIds.size() == 1
+                       && request.resource.data.primaryAcademyId == request.resource.data.academyIds[0])
+                    );
 
-      // Only admin functions can update (via Cloud Functions)
-      allow update, delete: if false;
+      // Users can update their own mapping to add/remove academies
+      allow update: if isAuthenticated()
+                    && request.auth.uid == userId;
+
+      // Never allow delete
+      allow delete: if false;
     }
 
     // ============================================

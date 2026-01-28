@@ -166,7 +166,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
       success('Pagamento registrado!');
 
       // Notify admins about payment received
-      if (user && financial.studentId) {
+      if (user && financial.studentId && financial.studentName) {
         try {
           await notificationService.notifyPaymentReceived(
             user.id,

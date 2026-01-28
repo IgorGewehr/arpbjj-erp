@@ -342,6 +342,23 @@ class StudentService {
   }
 
   // ============================================
+  // Get Student by Linked User ID
+  // ============================================
+  async getByLinkedUserId(userId: string): Promise<Student | null> {
+    const q = query(
+      this.studentsRef,
+      where('linkedUserId', '==', userId),
+      limit(1)
+    );
+
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) {
+      return null;
+    }
+    return docToStudent(snapshot.docs[0]);
+  }
+
+  // ============================================
   // Get All Students (for reports)
   // ============================================
   async getAll(): Promise<Student[]> {
@@ -630,6 +647,8 @@ export const studentService = {
   getByStatus: (...args: Parameters<StudentService['getByStatus']>) =>
     new StudentService(DEFAULT_ACADEMY_ID).getByStatus(...args),
   getActive: () => new StudentService(DEFAULT_ACADEMY_ID).getActive(),
+  getByLinkedUserId: (...args: Parameters<StudentService['getByLinkedUserId']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).getByLinkedUserId(...args),
   getAll: () => new StudentService(DEFAULT_ACADEMY_ID).getAll(),
   search: (...args: Parameters<StudentService['search']>) =>
     new StudentService(DEFAULT_ACADEMY_ID).search(...args),

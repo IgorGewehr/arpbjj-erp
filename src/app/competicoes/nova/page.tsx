@@ -124,8 +124,8 @@ export default function NewCompetitionPage() {
 
       // Notify all active students with linked accounts about the new competition
       try {
-        const allStudents = await studentService.list();
-        const activeStudentsWithAccounts = allStudents.filter(
+        const response = await studentService.list();
+        const activeStudentsWithAccounts = response.data.filter(
           (s) => s.status === 'active' && s.linkedUserId
         );
 

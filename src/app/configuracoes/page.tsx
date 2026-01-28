@@ -1000,27 +1000,25 @@ function StoreTab() {
             Metodos de Pagamento na Loja
           </Typography>
 
-          <Box sx={{ mb: 3 }}>
+          <Box sx={{ mb: 3, opacity: 0.6 }}>
             <FormControlLabel
               control={
                 <Switch
-                  checked={settings.storeCreditCardEnabled}
-                  onChange={(e) =>
-                    setSettings({ ...settings, storeCreditCardEnabled: e.target.checked })
-                  }
+                  checked={false}
+                  disabled
                   color="primary"
                 />
               }
               label={
                 <Box>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                    <Typography variant="body1" fontWeight={500}>
+                    <Typography variant="body1" fontWeight={500} color="text.secondary">
                       Habilitar Cartao de Credito
                     </Typography>
-                    <Chip label="Beta" size="small" color="warning" sx={{ height: 20, fontSize: '0.65rem' }} />
+                    <Chip label="Em breve" size="small" color="warning" sx={{ height: 20, fontSize: '0.65rem' }} />
                   </Box>
                   <Typography variant="caption" color="text.secondary">
-                    Permite pagamento com cartao de credito (redirecionamento para checkout seguro)
+                    Pagamento com cartao de credito estara disponivel em breve
                   </Typography>
                 </Box>
               }

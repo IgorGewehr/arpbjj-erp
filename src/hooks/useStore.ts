@@ -440,7 +440,7 @@ export function useStoreCart() {
     // Store info
     isStoreEnabled: academy?.storeEnabled ?? false,
     isStorePublished: academy?.storePublished ?? false,
-    isCreditCardEnabled: academy?.storeCreditCardEnabled ?? false,
+    isCreditCardEnabled: false, // Disabled - coming soon
     welcomeMessage: academy?.storeWelcomeMessage,
     minOrderAmount: academy?.storeMinOrderAmount,
 

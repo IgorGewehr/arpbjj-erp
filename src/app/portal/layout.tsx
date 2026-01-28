@@ -38,7 +38,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth, usePermissions } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { StudentPortalGuard } from '@/components/common';
-import { studentService, planService } from '@/services';
+import { createStudentService, createPlanService } from '@/services';
 import { BottomSheet, ScaleOnPress } from '@/components/mobile';
 import { useIsMonitor } from '@/hooks';
 
@@ -90,16 +90,24 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
   const studentId = linkedStudentIds[0];
 
   const { data: student } = useQuery({
-    queryKey: ['student', studentId],
-    queryFn: () => studentService.getById(studentId),
-    enabled: !!studentId,
+    queryKey: ['student', studentId, academy?.id],
+    queryFn: () => {
+      if (!academy?.id) return null;
+      const studentService = createStudentService(academy.id);
+      return studentService.getById(studentId);
+    },
+    enabled: !!studentId && !!academy?.id,
   });
 
   // Validate if the plan actually exists (handles orphaned planIds)
   const { data: plan } = useQuery({
-    queryKey: ['plan', student?.planId],
-    queryFn: () => planService.getById(student!.planId!),
-    enabled: !!student?.planId,
+    queryKey: ['plan', student?.planId, academy?.id],
+    queryFn: () => {
+      if (!academy?.id) return null;
+      const planService = createPlanService(academy.id);
+      return planService.getById(student!.planId!);
+    },
+    enabled: !!student?.planId && !!academy?.id,
   });
 
   // Only consider student has a valid plan if the plan exists

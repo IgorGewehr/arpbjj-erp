@@ -6,11 +6,11 @@ import { Box, Typography, Skeleton, Paper, useTheme } from '@mui/material';
 import Image from 'next/image';
 import { ArrowRight, AlertTriangle, ClipboardCheck, History, Trophy, Calendar, Award, Timer, Flame } from 'lucide-react';
 import { useAuth, usePermissions } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { studentService } from '@/services';
-import { attendanceService } from '@/services/attendanceService';
-import { financialService } from '@/services';
-import { competitionService } from '@/services/competitionService';
+import { createStudentService, createFinancialService } from '@/services';
+import { createAttendanceService } from '@/services/attendanceService';
+import { createCompetitionService } from '@/services/competitionService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import { PullToRefresh, FadeInView, ScaleOnPress } from '@/components/mobile';
 
@@ -39,6 +39,7 @@ export default function PortalHomePage() {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { user } = useAuth();
+  const { academyId } = useAcademy();
   const { linkedStudentIds } = usePermissions();
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [activeStatIndex, setActiveStatIndex] = useState(0);
@@ -53,22 +54,34 @@ export default function PortalHomePage() {
   }, [queryClient, studentId]);
 
   const { data: student, isLoading: loadingStudent } = useQuery({
-    queryKey: ['student', studentId],
-    queryFn: () => studentService.getById(studentId),
-    enabled: !!studentId,
+    queryKey: ['student', studentId, academyId],
+    queryFn: () => {
+      if (!academyId) return null;
+      const studentService = createStudentService(academyId);
+      return studentService.getById(studentId);
+    },
+    enabled: !!studentId && !!academyId,
   });
 
   const { data: systemAttendanceCount = 0 } = useQuery({
-    queryKey: ['studentAttendance', studentId],
-    queryFn: () => attendanceService.getStudentAttendanceCount(studentId),
-    enabled: !!studentId,
+    queryKey: ['studentAttendance', studentId, academyId],
+    queryFn: () => {
+      if (!academyId) return 0;
+      const attendanceService = createAttendanceService(academyId);
+      return attendanceService.getStudentAttendanceCount(studentId);
+    },
+    enabled: !!studentId && !!academyId,
   });
 
   // Get competition results for medals
   const { data: competitionResults = [] } = useQuery({
-    queryKey: ['studentCompetitionResults', studentId],
-    queryFn: () => competitionService.getResultsForStudent(studentId!),
-    enabled: !!studentId,
+    queryKey: ['studentCompetitionResults', studentId, academyId],
+    queryFn: () => {
+      if (!academyId) return [];
+      const competitionService = createCompetitionService(academyId);
+      return competitionService.getResultsForStudent(studentId!);
+    },
+    enabled: !!studentId && !!academyId,
   });
 
   // Calculate medal stats
@@ -89,12 +102,14 @@ export default function PortalHomePage() {
   const hasPlan = !!student?.planId;
 
   const { data: pendingPayments = [] } = useQuery({
-    queryKey: ['studentPayments', studentId],
+    queryKey: ['studentPayments', studentId, academyId],
     queryFn: async () => {
+      if (!academyId) return [];
+      const financialService = createFinancialService(academyId);
       const payments = await financialService.getByStudent(studentId);
       return payments.filter((p) => p.status === 'pending' || p.status === 'overdue');
     },
-    enabled: !!studentId && hasPlan,
+    enabled: !!studentId && !!academyId && hasPlan,
   });
 
   const trainingMonths = useMemo(() => {

@@ -26,9 +26,11 @@ import {
   Plus,
   Minus,
   X,
+  Store,
 } from 'lucide-react';
 import { useStoreCart } from '@/hooks';
 import { useAuth, useFeedback } from '@/components/providers';
+import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { StoreProduct, CartItemInput, STORE_CATEGORY_LABELS } from '@/types';
 
 // ============================================
@@ -531,6 +533,9 @@ export default function PortalLojaPage() {
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
+      {/* Academy indicator for multi-academy users */}
+      <AcademyIndicator label="Loja de" icon={<Store size={16} />} />
+
       {/* Header */}
       <Box
         sx={{

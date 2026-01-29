@@ -19,6 +19,13 @@ export { createAbacatePayService } from './abacatePayService';
 
 // Global services (ROOT level, not per-academy)
 export { globalUserService } from './globalUserService';
+export { crossAcademyService } from './crossAcademyService';
+export type {
+  CrossAcademyBeltProgression,
+  CrossAcademyCompetitionResult,
+  AcademyAttendanceStats,
+  CrossAcademyStudentHistory,
+} from './crossAcademyService';
 
 // Type exports
 export type { AcademySettings } from './settingsService';

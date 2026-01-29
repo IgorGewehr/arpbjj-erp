@@ -18,6 +18,7 @@ import {
 import { CheckCircle, AlertCircle, Clock, Copy, Calendar, QrCode, Receipt, History } from 'lucide-react';
 import { usePermissions, useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
+import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { useQuery } from '@tanstack/react-query';
 import { createFinancialService, createStudentService, createSettingsService, createPlanService } from '@/services';
 import { createAbacatePayService } from '@/services/abacatePayService';
@@ -312,6 +313,9 @@ export default function PortalFinanceiroPage() {
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
+      {/* Academy indicator for multi-academy users */}
+      <AcademyIndicator label="Pagamentos de" icon={<Receipt size={16} />} />
+
       {/* Header */}
       <Typography sx={{ fontSize: { xs: '1.25rem', sm: '1.5rem' }, fontWeight: 700 }}>
         Pagamentos

@@ -31,6 +31,7 @@ import { Achievement, BeltProgression } from '@/types';
 import { FadeIn, ListItemAnimation } from '@/components/common/AnimatedComponents';
 import { TimelineSkeleton, StatsCardSkeleton } from '@/components/common/SkeletonComponents';
 import { EmptyTimelineIllustration } from '@/components/common/EmptyStateIllustrations';
+import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 
 // ============================================
 // Achievement Icon Config
@@ -411,6 +412,9 @@ export default function TimelinePage() {
   return (
     <FadeIn>
       <Box>
+        {/* Academy indicator for multi-academy users */}
+        <AcademyIndicator label="Jornada de" icon={<Clock size={16} />} />
+
         {/* Header */}
         <Box sx={{ mb: 3 }}>
           <Typography

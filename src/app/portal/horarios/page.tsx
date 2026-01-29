@@ -19,6 +19,7 @@ import { Class, Checkin } from '@/types';
 import { usePermissions } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useFeedback } from '@/components/providers';
+import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { format, isSameDay, addDays, startOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
@@ -457,6 +458,9 @@ export default function PortalHorariosPage() {
 
   return (
     <Box>
+      {/* Academy indicator for multi-academy users */}
+      <AcademyIndicator label="Horarios de" icon={<Calendar size={16} />} />
+
       {/* Check-in info banner */}
       {checkinEnabled && (
         <Box

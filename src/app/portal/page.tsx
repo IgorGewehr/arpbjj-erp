@@ -12,6 +12,7 @@ import { createStudentService, createFinancialService } from '@/services';
 import { createAttendanceService } from '@/services/attendanceService';
 import { createCompetitionService } from '@/services/competitionService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
+import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { PullToRefresh, FadeInView, ScaleOnPress } from '@/components/mobile';
 
 const BELT_LABELS: Record<string, string> = {
@@ -227,6 +228,9 @@ export default function PortalHomePage() {
 
         {/* Content */}
         <Box sx={{ position: 'relative', zIndex: 1 }}>
+        {/* Academy indicator for multi-academy users */}
+        <AcademyIndicator label="Portal de" icon={<Award size={16} />} />
+
         {/* Header */}
         <FadeInView direction="down" delay={0}>
           <Box sx={{ mb: 2.5 }}>

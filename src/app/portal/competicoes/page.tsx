@@ -59,6 +59,7 @@ import {
   TRANSPORT_PREFERENCE_LABELS,
 } from '@/types';
 import { EmptyCompetitionsIllustration } from '@/components/common/EmptyStateIllustrations';
+import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { ListItemSkeleton, StatsCardSkeleton } from '@/components/common/SkeletonComponents';
 import { FadeIn, ListItemAnimation, SlideIn } from '@/components/common/AnimatedComponents';
 
@@ -507,6 +508,9 @@ export default function StudentCompetitionsPage() {
   return (
     <FadeIn>
       <Box>
+        {/* Academy indicator for multi-academy users */}
+        <AcademyIndicator label="Competicoes de" icon={<Trophy size={16} />} />
+
         {/* Medal Stats Card */}
         <SlideIn direction="up" delay={0.1}>
           <Box

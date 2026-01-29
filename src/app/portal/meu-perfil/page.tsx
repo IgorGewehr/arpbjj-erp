@@ -24,6 +24,7 @@ import { createStudentService } from '@/services/studentService';
 import { createAttendanceService } from '@/services/attendanceService';
 import { createPlanService } from '@/services/planService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
+import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { Student, Plan } from '@/types';
 
 const BELT_LABELS: Record<string, string> = {
@@ -212,6 +213,9 @@ export default function StudentProfilePage() {
 
   return (
     <Box>
+      {/* Academy indicator for multi-academy users */}
+      <AcademyIndicator label="Perfil de" icon={<User size={16} />} />
+
       {/* Profile Summary Card */}
       <Box
         sx={{

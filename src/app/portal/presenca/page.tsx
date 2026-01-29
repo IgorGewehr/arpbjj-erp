@@ -5,6 +5,7 @@ import { Box, Typography, Skeleton } from '@mui/material';
 import { CheckCircle, Calendar } from 'lucide-react';
 import { usePermissions } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
+import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { useQuery } from '@tanstack/react-query';
 import { createAttendanceService } from '@/services/attendanceService';
 import { createStudentService } from '@/services/studentService';
@@ -85,6 +86,9 @@ export default function PortalPresencaPage() {
 
   return (
     <Box>
+      {/* Academy indicator for multi-academy users */}
+      <AcademyIndicator label="Presencas de" icon={<CheckCircle size={16} />} />
+
       {/* Stats Cards */}
       <Box
         sx={{

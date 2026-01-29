@@ -45,6 +45,7 @@ import { useRouter } from 'next/navigation';
 import { createStudentService, createClassService, createPlanService } from '@/services';
 import { Student, Class, Plan } from '@/types';
 import { NotificationBell } from '@/components/features/notifications/NotificationBell';
+import { AcademySwitcher } from './AcademySwitcher';
 
 // ============================================
 // Search Result Types
@@ -279,35 +280,10 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
       }}
     >
       <Toolbar sx={{ gap: { xs: 0.5, sm: 1, md: 2 }, px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 } }}>
-        {/* Logo on Mobile (replaces menu button since we have BottomNav) */}
+        {/* Academy Switcher on Mobile */}
         {isMobile && (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Box
-              sx={{
-                width: 28,
-                height: 28,
-                position: 'relative',
-                flexShrink: 0,
-              }}
-            >
-              <Image
-                src="/logo_conteudo.png"
-                alt="T23"
-                fill
-                style={{ objectFit: 'contain' }}
-              />
-            </Box>
-            <Typography
-              variant="subtitle1"
-              sx={{
-                fontWeight: 700,
-                color: 'text.primary',
-                fontSize: '0.7rem',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              T23 JJ - Vamos avante, ombro a ombro
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+            <AcademySwitcher variant="compact" />
           </Box>
         )}
 
@@ -438,19 +414,11 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           </Box>
         </ClickAwayListener>
 
-        {/* Spacer + Academy Label + Spacer - Only on Desktop */}
+        {/* Spacer + Academy Switcher + Spacer - Only on Desktop */}
         <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
-        <Typography
-          sx={{
-            display: { xs: 'none', md: 'block' },
-            fontWeight: 700,
-            color: 'text.primary',
-            fontSize: '1.1rem',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          Tropa Jiu-Jitsu - Vamos avante, ombro a ombro
-        </Typography>
+        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
+          <AcademySwitcher variant="full" />
+        </Box>
         <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
 
         {/* Spacer - Only on Mobile/Tablet */}

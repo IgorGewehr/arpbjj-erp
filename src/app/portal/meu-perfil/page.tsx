@@ -19,9 +19,10 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback, usePermissions } from '@/components/providers';
-import { studentService } from '@/services/studentService';
-import { attendanceService } from '@/services/attendanceService';
-import { planService } from '@/services/planService';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { createStudentService } from '@/services/studentService';
+import { createAttendanceService } from '@/services/attendanceService';
+import { createPlanService } from '@/services/planService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import { Student, Plan } from '@/types';
 
@@ -38,6 +39,7 @@ export default function StudentProfilePage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user } = useAuth();
+  const { academyId } = useAcademy();
   const { success, error: showError } = useFeedback();
   const { linkedStudentIds } = usePermissions();
 
@@ -78,12 +80,13 @@ export default function StudentProfilePage() {
 
   useEffect(() => {
     const loadData = async () => {
-      if (!studentId) {
+      if (!studentId || !academyId) {
         setLoading(false);
         return;
       }
 
       try {
+        const studentService = createStudentService(academyId);
         const data = await studentService.getById(studentId);
         if (data) {
           setStudent(data);
@@ -113,12 +116,14 @@ export default function StudentProfilePage() {
 
           // Validate if plan actually exists
           if (data.planId) {
+            const planService = createPlanService(academyId);
             const planData = await planService.getById(data.planId);
             setPlan(planData);
           } else {
             setPlan(null);
           }
 
+          const attendanceService = createAttendanceService(academyId);
           const count = await attendanceService.getStudentAttendanceCount(studentId);
           setAttendanceCount(count);
         }
@@ -130,17 +135,18 @@ export default function StudentProfilePage() {
     };
 
     loadData();
-  }, [studentId, showError]);
+  }, [studentId, academyId, showError]);
 
   const handleChange = (field: string) => (e: React.ChangeEvent<HTMLInputElement>) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
   };
 
   const handleSave = useCallback(async () => {
-    if (!student || !studentId) return;
+    if (!student || !studentId || !academyId) return;
 
     setSaving(true);
     try {
+      const studentService = createStudentService(academyId);
       await studentService.update(studentId, {
         nickname: form.nickname.trim() || undefined,
         phone: form.phone.trim() || undefined,
@@ -174,7 +180,7 @@ export default function StudentProfilePage() {
     } finally {
       setSaving(false);
     }
-  }, [student, studentId, form, success, showError]);
+  }, [student, studentId, academyId, form, success, showError]);
 
   if (loading) {
     return (

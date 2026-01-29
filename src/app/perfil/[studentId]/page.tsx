@@ -32,9 +32,10 @@ import {
   GraduationCap,
   Users,
 } from 'lucide-react';
-import { studentService } from '@/services';
-import { achievementService } from '@/services/achievementService';
-import { attendanceService } from '@/services/attendanceService';
+import { createStudentService } from '@/services';
+import { createAchievementService } from '@/services/achievementService';
+import { createAttendanceService } from '@/services/attendanceService';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { Student, Achievement, BeltColor, KidsBeltColor } from '@/types';
 
 // ============================================
@@ -261,6 +262,7 @@ function AchievementCard({ achievement }: AchievementCardProps) {
 export default function PublicProfilePage() {
   const params = useParams();
   const studentId = params.studentId as string;
+  const { academyId } = useAcademy();
 
   const [loading, setLoading] = useState(true);
   const [student, setStudent] = useState<Student | null>(null);
@@ -270,9 +272,19 @@ export default function PublicProfilePage() {
 
   useEffect(() => {
     async function loadData() {
+      if (!academyId) {
+        setError('Academia nao encontrada');
+        setLoading(false);
+        return;
+      }
+
       try {
         setLoading(true);
         setError(null);
+
+        const studentService = createStudentService(academyId);
+        const achievementService = createAchievementService(academyId);
+        const attendanceService = createAttendanceService(academyId);
 
         // Fetch student data
         const studentData = await studentService.getById(studentId);
@@ -297,10 +309,10 @@ export default function PublicProfilePage() {
       }
     }
 
-    if (studentId) {
+    if (studentId && academyId) {
       loadData();
     }
-  }, [studentId]);
+  }, [studentId, academyId]);
 
   // Share functionality
   const handleShare = async () => {

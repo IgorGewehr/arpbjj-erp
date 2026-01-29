@@ -22,7 +22,8 @@ import {
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { Financial, PaymentMethod } from '@/types';
-import { financialService } from '@/services';
+import { createFinancialService } from '@/services';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useState } from 'react';
 
 // ============================================
@@ -69,6 +70,7 @@ export function PaymentCard({
   showWhatsApp = false,
 }: PaymentCardProps) {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const { academyId } = useAcademy();
 
   const status = statusConfig[payment.status];
 
@@ -79,6 +81,8 @@ export function PaymentCard({
 
   // Handle WhatsApp click
   const handleWhatsAppClick = useCallback(() => {
+    if (!academyId) return;
+    const financialService = createFinancialService(academyId);
     // Get student phone from payment (assuming it's stored or we need to fetch)
     // For now, we'll use a placeholder
     const whatsappLink = financialService.getWhatsAppReminderLink(
@@ -88,7 +92,7 @@ export function PaymentCard({
       payment.dueDate
     );
     window.open(whatsappLink, '_blank');
-  }, [payment]);
+  }, [payment, academyId]);
 
   // Handle menu open
   const handleMenuOpen = useCallback((event: React.MouseEvent<HTMLElement>) => {

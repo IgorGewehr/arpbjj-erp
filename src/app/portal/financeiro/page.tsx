@@ -19,7 +19,7 @@ import { CheckCircle, AlertCircle, Clock, Copy, Calendar, QrCode, Receipt, Histo
 import { usePermissions, useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useQuery } from '@tanstack/react-query';
-import { financialService, studentService, settingsService, planService } from '@/services';
+import { createFinancialService, createStudentService, createSettingsService, createPlanService } from '@/services';
 import { createAbacatePayService } from '@/services/abacatePayService';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -185,16 +185,24 @@ export default function PortalFinanceiroPage() {
 
   // Fetch student data
   const { data: student } = useQuery({
-    queryKey: ['student', studentId],
-    queryFn: () => studentService.getById(studentId),
-    enabled: !!studentId,
+    queryKey: ['student', studentId, academy?.id],
+    queryFn: () => {
+      if (!academy?.id) return null;
+      const studentService = createStudentService(academy.id);
+      return studentService.getById(studentId);
+    },
+    enabled: !!studentId && !!academy?.id,
   });
 
   // Validate if the plan actually exists
   const { data: plan } = useQuery({
-    queryKey: ['plan', student?.planId],
-    queryFn: () => planService.getById(student!.planId!),
-    enabled: !!student?.planId,
+    queryKey: ['plan', student?.planId, academy?.id],
+    queryFn: () => {
+      if (!academy?.id || !student?.planId) return null;
+      const planService = createPlanService(academy.id);
+      return planService.getById(student.planId);
+    },
+    enabled: !!student?.planId && !!academy?.id,
   });
 
   // Only consider having a valid plan if the plan exists
@@ -202,15 +210,24 @@ export default function PortalFinanceiroPage() {
 
   // Fetch academy settings (for PIX key)
   const { data: academySettings } = useQuery({
-    queryKey: ['academySettings'],
-    queryFn: () => settingsService.getAcademySettings(),
+    queryKey: ['academySettings', academy?.id],
+    queryFn: () => {
+      if (!academy?.id) return null;
+      const settingsService = createSettingsService(academy.id);
+      return settingsService.getAcademySettings();
+    },
+    enabled: !!academy?.id,
   });
 
   // Fetch payments - only if student has a valid plan
   const { data: payments = [], isLoading } = useQuery({
-    queryKey: ['studentPayments', studentId],
-    queryFn: () => financialService.getByStudent(studentId),
-    enabled: !!studentId && hasValidPlan,
+    queryKey: ['studentPayments', studentId, academy?.id],
+    queryFn: () => {
+      if (!academy?.id) return [];
+      const financialService = createFinancialService(academy.id);
+      return financialService.getByStudent(studentId);
+    },
+    enabled: !!studentId && !!academy?.id && hasValidPlan,
   });
 
   const pixKey = academySettings?.pixKey || '';

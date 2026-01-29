@@ -4,26 +4,36 @@ import { useMemo } from 'react';
 import { Box, Typography, Skeleton } from '@mui/material';
 import { CheckCircle, Calendar } from 'lucide-react';
 import { usePermissions } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useQuery } from '@tanstack/react-query';
-import { attendanceService } from '@/services/attendanceService';
-import { studentService } from '@/services/studentService';
+import { createAttendanceService } from '@/services/attendanceService';
+import { createStudentService } from '@/services/studentService';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 export default function PortalPresencaPage() {
   const { linkedStudentIds } = usePermissions();
+  const { academyId } = useAcademy();
   const studentId = linkedStudentIds[0];
 
   const { data: student } = useQuery({
-    queryKey: ['student', studentId],
-    queryFn: () => studentService.getById(studentId),
-    enabled: !!studentId,
+    queryKey: ['student', studentId, academyId],
+    queryFn: () => {
+      if (!academyId) return null;
+      const studentService = createStudentService(academyId);
+      return studentService.getById(studentId);
+    },
+    enabled: !!studentId && !!academyId,
   });
 
   const { data: attendanceRecords, isLoading } = useQuery({
-    queryKey: ['studentAttendanceRecords', studentId],
-    queryFn: () => attendanceService.getByStudent(studentId, 100),
-    enabled: !!studentId,
+    queryKey: ['studentAttendanceRecords', studentId, academyId],
+    queryFn: () => {
+      if (!academyId) return [];
+      const attendanceService = createAttendanceService(academyId);
+      return attendanceService.getByStudent(studentId, 100);
+    },
+    enabled: !!studentId && !!academyId,
   });
 
   // Ensure attendanceRecords is always an array

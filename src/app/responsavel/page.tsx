@@ -26,10 +26,10 @@ import {
   DollarSign,
 } from 'lucide-react';
 import { useAuth, usePermissions } from '@/components/providers';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useQuery } from '@tanstack/react-query';
-import { studentService } from '@/services';
-import { attendanceService } from '@/services/attendanceService';
-import { financialService } from '@/services';
+import { createStudentService, createFinancialService } from '@/services';
+import { createAttendanceService } from '@/services/attendanceService';
 import { Student, BeltColor, KidsBeltColor } from '@/types';
 
 // ============================================
@@ -159,36 +159,43 @@ function ChildCard({ student, attendanceCount, pendingPayments }: ChildCardProps
 export default function GuardianHomePage() {
   const { user } = useAuth();
   const { linkedStudentIds } = usePermissions();
+  const { academyId } = useAcademy();
 
   // Fetch children data
   const { data: children = [], isLoading: loadingChildren } = useQuery({
-    queryKey: ['guardianChildren', linkedStudentIds],
+    queryKey: ['guardianChildren', linkedStudentIds, academyId],
     queryFn: async () => {
+      if (!academyId) return [];
+      const studentService = createStudentService(academyId);
       const students = await Promise.all(
         linkedStudentIds.map((id) => studentService.getById(id))
       );
       return students.filter((s): s is Student => s !== null);
     },
-    enabled: linkedStudentIds.length > 0,
+    enabled: linkedStudentIds.length > 0 && !!academyId,
   });
 
   // Fetch attendance for all children
   const { data: attendanceCounts = {}, isLoading: loadingAttendance } = useQuery({
-    queryKey: ['guardianChildrenAttendance', linkedStudentIds],
+    queryKey: ['guardianChildrenAttendance', linkedStudentIds, academyId],
     queryFn: async () => {
+      if (!academyId) return {};
+      const attendanceService = createAttendanceService(academyId);
       const counts: Record<string, number> = {};
       for (const id of linkedStudentIds) {
         counts[id] = await attendanceService.getStudentAttendanceCount(id);
       }
       return counts;
     },
-    enabled: linkedStudentIds.length > 0,
+    enabled: linkedStudentIds.length > 0 && !!academyId,
   });
 
   // Fetch pending payments for all children
   const { data: pendingPaymentsCounts = {}, isLoading: loadingPayments } = useQuery({
-    queryKey: ['guardianChildrenPayments', linkedStudentIds],
+    queryKey: ['guardianChildrenPayments', linkedStudentIds, academyId],
     queryFn: async () => {
+      if (!academyId) return {};
+      const financialService = createFinancialService(academyId);
       const counts: Record<string, number> = {};
       for (const id of linkedStudentIds) {
         const payments = await financialService.getByStudent(id);
@@ -196,7 +203,7 @@ export default function GuardianHomePage() {
       }
       return counts;
     },
-    enabled: linkedStudentIds.length > 0,
+    enabled: linkedStudentIds.length > 0 && !!academyId,
   });
 
   // Calculate totals

@@ -41,7 +41,8 @@ import { useIsMonitor } from '@/hooks';
 import { getBeltChipColor } from '@/lib/theme';
 import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { attendanceService } from '@/services';
+import { createAttendanceService } from '@/services';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { Attendance } from '@/types';
 
 // ============================================
@@ -99,6 +100,7 @@ export default function MonitorStudentDetailPage() {
   const router = useRouter();
   const studentId = params.id as string;
   const isMonitor = useIsMonitor();
+  const { academyId } = useAcademy();
 
   const { student, isLoading } = useStudent(studentId);
   const [activeTab, setActiveTab] = useState(0);
@@ -107,14 +109,15 @@ export default function MonitorStudentDetailPage() {
 
   // Load attendances when tab changes
   useEffect(() => {
-    if (activeTab === 1 && studentId) {
+    if (activeTab === 1 && studentId && academyId) {
       setLoadingAttendances(true);
+      const attendanceService = createAttendanceService(academyId);
       attendanceService.getByStudent(studentId)
         .then(setAttendances)
         .catch(console.error)
         .finally(() => setLoadingAttendances(false));
     }
-  }, [activeTab, studentId]);
+  }, [activeTab, studentId, academyId]);
 
   const handleBack = useCallback(() => {
     router.push('/portal/alunos');

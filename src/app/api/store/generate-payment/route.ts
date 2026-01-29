@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db, collections } from '@/lib/firebase';
-import { doc, getDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { adminDb } from '@/lib/firebase/admin';
+import { FieldValue } from 'firebase-admin/firestore';
 
 // AbacatePay API configuration
 const ABACATEPAY_API_URL = 'https://api.abacatepay.com/v1';
@@ -23,17 +23,16 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if AbacatePay is enabled for this academy
-    const academyRef = doc(db, 'academies', academyId);
-    const academySnap = await getDoc(academyRef);
+    const academySnap = await adminDb.doc(`academies/${academyId}`).get();
 
-    if (!academySnap.exists()) {
+    if (!academySnap.exists) {
       return NextResponse.json(
         { error: 'Academy not found' },
         { status: 404 }
       );
     }
 
-    if (!academySnap.data().abacatePayEnabled) {
+    if (!academySnap.data()?.abacatePayEnabled) {
       return NextResponse.json(
         { error: 'AbacatePay is not enabled for this academy' },
         { status: 400 }
@@ -41,17 +40,17 @@ export async function POST(request: NextRequest) {
     }
 
     // Get the order
-    const orderRef = collections.storeOrder(academyId, orderId);
-    const orderSnap = await getDoc(orderRef);
+    const orderRef = adminDb.doc(`academies/${academyId}/storeOrders/${orderId}`);
+    const orderSnap = await orderRef.get();
 
-    if (!orderSnap.exists()) {
+    if (!orderSnap.exists) {
       return NextResponse.json(
         { error: 'Order not found' },
         { status: 404 }
       );
     }
 
-    const order = orderSnap.data();
+    const order = orderSnap.data()!;
 
     if (order.status !== 'pending_payment') {
       return NextResponse.json(
@@ -108,15 +107,32 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
+    const abacatePayId = data.data.id;
 
-    // Update order with payment info
+    // Create walletTransaction record for webhook to find
+    await adminDb.collection(`academies/${academyId}/walletTransactions`).add({
+      academyId,
+      type: 'payment',
+      amount: order.total,
+      status: 'pending',
+      financialId: `order_${orderId}`,
+      studentId: order.studentId,
+      studentName: order.studentName,
+      abacatePayTransactionId: abacatePayId,
+      pixCode: data.data.pix?.brcode || null,
+      qrCodeUrl: data.data.pix?.qrcode || null,
+      description: `Pedido #${orderId.slice(-6).toUpperCase()}`,
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    // Update order with payment info (using Admin SDK - bypasses rules)
     if (method === 'PIX') {
-      await updateDoc(orderRef, {
-        abacatePayTransactionId: data.data.id,
+      await orderRef.update({
+        abacatePayTransactionId: abacatePayId,
         pixCode: data.data.pix?.brcode,
         qrCodeUrl: data.data.pix?.qrcode,
         paymentMethod: 'pix',
-        updatedAt: serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
 
       return NextResponse.json({
@@ -130,10 +146,10 @@ export async function POST(request: NextRequest) {
       });
     } else {
       // For CARD, AbacatePay returns a checkout URL
-      await updateDoc(orderRef, {
-        abacatePayTransactionId: data.data.id,
+      await orderRef.update({
+        abacatePayTransactionId: abacatePayId,
         paymentMethod: 'credit_card',
-        updatedAt: serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
 
       return NextResponse.json({

@@ -1,19 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createHmac, timingSafeEqual } from 'crypto';
-import {
-  doc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  query,
-  where,
-  collection,
-  collectionGroup,
-  serverTimestamp,
-  increment,
-  setDoc,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { adminDb } from '@/lib/firebase/admin';
+import { FieldValue } from 'firebase-admin/firestore';
 import { pushNotificationService } from '@/services/server';
 
 // ============================================
@@ -113,15 +101,13 @@ function getWebhookSecret(): string | null {
 // ============================================
 async function findTransactionByAbacatePayId(
   abacatePayId: string
-): Promise<{ academyId: string; transaction: WalletTransaction; docRef: any } | null> {
+): Promise<{ academyId: string; transaction: WalletTransaction; docRef: FirebaseFirestore.DocumentReference } | null> {
   try {
-    // Search across all academies' walletTransactions
-    const transactionsQuery = query(
-      collectionGroup(db, 'walletTransactions'),
-      where('abacatePayTransactionId', '==', abacatePayId)
-    );
-
-    const snapshot = await getDocs(transactionsQuery);
+    // Search across all academies' walletTransactions using Admin SDK
+    const snapshot = await adminDb
+      .collectionGroup('walletTransactions')
+      .where('abacatePayTransactionId', '==', abacatePayId)
+      .get();
 
     if (snapshot.empty) {
       console.error(`Transaction not found for AbacatePay ID: ${abacatePayId}`);
@@ -155,14 +141,14 @@ async function updateWalletBalance(
   amount: number,
   fee: number
 ): Promise<void> {
-  const walletRef = doc(db, `academies/${academyId}/wallet`, 'balance');
-  const walletSnap = await getDoc(walletRef);
+  const walletRef = adminDb.doc(`academies/${academyId}/wallet/balance`);
+  const walletSnap = await walletRef.get();
 
   // Net amount after AbacatePay fee
   const netAmount = amount - fee;
 
-  if (!walletSnap.exists()) {
-    await setDoc(walletRef, {
+  if (!walletSnap.exists) {
+    await walletRef.set({
       academyId,
       availableBalance: netAmount,
       pendingBalance: 0,
@@ -170,17 +156,17 @@ async function updateWalletBalance(
       totalFees: fee,
       totalWithdrawn: 0,
       transactionCount: 1,
-      lastTransactionAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+      lastTransactionAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
   } else {
-    await updateDoc(walletRef, {
-      availableBalance: increment(netAmount),
-      totalReceived: increment(amount),
-      totalFees: increment(fee),
-      transactionCount: increment(1),
-      lastTransactionAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
+    await walletRef.update({
+      availableBalance: FieldValue.increment(netAmount),
+      totalReceived: FieldValue.increment(amount),
+      totalFees: FieldValue.increment(fee),
+      transactionCount: FieldValue.increment(1),
+      lastTransactionAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
     });
   }
 }
@@ -191,16 +177,16 @@ async function updateWalletBalance(
 async function handlePaymentConfirmed(
   academyId: string,
   transaction: WalletTransaction,
-  transactionDocRef: any,
+  transactionDocRef: FirebaseFirestore.DocumentReference,
   amount: number,
   fee: number
 ): Promise<void> {
   const { financialId, studentId, studentName } = transaction;
 
   // Update transaction status
-  await updateDoc(transactionDocRef, {
+  await transactionDocRef.update({
     status: 'completed',
-    completedAt: serverTimestamp(),
+    completedAt: FieldValue.serverTimestamp(),
     fee,
     netAmount: amount - fee,
   });
@@ -231,27 +217,27 @@ async function handleFinancialPayment(
   fee: number,
   studentName?: string
 ): Promise<void> {
-  const financialRef = doc(db, `academies/${academyId}/financials`, financialId);
-  const financialSnap = await getDoc(financialRef);
+  const financialRef = adminDb.doc(`academies/${academyId}/financials/${financialId}`);
+  const financialSnap = await financialRef.get();
 
-  if (!financialSnap.exists()) {
+  if (!financialSnap.exists) {
     console.error(`Financial record not found: ${financialId}`);
     return;
   }
 
   // Only update if not already paid (idempotency)
-  if (financialSnap.data().status === 'paid') {
+  if (financialSnap.data()?.status === 'paid') {
     console.log(`Financial ${financialId} already paid, skipping`);
     return;
   }
 
-  await updateDoc(financialRef, {
+  await financialRef.update({
     status: 'paid',
-    paymentDate: serverTimestamp(),
+    paymentDate: FieldValue.serverTimestamp(),
     method: 'pix',
     paidViaAbacatePay: true,
     abacatePayFee: fee,
-    updatedAt: serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   // Notify admin
@@ -272,15 +258,15 @@ async function handleStoreOrderPayment(
   fee: number,
   studentName?: string
 ): Promise<void> {
-  const orderRef = doc(db, `academies/${academyId}/storeOrders`, orderId);
-  const orderSnap = await getDoc(orderRef);
+  const orderRef = adminDb.doc(`academies/${academyId}/storeOrders/${orderId}`);
+  const orderSnap = await orderRef.get();
 
-  if (!orderSnap.exists()) {
+  if (!orderSnap.exists) {
     console.error('Order not found:', orderId);
     return;
   }
 
-  const orderData = orderSnap.data();
+  const orderData = orderSnap.data()!;
 
   // Only update if pending (idempotency)
   if (orderData.status !== 'pending_payment') {
@@ -288,11 +274,11 @@ async function handleStoreOrderPayment(
     return;
   }
 
-  await updateDoc(orderRef, {
+  await orderRef.update({
     status: 'paid',
-    paidAt: serverTimestamp(),
+    paidAt: FieldValue.serverTimestamp(),
     abacatePayFee: fee,
-    updatedAt: serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   // Notify admin
@@ -310,26 +296,26 @@ async function handleStoreOrderPayment(
 async function handlePaymentCancelled(
   academyId: string,
   transaction: WalletTransaction,
-  transactionDocRef: any
+  transactionDocRef: FirebaseFirestore.DocumentReference
 ): Promise<void> {
   // Update transaction status
-  await updateDoc(transactionDocRef, {
+  await transactionDocRef.update({
     status: 'cancelled',
-    updatedAt: serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   // If it's a store order, cancel the order
   if (transaction.financialId?.startsWith('order_')) {
     const orderId = transaction.financialId.replace('order_', '');
-    const orderRef = doc(db, `academies/${academyId}/storeOrders`, orderId);
-    const orderSnap = await getDoc(orderRef);
+    const orderRef = adminDb.doc(`academies/${academyId}/storeOrders/${orderId}`);
+    const orderSnap = await orderRef.get();
 
-    if (orderSnap.exists() && orderSnap.data().status === 'pending_payment') {
-      await updateDoc(orderRef, {
+    if (orderSnap.exists && orderSnap.data()?.status === 'pending_payment') {
+      await orderRef.update({
         status: 'cancelled',
-        cancelledAt: serverTimestamp(),
+        cancelledAt: FieldValue.serverTimestamp(),
         cancelReason: 'payment_expired',
-        updatedAt: serverTimestamp(),
+        updatedAt: FieldValue.serverTimestamp(),
       });
     }
   }
@@ -350,17 +336,15 @@ async function notifyAdmin(
   }
 ): Promise<void> {
   try {
-    const academyRef = doc(db, 'academies', academyId);
-    const academySnap = await getDoc(academyRef);
+    const academySnap = await adminDb.doc(`academies/${academyId}`).get();
 
-    if (!academySnap.exists()) return;
+    if (!academySnap.exists) return;
 
-    const ownerId = academySnap.data().ownerId;
+    const ownerId = academySnap.data()?.ownerId;
     if (!ownerId) return;
 
     // Create in-app notification
-    const notificationsRef = collection(db, `academies/${academyId}/notifications`);
-    await setDoc(doc(notificationsRef), {
+    await adminDb.collection(`academies/${academyId}/notifications`).add({
       academyId,
       userId: ownerId,
       type,
@@ -373,7 +357,7 @@ async function notifyAdmin(
       read: false,
       channels: ['in_app', 'push'],
       sentVia: ['in_app'],
-      createdAt: serverTimestamp(),
+      createdAt: FieldValue.serverTimestamp(),
     });
 
     // Send push notification

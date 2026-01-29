@@ -306,8 +306,8 @@ service cloud.firestore {
       // Wallet Subcollection (CRITICAL - Money)
       // ============================================
       match /wallet/{docId} {
-        // Only owner can read wallet
-        allow read: if isAcademyOwner(academyId);
+        // Owner and admins can read wallet
+        allow read: if isAcademyOwner(academyId) || isAcademyAdmin(academyId);
 
         // NEVER allow client writes - only via Cloud Functions/webhooks
         allow write: if false;
@@ -317,8 +317,8 @@ service cloud.firestore {
       // Wallet Transactions (CRITICAL - Money)
       // ============================================
       match /walletTransactions/{transactionId} {
-        // Only owner can read transactions
-        allow read: if isAcademyOwner(academyId);
+        // Owner and admins can read transactions
+        allow read: if isAcademyOwner(academyId) || isAcademyAdmin(academyId);
 
         // NEVER allow client writes - only via Cloud Functions/webhooks
         allow write: if false;

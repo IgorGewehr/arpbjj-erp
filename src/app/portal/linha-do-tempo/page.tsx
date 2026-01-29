@@ -20,7 +20,6 @@ import {
 import { format, differenceInYears, differenceInMonths } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useQuery } from '@tanstack/react-query';
-import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { createAchievementService } from '@/services/achievementService';
@@ -247,11 +246,10 @@ function formatTrainingTime(startDate: Date): string {
 export default function TimelinePage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const { user } = useAuth();
   const { error: showError } = useFeedback();
-  const { academyId } = useAcademy();
+  const { academyId, academyUser } = useAcademy();
 
-  const studentId = user?.studentId;
+  const studentId = academyUser?.studentId;
 
   // Create service instances with the correct academyId
   const studentService = useMemo(() => academyId ? createStudentService(academyId) : null, [academyId]);

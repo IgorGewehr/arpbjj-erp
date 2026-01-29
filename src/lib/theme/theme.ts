@@ -59,7 +59,7 @@ const palette = {
     contrastText: '#FFFFFF',
   },
   background: {
-    default: '#FAFAFA',
+    default: '#FFFFFF',
     paper: '#FFFFFF',
   },
   text: {

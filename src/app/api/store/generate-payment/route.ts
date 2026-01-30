@@ -70,44 +70,68 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Call AbacatePay API
+    // Use /billing/create for PIX - returns billing ID that matches webhook payload
+    const requestBody = {
+      frequency: 'ONE_TIME',
+      methods: [method],
+      products: order.items.map((item: { productId: string; productName: string; quantity: number; unitPrice: number }) => ({
+        externalId: item.productId,
+        name: item.productName,
+        quantity: item.quantity,
+        price: item.unitPrice,
+      })),
+      returnUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/loja/pedidos`,
+      completionUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/loja/pedidos?success=true`,
+      metadata: {
+        academyId,
+        orderId,
+        studentId: order.studentId,
+        type: 'store_order',
+      },
+    };
+    console.log('[GENERATE-PAYMENT] Sending to AbacatePay /billing/create:', JSON.stringify(requestBody, null, 2));
+
     const response = await fetch(`${ABACATEPAY_API_URL}/billing/create`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        frequency: 'ONE_TIME',
-        methods: [method],
-        products: order.items.map((item: { productId: string; productName: string; quantity: number; unitPrice: number }) => ({
-          externalId: item.productId,
-          name: item.productName,
-          quantity: item.quantity,
-          price: item.unitPrice,
-        })),
-        returnUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/loja/pedidos`,
-        completionUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/loja/pedidos?success=true`,
-        metadata: {
-          academyId: academyId,
-          orderId: orderId,
-          studentId: order.studentId,
-          type: 'store_order',
-        },
-      }),
+      body: JSON.stringify(requestBody),
     });
 
+    const data = await response.json();
+    console.log('[GENERATE-PAYMENT] AbacatePay response status:', response.status);
+    console.log('[GENERATE-PAYMENT] AbacatePay response:', JSON.stringify(data, null, 2));
+
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('AbacatePay API error:', errorData);
+      console.error('AbacatePay API error:', data);
       return NextResponse.json(
-        { error: 'Failed to create payment' },
+        { error: data.error || 'Failed to create PIX payment' },
         { status: 500 }
       );
     }
 
-    const data = await response.json();
-    const abacatePayId = data.data.id;
+    const billingData = data.data || data;
+    const abacatePayId = billingData.id;
+    const brCode = billingData.pix?.brcode || '';
+    const brCodeBase64 = billingData.pix?.qrcode || '';
+
+    if (!abacatePayId) {
+      console.error('[GENERATE-PAYMENT] No billing ID in response:', data);
+      return NextResponse.json(
+        { error: 'Billing ID not returned by payment service' },
+        { status: 500 }
+      );
+    }
+
+    if (!brCode) {
+      console.error('[GENERATE-PAYMENT] No brCode in response:', data);
+      return NextResponse.json(
+        { error: 'PIX code not returned by payment service' },
+        { status: 500 }
+      );
+    }
 
     // Create walletTransaction record for webhook to find
     await adminDb.collection(`academies/${academyId}/walletTransactions`).add({
@@ -119,49 +143,27 @@ export async function POST(request: NextRequest) {
       studentId: order.studentId,
       studentName: order.studentName,
       abacatePayTransactionId: abacatePayId,
-      pixCode: data.data.pix?.brcode || null,
-      qrCodeUrl: data.data.pix?.qrcode || null,
-      description: `Pedido #${orderId.slice(-6).toUpperCase()}`,
+      description: `Pedido #${orderId.slice(-6).toUpperCase()} - ${order.studentName}`,
       createdAt: FieldValue.serverTimestamp(),
     });
 
     // Update order with payment info (using Admin SDK - bypasses rules)
-    if (method === 'PIX') {
-      await orderRef.update({
-        abacatePayTransactionId: abacatePayId,
-        pixCode: data.data.pix?.brcode,
-        qrCodeUrl: data.data.pix?.qrcode,
-        paymentMethod: 'pix',
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+    await orderRef.update({
+      abacatePayTransactionId: abacatePayId,
+      pixCode: brCode,
+      paymentMethod: 'pix',
+      updatedAt: FieldValue.serverTimestamp(),
+    });
 
-      return NextResponse.json({
-        success: true,
-        paymentLink: {
-          pixCode: data.data.pix?.brcode || '',
-          qrCodeUrl: data.data.pix?.qrcode || '',
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-          createdAt: new Date().toISOString(),
-        },
-      });
-    } else {
-      // For CARD, AbacatePay returns a checkout URL
-      await orderRef.update({
-        abacatePayTransactionId: abacatePayId,
-        paymentMethod: 'credit_card',
-        updatedAt: FieldValue.serverTimestamp(),
-      });
-
-      return NextResponse.json({
-        success: true,
-        paymentLink: {
-          pixCode: '',
-          qrCodeUrl: data.data.url || '',
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-          createdAt: new Date().toISOString(),
-        },
-      });
-    }
+    return NextResponse.json({
+      success: true,
+      paymentLink: {
+        pixCode: brCode,
+        qrCodeUrl: brCodeBase64,
+        expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(), // 30 min
+        createdAt: new Date().toISOString(),
+      },
+    });
   } catch (error) {
     console.error('Error generating payment:', error);
     return NextResponse.json(

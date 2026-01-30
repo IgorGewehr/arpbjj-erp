@@ -73,6 +73,7 @@ export function CheckoutDialog({
   const [qrCodeUrl, setQrCodeUrl] = useState<string>('');
   const [copied, setCopied] = useState(false);
   const [timeRemaining, setTimeRemaining] = useState<string>('');
+  const [savedTotal, setSavedTotal] = useState<number>(0);
 
   // Reset state when dialog closes
   useEffect(() => {
@@ -84,13 +85,15 @@ export function CheckoutDialog({
       setQrCodeUrl('');
       setCopied(false);
       setTimeRemaining('');
+      setSavedTotal(0);
     }
   }, [open]);
 
-  // Generate QR code for PIX
+  // Generate QR code from raw PIX br-code only (not from URLs)
   useEffect(() => {
-    if (paymentLink?.pixCode && paymentMethod === 'PIX') {
-      QRCode.toDataURL(paymentLink.pixCode, {
+    const qrContent = paymentLink?.pixCode;
+    if (qrContent) {
+      QRCode.toDataURL(qrContent, {
         width: 280,
         margin: 2,
         color: {
@@ -101,7 +104,7 @@ export function CheckoutDialog({
         .then(setQrCodeUrl)
         .catch(console.error);
     }
-  }, [paymentLink?.pixCode, paymentMethod]);
+  }, [paymentLink?.pixCode, paymentLink?.qrCodeUrl]);
 
   // Timer for PIX expiration
   useEffect(() => {
@@ -138,6 +141,9 @@ export function CheckoutDialog({
   // Handle checkout
   const handleCheckout = async () => {
     try {
+      // Save total before order creation clears the cart
+      setSavedTotal(displayTotal);
+
       // Create order
       const order = await onCreateOrder();
       setOrderId(order.id);
@@ -147,16 +153,7 @@ export function CheckoutDialog({
 
       if (payment) {
         setPaymentLink(payment);
-
-        if (paymentMethod === 'CARD' && payment.qrCodeUrl) {
-          // Redirect to AbacatePay checkout for card
-          window.open(payment.qrCodeUrl, '_blank');
-          success('Redirecionando para pagamento com cartao...');
-          onClose();
-        } else {
-          // Show PIX QR code
-          setStep('payment');
-        }
+        setStep('payment');
       } else {
         showError('Erro ao gerar pagamento. Tente novamente.');
       }
@@ -406,19 +403,19 @@ export function CheckoutDialog({
             </Box>
           </Box>
         ) : (
-          /* PIX Payment Step */
+          /* Payment Step */
           <Fade in={step === 'payment'}>
             <Box sx={{ p: 3, textAlign: 'center' }}>
               {isGeneratingPayment ? (
                 <Box sx={{ py: 6 }}>
                   <CircularProgress size={48} />
                   <Typography variant="body1" color="text.secondary" sx={{ mt: 2 }}>
-                    Gerando QR Code...
+                    Gerando pagamento...
                   </Typography>
                 </Box>
               ) : paymentLink?.pixCode ? (
                 <>
-                  {/* Amount and Timer */}
+                  {/* Inline PIX QR Code (raw br-code) */}
                   <Box
                     sx={{
                       display: 'flex',
@@ -435,7 +432,7 @@ export function CheckoutDialog({
                         Valor a pagar
                       </Typography>
                       <Typography variant="h5" fontWeight={700} color="primary">
-                        R$ {(displayTotal / 100).toFixed(2)}
+                        R$ {(savedTotal / 100).toFixed(2)}
                       </Typography>
                     </Box>
                     {timeRemaining && (
@@ -451,7 +448,6 @@ export function CheckoutDialog({
                     )}
                   </Box>
 
-                  {/* QR Code */}
                   {qrCodeUrl ? (
                     <Box
                       sx={{
@@ -473,7 +469,6 @@ export function CheckoutDialog({
                     Escaneie com o app do seu banco
                   </Typography>
 
-                  {/* Copy Button */}
                   <Button
                     variant={copied ? 'contained' : 'outlined'}
                     fullWidth
@@ -481,57 +476,85 @@ export function CheckoutDialog({
                     startIcon={copied ? <CheckCircle size={20} /> : <Copy size={20} />}
                     onClick={handleCopyCode}
                     color={copied ? 'success' : 'primary'}
-                    sx={{
-                      py: 1.5,
-                      borderRadius: 3,
-                      textTransform: 'none',
-                      fontWeight: 600,
-                      transition: 'all 0.2s',
-                    }}
+                    sx={{ py: 1.5, borderRadius: 3, textTransform: 'none', fontWeight: 600 }}
                   >
                     {copied ? 'Copiado!' : 'Copiar Codigo PIX'}
                   </Button>
 
-                  {/* Instructions */}
+                  <Button
+                    variant="text"
+                    fullWidth
+                    onClick={onClose}
+                    sx={{ mt: 2, color: 'text.secondary' }}
+                  >
+                    Fechar
+                  </Button>
+                </>
+              ) : paymentLink?.qrCodeUrl ? (
+                <>
+                  {/* AbacatePay hosted payment page */}
                   <Box
                     sx={{
-                      mt: 3,
                       p: 2,
-                      bgcolor: 'primary.50',
+                      mb: 3,
+                      bgcolor: '#f8f9fa',
                       borderRadius: 2,
-                      textAlign: 'left',
                     }}
                   >
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
-                      <Info size={16} color="#1976d2" />
-                      <Typography variant="subtitle2" color="primary.main">
-                        Como pagar
-                      </Typography>
-                    </Box>
-                    {['Abra o app do seu banco', 'Escolha pagar via PIX', 'Escaneie ou cole o codigo', 'Confirme o pagamento'].map((text, i) => (
-                      <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 0.5 }}>
-                        <Box
-                          sx={{
-                            width: 20,
-                            height: 20,
-                            borderRadius: '50%',
-                            bgcolor: 'primary.main',
-                            color: 'white',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                          }}
-                        >
-                          {i + 1}
-                        </Box>
-                        <Typography variant="body2">{text}</Typography>
-                      </Box>
-                    ))}
+                    <Typography variant="caption" color="text.secondary">
+                      Valor a pagar
+                    </Typography>
+                    <Typography variant="h5" fontWeight={700} color="primary">
+                      R$ {(savedTotal / 100).toFixed(2)}
+                    </Typography>
                   </Box>
 
-                  {/* Status */}
+                  <Box
+                    sx={{
+                      width: 80,
+                      height: 80,
+                      borderRadius: '50%',
+                      bgcolor: '#f0f7ff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      mx: 'auto',
+                      mb: 2,
+                    }}
+                  >
+                    <CheckCircle size={40} color="#22c55e" />
+                  </Box>
+
+                  <Typography variant="h6" fontWeight={600} sx={{ mb: 1 }}>
+                    Pedido criado!
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                    Clique no botao abaixo para abrir a pagina de pagamento com o QR Code PIX
+                  </Typography>
+
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    size="large"
+                    startIcon={<QrCode size={20} />}
+                    href={paymentLink.qrCodeUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    component="a"
+                    sx={{
+                      py: 2,
+                      borderRadius: 3,
+                      fontSize: '1rem',
+                      fontWeight: 600,
+                      textTransform: 'none',
+                      textDecoration: 'none',
+                      boxShadow: 'none',
+                      '&:hover': { boxShadow: '0 4px 12px rgba(0,0,0,0.15)' },
+                    }}
+                  >
+                    Pagar com PIX
+                  </Button>
+
                   <Box
                     sx={{
                       mt: 3,

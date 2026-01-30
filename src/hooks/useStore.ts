@@ -24,6 +24,7 @@ const QUERY_KEYS = {
 // ============================================
 export function useStore() {
   const { success, error: showError } = useFeedback();
+  const { user } = useAuth();
   const { academy } = useAcademy();
   const queryClient = useQueryClient();
 
@@ -205,6 +206,7 @@ export function useStore() {
           academyId: academy.id,
           orderId,
           method,
+          customerEmail: user?.email,
         }),
       });
 
@@ -395,6 +397,7 @@ export function useStoreCart() {
           academyId: academy.id,
           orderId,
           method,
+          customerEmail: user?.email,
         }),
       });
 

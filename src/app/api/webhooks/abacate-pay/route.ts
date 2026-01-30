@@ -10,11 +10,30 @@ import { pushNotificationService } from '@/services/server';
 interface AbacatePayWebhookPayload {
   event: 'billing.paid' | 'billing.expired' | 'billing.cancelled';
   data: {
-    pixQrCode: {
-      id: string;        // Transaction ID (e.g., "pix_char_ZSrHDXN0eQQ16dDgmsAuzn6C")
+    billing: {
+      id: string;        // Billing ID (e.g., "bill_EWKETqphHd4RPEyuPrWWetwE")
       amount: number;    // Amount in centavos
-      kind: 'PIX';
+      customer: {
+        id: string;
+        metadata: {
+          name: string;
+          cellphone: string;
+          taxId: string;
+          email: string;
+          country: string;
+          zipCode: string;
+        };
+      };
+      frequency: string;
+      kind: string[];
       status: 'PAID' | 'PENDING' | 'EXPIRED' | 'CANCELLED';
+      products: Array<{
+        id: string;
+        externalId: string;
+        quantity: number;
+      }>;
+      paidAmount: number;
+      couponsUsed: string[];
     };
     payment: {
       amount: number;    // Amount received
@@ -96,21 +115,31 @@ function getWebhookSecret(): string | null {
 }
 
 // ============================================
-// Find Transaction by AbacatePay ID
+// Find Transaction by AbacatePay ID or financialId
 // Uses collectionGroup query to search across all academies
 // ============================================
-async function findTransactionByAbacatePayId(
-  abacatePayId: string
+async function findTransaction(
+  abacatePayId: string,
+  financialId?: string
 ): Promise<{ academyId: string; transaction: WalletTransaction; docRef: FirebaseFirestore.DocumentReference } | null> {
   try {
-    // Search across all academies' walletTransactions using Admin SDK
-    const snapshot = await adminDb
+    // 1. Try by abacatePayTransactionId first
+    let snapshot = await adminDb
       .collectionGroup('walletTransactions')
       .where('abacatePayTransactionId', '==', abacatePayId)
       .get();
 
+    // 2. Fallback: search by financialId (handles pixQrCode/create → billing.paid mismatch)
+    if (snapshot.empty && financialId) {
+      console.log(`[WEBHOOK] Not found by abacatePayId ${abacatePayId}, trying financialId: ${financialId}`);
+      snapshot = await adminDb
+        .collectionGroup('walletTransactions')
+        .where('financialId', '==', financialId)
+        .get();
+    }
+
     if (snapshot.empty) {
-      console.error(`Transaction not found for AbacatePay ID: ${abacatePayId}`);
+      console.error(`[WEBHOOK] Transaction not found for abacatePayId: ${abacatePayId}, financialId: ${financialId}`);
       return null;
     }
 
@@ -120,7 +149,7 @@ async function findTransactionByAbacatePayId(
     // Extract academyId from the document path
     // Path: academies/{academyId}/walletTransactions/{transactionId}
     const pathParts = docSnap.ref.path.split('/');
-    const academyId = pathParts[1]; // academies/[ACADEMY_ID]/walletTransactions/...
+    const academyId = pathParts[1];
 
     return {
       academyId,
@@ -128,7 +157,7 @@ async function findTransactionByAbacatePayId(
       docRef: docSnap.ref,
     };
   } catch (error) {
-    console.error('Error finding transaction:', error);
+    console.error('[WEBHOOK] Error finding transaction:', error);
     return null;
   }
 }
@@ -394,11 +423,15 @@ export async function POST(request: NextRequest) {
     }
 
     const { event, data, devMode } = payload;
-    const transactionId = data.pixQrCode.id;
-    const amount = data.pixQrCode.amount;
+    const transactionId = data.billing.id;
+    const amount = data.billing.amount;
     const fee = data.payment?.fee || 0;
 
-    console.log(`Webhook received: ${event} for transaction ${transactionId}`);
+    // Extract orderId from products externalId (billing/create) or metadata
+    const productExternalId = data.billing.products?.[0]?.externalId;
+    const financialIdFromWebhook = productExternalId ? `order_${productExternalId}` : undefined;
+
+    console.log(`[WEBHOOK] Received: ${event} for billing ${transactionId}, amount: ${amount}, externalId: ${productExternalId}`);
 
     // Skip signature validation in dev mode (AbacatePay sandbox)
     if (!devMode) {
@@ -421,12 +454,8 @@ export async function POST(request: NextRequest) {
             { status: 401 }
           );
         }
-      } else if (process.env.NODE_ENV === 'production') {
-        console.error('ABACATEPAY_WEBHOOK_SECRET not configured in production');
-        return NextResponse.json(
-          { error: 'Webhook not configured' },
-          { status: 500 }
-        );
+      } else {
+        console.warn('ABACATEPAY_WEBHOOK_SECRET not configured - skipping signature validation');
       }
     } else {
       console.log('Dev mode webhook - signature validation skipped');
@@ -438,11 +467,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ received: true, duplicate: true });
     }
 
-    // Find the transaction in our database by AbacatePay ID
-    const result = await findTransactionByAbacatePayId(transactionId);
+    // Find the transaction in our database
+    const result = await findTransaction(transactionId, financialIdFromWebhook);
 
     if (!result) {
-      console.error(`Transaction not found in database: ${transactionId}`);
+      console.error(`[WEBHOOK] Transaction not found in database: billingId=${transactionId}, financialId=${financialIdFromWebhook}`);
       return NextResponse.json(
         { error: 'Transaction not found' },
         { status: 404 }
@@ -450,10 +479,11 @@ export async function POST(request: NextRequest) {
     }
 
     const { academyId, transaction, docRef } = result;
+    console.log(`[WEBHOOK] Found transaction in academy ${academyId}, financialId: ${transaction.financialId}, status: ${transaction.status}`);
 
     // Validate amount matches
     if (transaction.amount !== amount) {
-      console.error(`Amount mismatch: expected ${transaction.amount}, got ${amount}`);
+      console.error(`[WEBHOOK] Amount mismatch: expected ${transaction.amount}, got ${amount}`);
       return NextResponse.json(
         { error: 'Amount mismatch' },
         { status: 400 }
@@ -463,7 +493,7 @@ export async function POST(request: NextRequest) {
     // Process event
     switch (event) {
       case 'billing.paid':
-        if (data.pixQrCode.status === 'PAID') {
+        if (data.billing.status === 'PAID') {
           await handlePaymentConfirmed(academyId, transaction, docRef, amount, fee);
           console.log(`Payment confirmed for transaction ${transactionId}`);
         }

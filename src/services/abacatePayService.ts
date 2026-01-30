@@ -414,27 +414,29 @@ class AbacatePayService {
 
     const snapshot = await getDocs(q);
 
-    return snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        academyId: data.academyId,
-        type: data.type as TransactionType,
-        amount: data.amount,
-        status: data.status as TransactionStatus,
-        financialId: data.financialId,
-        studentId: data.studentId,
-        studentName: data.studentName,
-        abacatePayTransactionId: data.abacatePayTransactionId,
-        pixCode: data.pixCode,
-        qrCodeUrl: data.qrCodeUrl,
-        withdrawalPixKey: data.withdrawalPixKey,
-        withdrawalPixKeyType: data.withdrawalPixKeyType,
-        description: data.description,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        completedAt: data.completedAt?.toDate(),
-      };
-    });
+    return snapshot.docs
+      .map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          academyId: data.academyId,
+          type: data.type as TransactionType,
+          amount: data.amount,
+          status: data.status as TransactionStatus,
+          financialId: data.financialId,
+          studentId: data.studentId,
+          studentName: data.studentName,
+          abacatePayTransactionId: data.abacatePayTransactionId,
+          pixCode: data.pixCode,
+          qrCodeUrl: data.qrCodeUrl,
+          withdrawalPixKey: data.withdrawalPixKey,
+          withdrawalPixKeyType: data.withdrawalPixKeyType,
+          description: data.description,
+          createdAt: data.createdAt?.toDate() || new Date(),
+          completedAt: data.completedAt?.toDate(),
+        };
+      })
+      .filter((t) => t.status !== 'pending');
   }
 
   // ============================================

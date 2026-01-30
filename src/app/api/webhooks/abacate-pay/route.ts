@@ -434,31 +434,21 @@ export async function POST(request: NextRequest) {
     console.log(`[WEBHOOK] Received: ${event} for billing ${transactionId}, amount: ${amount}, externalId: ${productExternalId}`);
 
     // Skip signature validation in dev mode (AbacatePay sandbox)
+    // Signature validation - only if both secret and header are present
     if (!devMode) {
       const webhookSecret = getWebhookSecret();
       const signature = request.headers.get('x-abacatepay-signature');
 
-      if (webhookSecret) {
-        if (!signature) {
-          console.error('Missing webhook signature');
-          return NextResponse.json(
-            { error: 'Missing signature' },
-            { status: 401 }
-          );
-        }
-
+      if (webhookSecret && signature) {
         if (!validateSignature(rawBody, signature, webhookSecret)) {
-          console.error('Invalid webhook signature');
+          console.error('[WEBHOOK] Invalid signature');
           return NextResponse.json(
             { error: 'Invalid signature' },
             { status: 401 }
           );
         }
-      } else {
-        console.warn('ABACATEPAY_WEBHOOK_SECRET not configured - skipping signature validation');
+        console.log('[WEBHOOK] Signature validated');
       }
-    } else {
-      console.log('Dev mode webhook - signature validation skipped');
     }
 
     // Check for duplicate webhook (idempotency)

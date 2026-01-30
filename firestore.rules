@@ -355,7 +355,7 @@ service cloud.firestore {
                       && request.resource.data.studentId == getUserData().studentId
                       && request.resource.data.academyId == academyId
                       && request.resource.data.status == 'pending_payment'
-                      && isPositiveAmount(request.resource.data.total);
+                      && isPositiveAmount(request.resource.data.totalAmount);
 
         // Staff can update order status (except payment fields)
         allow update: if isAcademyStaff(academyId)

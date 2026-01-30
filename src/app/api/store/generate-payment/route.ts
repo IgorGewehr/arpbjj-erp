@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
     await adminDb.collection(`academies/${academyId}/walletTransactions`).add({
       academyId,
       type: 'payment',
-      amount: order.total,
+      amount: order.totalAmount,
       status: 'pending',
       financialId: `order_${orderId}`,
       studentId: order.studentId,

@@ -95,8 +95,8 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('This order is not pending payment');
     }
 
-    // 10. Verify amount matches order total (field is 'total', not 'totalAmount')
-    const orderTotal = orderData.total;
+    // 10. Verify amount matches order total
+    const orderTotal = orderData.totalAmount;
     if (Math.abs(orderTotal - amount) > 1) { // Allow 1 cent tolerance for rounding
       return createErrorResponse(`Amount (${amount}) does not match order total (${orderTotal})`, 400);
     }

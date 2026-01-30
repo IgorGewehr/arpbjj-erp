@@ -217,7 +217,7 @@ async function handlePaymentConfirmed(
   amount: number,
   fee: number
 ): Promise<void> {
-  const { financialId, studentId, studentName } = transaction;
+  const { financialId, studentId, studentName, abacatePayTransactionId } = transaction;
 
   // Update transaction status
   await transactionDocRef.update({
@@ -233,7 +233,7 @@ async function handlePaymentConfirmed(
   if (isStoreOrder && financialId) {
     // Handle store order payment
     const orderId = financialId.replace('order_', '');
-    await handleStoreOrderPayment(academyId, orderId, amount, fee, studentName);
+    await handleStoreOrderPayment(academyId, orderId, amount, fee, studentName, abacatePayTransactionId);
   } else if (financialId) {
     // Handle financial (mensalidade) payment
     await handleFinancialPayment(academyId, financialId, amount, fee, studentName);
@@ -292,7 +292,8 @@ async function handleStoreOrderPayment(
   orderId: string,
   amount: number,
   fee: number,
-  studentName?: string
+  studentName?: string,
+  abacatePayTransactionId?: string
 ): Promise<void> {
   const orderRef = adminDb.doc(`academies/${academyId}/storeOrders/${orderId}`);
   const orderSnap = await orderRef.get();
@@ -314,6 +315,7 @@ async function handleStoreOrderPayment(
     status: 'paid',
     paidAt: FieldValue.serverTimestamp(),
     abacatePayFee: fee,
+    ...(abacatePayTransactionId && { externalPaymentId: abacatePayTransactionId }),
     updatedAt: FieldValue.serverTimestamp(),
   });
 

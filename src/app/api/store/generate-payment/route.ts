@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
     await adminDb.collection(`academies/${academyId}/walletTransactions`).add({
       academyId,
       type: 'payment',
-      amount: order.totalAmount,
+      amount: order.total ?? order.totalAmount,
       status: 'pending',
       financialId: `order_${orderId}`,
       studentId: order.studentId,
@@ -150,6 +150,7 @@ export async function POST(request: NextRequest) {
     // Update order with payment info (using Admin SDK - bypasses rules)
     await orderRef.update({
       abacatePayTransactionId: abacatePayId,
+      externalPaymentId: abacatePayId,
       pixCode: brCode,
       paymentMethod: 'pix',
       updatedAt: FieldValue.serverTimestamp(),

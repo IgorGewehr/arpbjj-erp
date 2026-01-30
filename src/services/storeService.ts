@@ -261,7 +261,7 @@ class StoreService {
     }
 
     // Calculate total from validated items (server-side prices)
-    const totalAmount = validatedItems.reduce(
+    const total = validatedItems.reduce(
       (sum, item) => sum + item.unitPrice * item.quantity,
       0
     );
@@ -272,7 +272,7 @@ class StoreService {
       studentId: data.studentId,
       studentName: data.studentName,
       items: validatedItems,
-      totalAmount,
+      total,
       status: 'pending_payment' as StoreOrderStatus,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -288,7 +288,7 @@ class StoreService {
     // Notify admin about new order (non-blocking - student may not have notification permissions)
     this.notifyAdmin(
       'Novo Pedido',
-      `${data.studentName} fez um pedido de R$ ${(totalAmount / 100).toFixed(2)}.`,
+      `${data.studentName} fez um pedido de R$ ${(total / 100).toFixed(2)}.`,
       `/loja/pedidos?id=${docRef.id}`
     ).catch(() => {});
 
@@ -666,7 +666,7 @@ class StoreService {
       studentId: data.studentId,
       studentName: data.studentName,
       items: data.items || [],
-      totalAmount: data.totalAmount,
+      totalAmount: data.total ?? data.totalAmount,
       status: data.status,
       paymentMethod: data.paymentMethod,
       abacatePayTransactionId: data.abacatePayTransactionId,

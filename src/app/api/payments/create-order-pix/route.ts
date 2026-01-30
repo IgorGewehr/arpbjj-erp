@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 10. Verify amount matches order total
-    const orderTotal = orderData.totalAmount;
+    const orderTotal = orderData.total ?? orderData.totalAmount;
     if (Math.abs(orderTotal - amount) > 1) { // Allow 1 cent tolerance for rounding
       return createErrorResponse(`Amount (${amount}) does not match order total (${orderTotal})`, 400);
     }
@@ -163,6 +163,7 @@ export async function POST(request: NextRequest) {
     // 14. Update order with payment info (using Admin SDK)
     await orderRef.update({
       abacatePayTransactionId: abacatePayId,
+      externalPaymentId: abacatePayId,
       pixCode: data.data.pix?.brcode,
       qrCodeUrl: data.data.pix?.qrcode,
       paymentMethod: 'pix',

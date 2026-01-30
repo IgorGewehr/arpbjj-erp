@@ -1,12 +1,12 @@
 import * as admin from 'firebase-admin';
 
-// Initialize Firebase Admin SDK
+// Initialize Firebase Admin SDK (lazy - only on first use, not during build)
 // Supports:
 //   1. Individual FIREBASE_SA_* env vars (easiest for Netlify)
 //   2. FIREBASE_SERVICE_ACCOUNT_KEY - Raw JSON string
 //   3. GOOGLE_APPLICATION_CREDENTIALS - File path (local dev)
 
-function initializeFirebaseAdmin() {
+function getOrInitializeApp(): admin.app.App {
   if (admin.apps.length > 0) {
     return admin.app();
   }
@@ -21,7 +21,6 @@ function initializeFirebaseAdmin() {
       credential: admin.credential.cert({
         projectId,
         clientEmail,
-        // Netlify stores \n as literal characters, so we need to replace them
         privateKey: privateKey.replace(/\\n/g, '\n'),
       }),
     });
@@ -40,14 +39,23 @@ function initializeFirebaseAdmin() {
     }
   }
 
-  // Option 3: File path via GOOGLE_APPLICATION_CREDENTIALS (local dev)
-  return admin.initializeApp({
-    credential: admin.credential.applicationDefault(),
-  });
+  // Option 3: Default credentials (local dev with GOOGLE_APPLICATION_CREDENTIALS)
+  return admin.initializeApp();
 }
 
-const adminApp = initializeFirebaseAdmin();
-export const adminDb = admin.firestore(adminApp);
-export const adminMessaging = admin.messaging(adminApp);
+// Lazy getters - only initialize when actually called at runtime, not at build time
+export const adminDb = new Proxy({} as admin.firestore.Firestore, {
+  get(_, prop) {
+    const db = admin.firestore(getOrInitializeApp());
+    return (db as Record<string | symbol, unknown>)[prop];
+  },
+});
 
-export default adminApp;
+export const adminMessaging = new Proxy({} as admin.messaging.Messaging, {
+  get(_, prop) {
+    const messaging = admin.messaging(getOrInitializeApp());
+    return (messaging as Record<string | symbol, unknown>)[prop];
+  },
+});
+
+export default { getApp: getOrInitializeApp };

@@ -80,38 +80,45 @@ function isWebhookDuplicate(transactionId: string): boolean {
   return false;
 }
 
+// AbacatePay public key for HMAC-SHA256 webhook signature verification
+const ABACATEPAY_PUBLIC_KEY = 't9dXRhHHo3yDEj5pVDYz0frf7q6bMKyMRmxxCPIPp3RCplBfXRxqlC6ZpiWmOqj4L63qEaeUOtrCI8P0VMUgo6iIga2ri9ogaHFs0WIIywSMg0q7RmBfybe1E5XJcfC4IW3alNqym0tXoAKkzvfEjZxV6bE0oG2zJrNNYmUCKZyV0KZ3JS8Votf9EAWWYdiDkMkpbMdPggfh1EqHlVkMiTady6jOR3hyzGEHrIz2Ret0xHKMbiqkr9HS1JhNHDX9';
+
 // ============================================
-// Validate Webhook Signature (Timing-Safe)
+// Validate Webhook - Query String Secret
+// AbacatePay appends ?webhookSecret=xxx to the URL
 // ============================================
-function validateSignature(
-  payload: string,
-  signature: string,
-  secret: string
-): boolean {
+function validateWebhookSecret(request: NextRequest): boolean {
+  const secret = process.env.ABACATEPAY_WEBHOOK_SECRET;
+  if (!secret) return false;
+
+  const receivedSecret = request.nextUrl.searchParams.get('webhookSecret');
+  if (!receivedSecret) return false;
+
+  // Timing-safe comparison
   try {
-    const hmac = createHmac('sha256', secret);
-    hmac.update(payload);
-    const expectedSignature = hmac.digest('hex');
-
-    // Use timing-safe comparison to prevent timing attacks
-    const sigBuffer = Buffer.from(signature, 'hex');
-    const expectedBuffer = Buffer.from(expectedSignature, 'hex');
-
-    if (sigBuffer.length !== expectedBuffer.length) {
-      return false;
-    }
-
-    return timingSafeEqual(sigBuffer, expectedBuffer);
+    const a = Buffer.from(secret);
+    const b = Buffer.from(receivedSecret);
+    return a.length === b.length && timingSafeEqual(a, b);
   } catch {
     return false;
   }
 }
 
 // ============================================
-// Get Global Webhook Secret (from environment)
+// Validate HMAC-SHA256 Signature (X-Webhook-Signature header)
 // ============================================
-function getWebhookSecret(): string | null {
-  return process.env.ABACATEPAY_WEBHOOK_SECRET || null;
+function validateHmacSignature(rawBody: string, signatureHeader: string): boolean {
+  try {
+    const expectedSig = createHmac('sha256', ABACATEPAY_PUBLIC_KEY)
+      .update(Buffer.from(rawBody, 'utf8'))
+      .digest('base64');
+
+    const a = Buffer.from(expectedSig);
+    const b = Buffer.from(signatureHeader);
+    return a.length === b.length && timingSafeEqual(a, b);
+  } catch {
+    return false;
+  }
 }
 
 // ============================================
@@ -433,22 +440,27 @@ export async function POST(request: NextRequest) {
 
     console.log(`[WEBHOOK] Received: ${event} for billing ${transactionId}, amount: ${amount}, externalId: ${productExternalId}`);
 
-    // Skip signature validation in dev mode (AbacatePay sandbox)
-    // Signature validation - only if both secret and header are present
-    if (!devMode) {
-      const webhookSecret = getWebhookSecret();
-      const signature = request.headers.get('x-abacatepay-signature');
+    // Authenticate webhook request (two-layer per AbacatePay docs)
+    // Layer 1: Query string secret (?webhookSecret=xxx)
+    if (!validateWebhookSecret(request)) {
+      console.error('[WEBHOOK] Invalid or missing webhookSecret query parameter');
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
 
-      if (webhookSecret && signature) {
-        if (!validateSignature(rawBody, signature, webhookSecret)) {
-          console.error('[WEBHOOK] Invalid signature');
-          return NextResponse.json(
-            { error: 'Invalid signature' },
-            { status: 401 }
-          );
-        }
-        console.log('[WEBHOOK] Signature validated');
+    // Layer 2: HMAC-SHA256 signature (X-Webhook-Signature header) - optional
+    const hmacSignature = request.headers.get('x-webhook-signature');
+    if (hmacSignature) {
+      if (!validateHmacSignature(rawBody, hmacSignature)) {
+        console.error('[WEBHOOK] Invalid HMAC signature');
+        return NextResponse.json(
+          { error: 'Invalid signature' },
+          { status: 401 }
+        );
       }
+      console.log('[WEBHOOK] HMAC signature verified');
     }
 
     // Check for duplicate webhook (idempotency)

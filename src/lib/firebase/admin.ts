@@ -44,17 +44,43 @@ function getOrInitializeApp(): admin.app.App {
 }
 
 // Lazy getters - only initialize when actually called at runtime, not at build time
+let _db: admin.firestore.Firestore | null = null;
+let _messaging: admin.messaging.Messaging | null = null;
+
+function getDb(): admin.firestore.Firestore {
+  if (!_db) {
+    _db = admin.firestore(getOrInitializeApp());
+  }
+  return _db;
+}
+
+function getMessaging(): admin.messaging.Messaging {
+  if (!_messaging) {
+    _messaging = admin.messaging(getOrInitializeApp());
+  }
+  return _messaging;
+}
+
+// Proxy to defer initialization to runtime
 export const adminDb = new Proxy({} as admin.firestore.Firestore, {
-  get(_, prop) {
-    const db = admin.firestore(getOrInitializeApp());
-    return (db as Record<string | symbol, unknown>)[prop];
+  get(_, prop: string | symbol) {
+    const db = getDb();
+    const value = db[prop as keyof admin.firestore.Firestore];
+    if (typeof value === 'function') {
+      return (value as Function).bind(db);
+    }
+    return value;
   },
 });
 
 export const adminMessaging = new Proxy({} as admin.messaging.Messaging, {
-  get(_, prop) {
-    const messaging = admin.messaging(getOrInitializeApp());
-    return (messaging as Record<string | symbol, unknown>)[prop];
+  get(_, prop: string | symbol) {
+    const msg = getMessaging();
+    const value = msg[prop as keyof admin.messaging.Messaging];
+    if (typeof value === 'function') {
+      return (value as Function).bind(msg);
+    }
+    return value;
   },
 });
 

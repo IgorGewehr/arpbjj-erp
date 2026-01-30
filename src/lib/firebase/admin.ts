@@ -1,17 +1,34 @@
 import * as admin from 'firebase-admin';
 
 // Initialize Firebase Admin SDK
-// Uses GOOGLE_APPLICATION_CREDENTIALS environment variable for service account
-// Or you can use FIREBASE_SERVICE_ACCOUNT_KEY environment variable with JSON string
+// Supports:
+//   1. Individual FIREBASE_SA_* env vars (easiest for Netlify)
+//   2. FIREBASE_SERVICE_ACCOUNT_KEY - Raw JSON string
+//   3. GOOGLE_APPLICATION_CREDENTIALS - File path (local dev)
 
 function initializeFirebaseAdmin() {
   if (admin.apps.length > 0) {
     return admin.app();
   }
 
-  // Option 1: Using service account JSON from environment variable
-  const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
+  // Option 1: Individual environment variables (recommended for Netlify)
+  const projectId = process.env.FIREBASE_SA_PROJECT_ID;
+  const clientEmail = process.env.FIREBASE_SA_CLIENT_EMAIL;
+  const privateKey = process.env.FIREBASE_SA_PRIVATE_KEY;
 
+  if (projectId && clientEmail && privateKey) {
+    return admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId,
+        clientEmail,
+        // Netlify stores \n as literal characters, so we need to replace them
+        privateKey: privateKey.replace(/\\n/g, '\n'),
+      }),
+    });
+  }
+
+  // Option 2: Raw JSON string
+  const serviceAccountKey = process.env.FIREBASE_SERVICE_ACCOUNT_KEY;
   if (serviceAccountKey) {
     try {
       const serviceAccount = JSON.parse(serviceAccountKey);
@@ -23,8 +40,7 @@ function initializeFirebaseAdmin() {
     }
   }
 
-  // Option 2: Using GOOGLE_APPLICATION_CREDENTIALS file path (default)
-  // This is automatically used by firebase-admin if the env var is set
+  // Option 3: File path via GOOGLE_APPLICATION_CREDENTIALS (local dev)
   return admin.initializeApp({
     credential: admin.credential.applicationDefault(),
   });

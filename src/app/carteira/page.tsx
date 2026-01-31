@@ -240,6 +240,7 @@ function WithdrawalDialog({ open, onClose, maxAmount, onWithdraw }: WithdrawalDi
 export default function CarteiraPage() {
   const theme = useTheme();
   const { academyId } = useAcademy();
+  const { firebaseUser } = useAuth();
   const { success, error: showError } = useFeedback();
   const { settings, isLoading: settingsLoading } = useAcademySettings();
   const { revenueStats, isRevenueLoading } = useFinancial({ autoLoad: true });
@@ -286,16 +287,25 @@ export default function CarteiraPage() {
   };
 
   const handleWithdraw = async (amount: number, pixKey: string, pixKeyType: PixKeyType) => {
-    if (!academyId) return;
+    if (!academyId || !firebaseUser) return;
 
-    const service = createAbacatePayService(academyId);
-    const result = await service.requestWithdrawal(amount, pixKey, pixKeyType);
+    const token = await firebaseUser.getIdToken();
+    const response = await fetch('/api/payments/withdraw', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ academyId, amount, pixKey, pixKeyType }),
+    });
 
-    if (result) {
+    const data = await response.json();
+
+    if (response.ok && !data.error) {
       success('Saque solicitado com sucesso!');
       fetchWalletData();
     } else {
-      throw new Error('Falha ao solicitar saque');
+      throw new Error(data.error || 'Falha ao solicitar saque');
     }
   };
 

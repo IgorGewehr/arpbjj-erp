@@ -8,7 +8,7 @@ import { pushNotificationService } from '@/services/server';
 // Types - AbacatePay Webhook Payload
 // ============================================
 interface AbacatePayWebhookPayload {
-  event: 'billing.paid' | 'billing.expired' | 'billing.cancelled';
+  event: 'billing.paid' | 'billing.expired' | 'billing.cancelled' | 'withdraw.done' | 'withdraw.failed';
   data: {
     // PIX payments come as pixQrCode
     pixQrCode?: {
@@ -29,10 +29,24 @@ interface AbacatePayWebhookPayload {
       }>;
       paidAmount?: number;
     };
-    payment: {
+    // Payment info (for billing events)
+    payment?: {
       amount: number;    // Amount received
       fee: number;       // AbacatePay fee
       method: 'PIX' | 'CARD';
+    };
+    // Withdraw transaction (for withdraw events)
+    transaction?: {
+      id: string;
+      status: 'COMPLETE' | 'CANCELLED' | 'PENDING';
+      devMode: boolean;
+      receiptUrl: string;
+      kind: string;
+      amount: number;
+      platformFee: number;
+      externalId: string;
+      createdAt: string;
+      updatedAt: string;
     };
   };
   devMode: boolean;
@@ -45,8 +59,10 @@ interface WalletTransaction {
   studentId?: string;
   studentName?: string;
   abacatePayTransactionId: string;
+  externalId?: string;
   amount: number;
-  status: 'pending' | 'completed' | 'cancelled';
+  fee?: number;
+  status: 'pending' | 'completed' | 'cancelled' | 'failed';
   type: 'payment' | 'withdrawal';
 }
 
@@ -426,6 +442,169 @@ async function notifyAdmin(
 }
 
 // ============================================
+// Find Withdraw Transaction by AbacatePay ID or externalId
+// ============================================
+async function findWithdrawTransaction(
+  abacatePayId: string,
+  externalId?: string
+): Promise<{ academyId: string; transaction: WalletTransaction; docRef: FirebaseFirestore.DocumentReference } | null> {
+  try {
+    let snapshot = await adminDb
+      .collectionGroup('walletTransactions')
+      .where('abacatePayTransactionId', '==', abacatePayId)
+      .get();
+
+    if (snapshot.empty && externalId) {
+      console.log(`[WEBHOOK] Withdraw not found by abacatePayId ${abacatePayId}, trying externalId: ${externalId}`);
+      snapshot = await adminDb
+        .collectionGroup('walletTransactions')
+        .where('externalId', '==', externalId)
+        .get();
+    }
+
+    if (snapshot.empty) {
+      return null;
+    }
+
+    const docSnap = snapshot.docs[0];
+    const transaction = docSnap.data() as WalletTransaction;
+    const pathParts = docSnap.ref.path.split('/');
+    const academyId = pathParts[1];
+
+    return { academyId, transaction, docRef: docSnap.ref };
+  } catch (error) {
+    console.error('[WEBHOOK] Error finding withdraw transaction:', error);
+    return null;
+  }
+}
+
+// ============================================
+// Process Withdraw Webhook
+// ============================================
+async function processWithdrawWebhook(
+  event: 'withdraw.done' | 'withdraw.failed',
+  data: AbacatePayWebhookPayload['data']
+): Promise<NextResponse> {
+  const transaction = data.transaction;
+  if (!transaction) {
+    console.error('[WEBHOOK] No transaction in withdraw payload:', JSON.stringify(data));
+    return NextResponse.json(
+      { error: 'Invalid payload: missing transaction' },
+      { status: 400 }
+    );
+  }
+
+  const { id: transactionId, amount, platformFee, externalId, receiptUrl, status } = transaction;
+
+  console.log(`[WEBHOOK] Received: ${event} for withdraw ${transactionId}, amount: ${amount}, fee: ${platformFee}, status: ${status}`);
+
+  // Check for duplicate webhook (idempotency)
+  if (isWebhookDuplicate(`withdraw_${transactionId}`)) {
+    console.log(`Duplicate webhook detected for withdraw transaction ${transactionId}`);
+    return NextResponse.json({ received: true, duplicate: true });
+  }
+
+  // Find the withdrawal transaction in our database
+  const result = await findWithdrawTransaction(transactionId, externalId);
+
+  if (!result) {
+    console.error(`[WEBHOOK] Withdraw transaction not found: transactionId=${transactionId}, externalId=${externalId}`);
+    return NextResponse.json(
+      { error: 'Transaction not found' },
+      { status: 404 }
+    );
+  }
+
+  const { academyId, transaction: walletTransaction, docRef } = result;
+
+  // Validate it's actually a withdrawal
+  if (walletTransaction.type !== 'withdrawal') {
+    console.error(`[WEBHOOK] Transaction ${transactionId} is not a withdrawal, type: ${walletTransaction.type}`);
+    return NextResponse.json(
+      { error: 'Transaction type mismatch' },
+      { status: 400 }
+    );
+  }
+
+  // Process event
+  if (event === 'withdraw.done') {
+    await handleWithdrawDone(academyId, walletTransaction, docRef, platformFee, receiptUrl);
+    console.log(`[WEBHOOK] Withdraw completed for transaction ${transactionId}`);
+  } else {
+    await handleWithdrawFailed(academyId, walletTransaction, docRef);
+    console.log(`[WEBHOOK] Withdraw failed for transaction ${transactionId}`);
+  }
+
+  return NextResponse.json({ received: true });
+}
+
+// ============================================
+// Handle Withdraw Done
+// ============================================
+async function handleWithdrawDone(
+  academyId: string,
+  transaction: WalletTransaction,
+  transactionDocRef: FirebaseFirestore.DocumentReference,
+  platformFee: number,
+  receiptUrl?: string
+): Promise<void> {
+  // Idempotency: don't process if already completed
+  if (transaction.status === 'completed') {
+    console.log('[WEBHOOK] Withdrawal already completed, skipping');
+    return;
+  }
+
+  await transactionDocRef.update({
+    status: 'completed',
+    fee: platformFee,
+    completedAt: FieldValue.serverTimestamp(),
+    ...(receiptUrl && { receiptUrl }),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  await notifyAdmin(academyId, 'withdrawal_completed', {
+    title: 'Saque Concluído',
+    message: `Saque de R$ ${(transaction.amount / 100).toFixed(2)} via PIX foi concluído com sucesso.`,
+  });
+}
+
+// ============================================
+// Handle Withdraw Failed
+// ============================================
+async function handleWithdrawFailed(
+  academyId: string,
+  transaction: WalletTransaction,
+  transactionDocRef: FirebaseFirestore.DocumentReference
+): Promise<void> {
+  // Idempotency: don't process if already failed or cancelled
+  if (transaction.status === 'failed' || transaction.status === 'cancelled') {
+    console.log('[WEBHOOK] Withdrawal already failed/cancelled, skipping');
+    return;
+  }
+
+  const amount = transaction.amount;
+
+  // Update transaction status
+  await transactionDocRef.update({
+    status: 'failed',
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  // Refund wallet - the amount was deducted when the withdrawal was created
+  const walletRef = adminDb.doc(`academies/${academyId}/wallet/balance`);
+  await walletRef.update({
+    availableBalance: FieldValue.increment(amount),
+    totalWithdrawn: FieldValue.increment(-amount),
+    updatedAt: FieldValue.serverTimestamp(),
+  });
+
+  await notifyAdmin(academyId, 'withdrawal_failed', {
+    title: 'Saque Falhou',
+    message: `O saque de R$ ${(amount / 100).toFixed(2)} via PIX falhou. O valor foi devolvido ao saldo.`,
+  });
+}
+
+// ============================================
 // POST Handler
 // ============================================
 export async function POST(request: NextRequest) {
@@ -445,27 +624,6 @@ export async function POST(request: NextRequest) {
     }
 
     const { event, data, devMode } = payload;
-
-    // AbacatePay sends pixQrCode for PIX payments, billing for billing payments
-    const source = data.pixQrCode || data.billing;
-    if (!source) {
-      console.error('[WEBHOOK] No pixQrCode or billing in payload:', JSON.stringify(data));
-      return NextResponse.json(
-        { error: 'Invalid payload: missing pixQrCode or billing' },
-        { status: 400 }
-      );
-    }
-
-    const transactionId = source.id;
-    const amount = source.amount ?? data.payment?.amount;
-    const fee = data.payment?.fee || 0;
-    const status = source.status;
-
-    // Extract orderId from billing products if available
-    const productExternalId = data.billing?.products?.[0]?.externalId;
-    const financialIdFromWebhook = productExternalId ? `order_${productExternalId}` : undefined;
-
-    console.log(`[WEBHOOK] Received: ${event} for ${data.pixQrCode ? 'pixQrCode' : 'billing'} ${transactionId}, amount: ${amount}, fee: ${fee}, status: ${status}`);
 
     // Authenticate webhook request (two-layer per AbacatePay docs)
     // Layer 1: Query string secret (?webhookSecret=xxx)
@@ -489,6 +647,33 @@ export async function POST(request: NextRequest) {
       }
       console.log('[WEBHOOK] HMAC signature verified');
     }
+
+    // Handle withdraw events (different payload structure)
+    if (event === 'withdraw.done' || event === 'withdraw.failed') {
+      return await processWithdrawWebhook(event, data);
+    }
+
+    // --- Billing events ---
+    // AbacatePay sends pixQrCode for PIX payments, billing for billing payments
+    const source = data.pixQrCode || data.billing;
+    if (!source) {
+      console.error('[WEBHOOK] No pixQrCode or billing in payload:', JSON.stringify(data));
+      return NextResponse.json(
+        { error: 'Invalid payload: missing pixQrCode or billing' },
+        { status: 400 }
+      );
+    }
+
+    const transactionId = source.id;
+    const amount = source.amount ?? data.payment?.amount;
+    const fee = data.payment?.fee || 0;
+    const status = source.status;
+
+    // Extract orderId from billing products if available
+    const productExternalId = data.billing?.products?.[0]?.externalId;
+    const financialIdFromWebhook = productExternalId ? `order_${productExternalId}` : undefined;
+
+    console.log(`[WEBHOOK] Received: ${event} for ${data.pixQrCode ? 'pixQrCode' : 'billing'} ${transactionId}, amount: ${amount}, fee: ${fee}, status: ${status}`);
 
     // Check for duplicate webhook (idempotency)
     if (isWebhookDuplicate(transactionId)) {

@@ -33,10 +33,19 @@ interface WithdrawRequest {
 }
 
 interface AbacatePayWithdrawResponse {
-  id: string;
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  amount: number;
-  fee?: number;
+  data: {
+    id: string;
+    status: 'PENDING' | 'EXPIRED' | 'CANCELLED' | 'COMPLETE' | 'REFUNDED';
+    devMode: boolean;
+    receiptUrl: string;
+    kind: string;
+    amount: number;
+    platformFee: number;
+    externalId: string;
+    createdAt: string;
+    updatedAt: string;
+  };
+  error: string | null;
 }
 
 // ============================================
@@ -161,22 +170,32 @@ export async function POST(request: NextRequest) {
     }
 
     // 12. Process withdrawal with AbacatePay
+    const withdrawalExternalId = `withdraw-${academyId}-${Date.now()}`;
     let abacatePayResponse: AbacatePayWithdrawResponse;
     try {
-      const response = await fetch('https://api.abacatepay.com/v1/pix/withdraw', {
+      const pixTypeMap: Record<PixKeyType, string> = {
+        cpf: 'CPF',
+        cnpj: 'CNPJ',
+        email: 'EMAIL',
+        phone: 'PHONE',
+        random: 'RANDOM',
+      };
+
+      const response = await fetch('https://api.abacatepay.com/v1/withdraw/create', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          externalId: withdrawalExternalId,
+          method: 'PIX',
           amount,
-          pixKey: sanitizedPixKey,
-          pixKeyType,
-          metadata: {
-            academyId,
-            requestedBy: user.uid,
+          pix: {
+            type: pixTypeMap[pixKeyType],
+            key: sanitizedPixKey,
           },
+          description: `Saque ${academyData.name || academyId}`,
         }),
       });
 
@@ -184,18 +203,37 @@ export async function POST(request: NextRequest) {
         const errorData = await response.json();
         console.error('AbacatePay withdrawal error:', errorData);
         return createErrorResponse(
-          errorData.message || 'Failed to process withdrawal',
+          errorData.error || 'Failed to process withdrawal',
           500
         );
       }
 
       abacatePayResponse = await response.json();
+
+      if (abacatePayResponse.error) {
+        console.error('AbacatePay withdrawal error:', abacatePayResponse.error);
+        return createErrorResponse(
+          abacatePayResponse.error || 'Failed to process withdrawal',
+          500
+        );
+      }
     } catch (error) {
       console.error('AbacatePay API error:', error);
       return createErrorResponse('Failed to connect to payment provider', 500);
     }
 
-    // 13. Update wallet and create transaction record (atomically)
+    // 13. Map AbacatePay status to internal status
+    const withdrawData = abacatePayResponse.data;
+    const statusMap: Record<string, string> = {
+      PENDING: 'pending',
+      COMPLETE: 'completed',
+      EXPIRED: 'failed',
+      CANCELLED: 'cancelled',
+      REFUNDED: 'cancelled',
+    };
+    const internalStatus = statusMap[withdrawData.status] || 'pending';
+
+    // 14. Update wallet and create transaction record (atomically)
     const walletTransactionsRef = collection(db, `academies/${academyId}/walletTransactions`);
 
     try {
@@ -226,15 +264,17 @@ export async function POST(request: NextRequest) {
         academyId,
         type: 'withdrawal',
         amount,
-        status: abacatePayResponse.status === 'completed' ? 'completed' : 'pending',
-        abacatePayTransactionId: abacatePayResponse.id,
+        status: internalStatus === 'completed' ? 'completed' : 'pending',
+        abacatePayTransactionId: withdrawData.id,
+        externalId: withdrawData.externalId,
         withdrawalPixKey: sanitizedPixKey,
         withdrawalPixKeyType: pixKeyType,
         requestedBy: user.uid,
         description: `Saque via PIX - ${pixKeyType.toUpperCase()}`,
-        fee: abacatePayResponse.fee || 0,
+        fee: withdrawData.platformFee || 0,
+        receiptUrl: withdrawData.receiptUrl,
         createdAt: serverTimestamp(),
-        completedAt: abacatePayResponse.status === 'completed' ? serverTimestamp() : null,
+        completedAt: internalStatus === 'completed' ? serverTimestamp() : null,
       });
     } catch (error) {
       console.error('Transaction error:', error);
@@ -247,9 +287,11 @@ export async function POST(request: NextRequest) {
     }
 
     return createSuccessResponse({
-      transactionId: abacatePayResponse.id,
-      status: abacatePayResponse.status,
+      transactionId: withdrawData.id,
+      status: internalStatus,
       amount,
+      fee: withdrawData.platformFee,
+      receiptUrl: withdrawData.receiptUrl,
       message: 'Withdrawal request submitted successfully',
     });
   } catch (error) {

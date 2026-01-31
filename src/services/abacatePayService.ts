@@ -438,7 +438,7 @@ class AbacatePayService {
           completedAt: data.completedAt?.toDate(),
         };
       })
-      .filter((t) => t.status !== 'pending');
+      .filter((t) => t.status !== 'pending' || t.type === 'withdrawal');
   }
 
   // ============================================
@@ -464,20 +464,32 @@ class AbacatePayService {
     }
 
     try {
+      const pixTypeMap: Record<string, string> = {
+        cpf: 'CPF',
+        cnpj: 'CNPJ',
+        email: 'EMAIL',
+        phone: 'PHONE',
+        random: 'RANDOM',
+      };
+
+      const externalId = `withdraw-${this.academyId}-${Date.now()}`;
+
       // Create withdrawal via AbacatePay API
-      const response = await fetch(`${this.apiBaseUrl}/pix/withdraw`, {
+      const response = await fetch(`${this.apiBaseUrl}/withdraw/create`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
+          externalId,
+          method: 'PIX',
           amount,
-          pixKey,
-          pixKeyType,
-          metadata: {
-            academyId: this.academyId,
+          pix: {
+            type: pixTypeMap[pixKeyType] || pixKeyType.toUpperCase(),
+            key: pixKey,
           },
+          description: `Saque via PIX`,
         }),
       });
 
@@ -487,7 +499,24 @@ class AbacatePayService {
         return null;
       }
 
-      const data = await response.json();
+      const responseBody = await response.json();
+
+      if (responseBody.error) {
+        console.error('AbacatePay withdrawal error:', responseBody.error);
+        return null;
+      }
+
+      const data = responseBody.data;
+
+      // Map AbacatePay status to internal status
+      const statusMap: Record<string, TransactionStatus> = {
+        PENDING: 'pending',
+        COMPLETE: 'completed',
+        EXPIRED: 'failed',
+        CANCELLED: 'cancelled',
+        REFUNDED: 'cancelled',
+      };
+      const internalStatus = statusMap[data.status] || 'pending';
 
       // Update wallet balance
       await this.updateWalletBalance(amount, 'subtract');
@@ -497,11 +526,14 @@ class AbacatePayService {
         academyId: this.academyId,
         type: 'withdrawal' as TransactionType,
         amount,
-        status: 'pending' as TransactionStatus,
+        status: internalStatus as TransactionStatus,
         abacatePayTransactionId: data.id,
+        externalId: data.externalId,
         withdrawalPixKey: pixKey,
         withdrawalPixKeyType: pixKeyType,
         description: `Saque via PIX`,
+        fee: data.platformFee || 0,
+        receiptUrl: data.receiptUrl,
         createdAt: serverTimestamp(),
       });
 
@@ -513,7 +545,7 @@ class AbacatePayService {
         academyId: this.academyId,
         type: 'withdrawal',
         amount,
-        status: 'pending',
+        status: internalStatus,
         abacatePayTransactionId: data.id,
         withdrawalPixKey: pixKey,
         withdrawalPixKeyType: pixKeyType,

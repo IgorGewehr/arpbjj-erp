@@ -23,21 +23,37 @@ const docToAssessment = (doc: DocumentSnapshot): Assessment => {
   const data = doc.data();
   if (!data) throw new Error('Document data is undefined');
 
-  return {
-    id: doc.id,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    date: data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date),
-    scores: {
+  // Parse scores from both formats:
+  // Object format (web): {respeito: 4, disciplina: 3, ...}
+  // Array format (legacy Flutter): [{category: 'respeito', score: 4}, ...]
+  let scores: Assessment['scores'];
+  if (Array.isArray(data.scores)) {
+    scores = { respeito: 0, disciplina: 0, pontualidade: 0, tecnica: 0, esforco: 0 };
+    for (const item of data.scores) {
+      const key = item.category as keyof Assessment['scores'];
+      if (key in scores) {
+        scores[key] = item.score || 0;
+      }
+    }
+  } else {
+    scores = {
       respeito: data.scores?.respeito || 0,
       disciplina: data.scores?.disciplina || 0,
       pontualidade: data.scores?.pontualidade || 0,
       tecnica: data.scores?.tecnica || 0,
       esforco: data.scores?.esforco || 0,
-    },
+    };
+  }
+
+  return {
+    id: doc.id,
+    studentId: data.studentId,
+    studentName: data.studentName,
+    date: data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date),
+    scores,
     notes: data.notes,
-    evaluatedBy: data.evaluatedBy,
-    evaluatedByName: data.evaluatedByName,
+    evaluatedBy: data.evaluatedBy || data.assessedBy,
+    evaluatedByName: data.evaluatedByName || data.assessedByName,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
   };
 };

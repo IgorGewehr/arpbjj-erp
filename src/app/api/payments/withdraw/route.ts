@@ -1,15 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  doc,
-  getDoc,
-  updateDoc,
-  addDoc,
-  collection,
-  serverTimestamp,
-  increment,
-  runTransaction,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import * as admin from 'firebase-admin';
+import { adminDb } from '@/lib/firebase/admin';
 import {
   authenticateRequest,
   checkPaymentRateLimit,
@@ -105,14 +96,14 @@ export async function POST(request: NextRequest) {
     }
 
     // 6. Validate user is the academy owner
-    const academyRef = doc(db, 'academies', academyId);
-    const academySnap = await getDoc(academyRef);
+    const academyRef = adminDb.collection('academies').doc(academyId);
+    const academySnap = await academyRef.get();
 
-    if (!academySnap.exists()) {
+    if (!academySnap.exists) {
       return createErrorResponse('Academy not found', 404);
     }
 
-    const academyData = academySnap.data();
+    const academyData = academySnap.data()!;
     if (academyData.ownerId !== user.uid) {
       return createErrorResponse(
         'Access denied: Only the academy owner can request withdrawals',
@@ -144,14 +135,14 @@ export async function POST(request: NextRequest) {
     }
 
     // 10. Check wallet balance
-    const walletRef = doc(db, `academies/${academyId}/wallet`, 'balance');
-    const walletSnap = await getDoc(walletRef);
+    const walletRef = adminDb.collection('academies').doc(academyId).collection('wallet').doc('balance');
+    const walletSnap = await walletRef.get();
 
-    if (!walletSnap.exists()) {
+    if (!walletSnap.exists) {
       return createErrorResponse('No wallet found. You need to receive payments first.');
     }
 
-    const walletData = walletSnap.data();
+    const walletData = walletSnap.data()!;
     const availableBalance = walletData.availableBalance || 0;
 
     if (availableBalance < amount) {
@@ -234,33 +225,33 @@ export async function POST(request: NextRequest) {
     const internalStatus = statusMap[withdrawData.status] || 'pending';
 
     // 14. Update wallet and create transaction record (atomically)
-    const walletTransactionsRef = collection(db, `academies/${academyId}/walletTransactions`);
+    const walletTransactionsRef = adminDb.collection('academies').doc(academyId).collection('walletTransactions');
 
     try {
-      await runTransaction(db, async (transaction) => {
+      await adminDb.runTransaction(async (transaction) => {
         // Re-read wallet balance inside transaction
         const freshWalletSnap = await transaction.get(walletRef);
-        if (!freshWalletSnap.exists()) {
+        if (!freshWalletSnap.exists) {
           throw new Error('Wallet not found');
         }
 
-        const freshBalance = freshWalletSnap.data().availableBalance || 0;
+        const freshBalance = freshWalletSnap.data()!.availableBalance || 0;
         if (freshBalance < amount) {
           throw new Error('Insufficient balance');
         }
 
         // Deduct from wallet
         transaction.update(walletRef, {
-          availableBalance: increment(-amount),
-          totalWithdrawn: increment(amount),
-          transactionCount: increment(1),
-          lastTransactionAt: serverTimestamp(),
-          updatedAt: serverTimestamp(),
+          availableBalance: admin.firestore.FieldValue.increment(-amount),
+          totalWithdrawn: admin.firestore.FieldValue.increment(amount),
+          transactionCount: admin.firestore.FieldValue.increment(1),
+          lastTransactionAt: admin.firestore.FieldValue.serverTimestamp(),
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       });
 
       // Create transaction record (outside transaction for better error handling)
-      await addDoc(walletTransactionsRef, {
+      await walletTransactionsRef.add({
         academyId,
         type: 'withdrawal',
         amount,
@@ -273,8 +264,8 @@ export async function POST(request: NextRequest) {
         description: `Saque via PIX - ${pixKeyType.toUpperCase()}`,
         fee: withdrawData.platformFee || 0,
         receiptUrl: withdrawData.receiptUrl,
-        createdAt: serverTimestamp(),
-        completedAt: internalStatus === 'completed' ? serverTimestamp() : null,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        completedAt: internalStatus === 'completed' ? admin.firestore.FieldValue.serverTimestamp() : null,
       });
     } catch (error) {
       console.error('Transaction error:', error);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminDb } from '@/lib/firebase/admin';
+import firebaseAdmin from '@/lib/firebase/admin';
 import admin from 'firebase-admin';
 
 // ============================================
@@ -78,11 +79,8 @@ export function checkPaymentRateLimit(identifier: string): { allowed: boolean; r
 // ============================================
 export async function verifyIdToken(idToken: string): Promise<AuthResult> {
   try {
-    // Get the admin auth instance
-    const adminApp = admin.apps.length > 0 ? admin.app() : null;
-    if (!adminApp) {
-      return { authenticated: false, error: 'Firebase Admin not initialized' };
-    }
+    // Get or initialize the admin app (triggers lazy initialization)
+    const adminApp = firebaseAdmin.getApp();
 
     const auth = admin.auth(adminApp);
     const decodedToken = await auth.verifyIdToken(idToken);

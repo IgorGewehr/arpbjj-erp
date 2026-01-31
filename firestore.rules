@@ -46,8 +46,19 @@ service cloud.firestore {
     }
 
     // Check if user is the student (owns this student record)
+    // Uses userAcademyMapping as source of truth (multi-tenant)
     function isOwnStudent(academyId, studentId) {
-      return belongsToAcademy(academyId) && getUserData().studentId == studentId;
+      let mapping = getUserAcademyMapping();
+      return belongsToAcademy(academyId) &&
+        mapping.academyDetails[academyId].studentId == studentId;
+    }
+
+    // Check if a document's studentId matches the current user's studentId
+    // Used for reading own records in subcollections
+    function isOwnStudentRecord(academyId, docStudentId) {
+      let mapping = getUserAcademyMapping();
+      return belongsToAcademy(academyId) &&
+        docStudentId == mapping.academyDetails[academyId].studentId;
     }
 
     // Check if user is the owner of the academy
@@ -60,16 +71,22 @@ service cloud.firestore {
     // Monitors are students with additional permissions (chamada + alunos)
     function isMonitor(academyId) {
       let academy = get(/databases/$(database)/documents/academies/$(academyId)).data;
-      let userData = getUserData();
+      let mapping = getUserAcademyMapping();
+      let studentId = mapping.academyDetails[academyId].studentId;
       return belongsToAcademy(academyId)
-             && userData.studentId != null
+             && studentId != null
              && academy.monitorIds != null
-             && userData.studentId in academy.monitorIds;
+             && studentId in academy.monitorIds;
     }
 
     // Check if user is staff OR monitor of the academy
     function isStaffOrMonitor(academyId) {
       return isAcademyStaff(academyId) || isMonitor(academyId);
+    }
+
+    // Get academy-scoped user document
+    function getAcademyUserData(academyId) {
+      return get(/databases/$(database)/documents/academies/$(academyId)/users/$(request.auth.uid)).data;
     }
 
     // Validate amount is positive
@@ -168,11 +185,15 @@ service cloud.firestore {
         // Users can read their own document
         allow read: if isAuthenticated() && request.auth.uid == userId;
 
-        // Allow user to create their own document during academy creation
-        // This happens right after creating the academy, so we check if user is the owner
+        // Allow user to create their own document:
+        // - Admin during academy creation (role == 'admin')
+        // - Student during account linking (must already belong to academy via mapping)
         allow create: if isAuthenticated()
                       && request.auth.uid == userId
-                      && request.resource.data.role == 'admin';
+                      && (
+                        request.resource.data.role == 'admin' ||
+                        (belongsToAcademy(academyId) && request.resource.data.role == 'student')
+                      );
 
         // Staff can update users (except sensitive fields)
         allow update: if isAcademyStaff(academyId)
@@ -244,8 +265,7 @@ service cloud.firestore {
         allow read: if isStaffOrMonitor(academyId);
 
         // Students can read their own attendance
-        allow read: if belongsToAcademy(academyId)
-                    && resource.data.studentId == getUserData().studentId;
+        allow read: if isOwnStudentRecord(academyId, resource.data.studentId);
 
         // Staff and monitors can create/update/delete attendance
         allow write: if isStaffOrMonitor(academyId);
@@ -281,8 +301,7 @@ service cloud.firestore {
         allow read: if isAcademyStaff(academyId);
 
         // Students can read their own financials
-        allow read: if belongsToAcademy(academyId)
-                    && resource.data.studentId == getUserData().studentId;
+        allow read: if isOwnStudentRecord(academyId, resource.data.studentId);
 
         // Staff can create financials
         allow create: if isAcademyStaff(academyId)
@@ -348,11 +367,13 @@ service cloud.firestore {
 
         // Students can read their own orders
         allow read: if belongsToAcademy(academyId)
-                    && resource.data.studentId == getUserData().studentId;
+                    && (resource.data.studentId == getUserData().studentId
+                        || resource.data.studentId == getAcademyUserData(academyId).studentId);
 
         // Students can create orders for themselves
         allow create: if belongsToAcademy(academyId)
-                      && request.resource.data.studentId == getUserData().studentId
+                      && (request.resource.data.studentId == getUserData().studentId
+                          || request.resource.data.studentId == getAcademyUserData(academyId).studentId)
                       && request.resource.data.academyId == academyId
                       && request.resource.data.status == 'pending_payment'
                       && isPositiveAmount(request.resource.data.total);
@@ -388,11 +409,11 @@ service cloud.firestore {
 
         // Students can enroll themselves
         allow create: if belongsToAcademy(academyId)
-                      && request.resource.data.studentId == getUserData().studentId;
+                      && (request.resource.data.studentId == getUserData().studentId
+                          || request.resource.data.studentId == getAcademyUserData(academyId).studentId);
 
         // Students can cancel their own enrollment
-        allow delete: if belongsToAcademy(academyId)
-                      && resource.data.studentId == getUserData().studentId;
+        allow delete: if isOwnStudentRecord(academyId, resource.data.studentId);
       }
 
       // ============================================
@@ -408,8 +429,7 @@ service cloud.firestore {
       // ============================================
       match /achievements/{achievementId} {
         allow read: if isAcademyStaff(academyId);
-        allow read: if belongsToAcademy(academyId)
-                    && resource.data.studentId == getUserData().studentId;
+        allow read: if isOwnStudentRecord(academyId, resource.data.studentId);
         allow write: if isAcademyStaff(academyId);
       }
 
@@ -418,8 +438,7 @@ service cloud.firestore {
       // ============================================
       match /beltProgressions/{progressionId} {
         allow read: if isAcademyStaff(academyId);
-        allow read: if belongsToAcademy(academyId)
-                    && resource.data.studentId == getUserData().studentId;
+        allow read: if isOwnStudentRecord(academyId, resource.data.studentId);
         allow write: if isAcademyStaff(academyId);
       }
 
@@ -428,8 +447,7 @@ service cloud.firestore {
       // ============================================
       match /assessments/{assessmentId} {
         allow read: if isAcademyStaff(academyId);
-        allow read: if belongsToAcademy(academyId)
-                    && resource.data.studentId == getUserData().studentId;
+        allow read: if isOwnStudentRecord(academyId, resource.data.studentId);
         allow write: if isAcademyStaff(academyId);
       }
 

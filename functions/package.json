@@ -2,7 +2,7 @@
   "name": "functions",
   "description": "Cloud Functions for GraduaBJJ",
   "scripts": {
-    "lint": "eslint --ext .js,.ts .",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint --ext .js,.ts src/",
     "build": "tsc",
     "build:watch": "tsc --watch",
     "serve": "npm run build && firebase emulators:start --only functions",

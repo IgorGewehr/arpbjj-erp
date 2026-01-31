@@ -253,8 +253,10 @@ class AbacatePayService {
 
       // If approved, update financial record and wallet
       if (data.status === 'approved') {
-        // Update wallet balance
-        await this.updateWalletBalance(amount, 'add');
+        // Update wallet balance (deduct gateway fee - R$0.80 = 80 centavos per transaction)
+        const gatewayFee = 80;
+        const netAmount = Math.max(amount - gatewayFee, 0);
+        await this.updateWalletBalance(netAmount, 'add');
 
         // Update financial record if it's a mensalidade
         if (financialId && !financialId.startsWith('order_')) {

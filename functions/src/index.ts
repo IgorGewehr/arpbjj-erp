@@ -10,11 +10,6 @@ const messaging = admin.messaging();
 // ============================================
 // Types
 // ============================================
-interface FCMToken {
-  token: string;
-  platform: 'ios' | 'android';
-}
-
 interface Financial {
   studentId: string;
   studentName: string;
@@ -45,8 +40,11 @@ interface Student {
 
 interface Academy {
   adminUserId: string;
+  ownerId?: string;
   abacatePayEnabled?: boolean;
 }
+
+type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
 
 // ============================================
 // Helper Functions
@@ -133,15 +131,6 @@ async function sendToTopic(
     console.error('Error sending push notification to topic:', error);
     return false;
   }
-}
-
-async function getAcademyAdmin(academyId: string): Promise<string | null> {
-  const academyDoc = await db.collection('academies').doc(academyId).get();
-  if (!academyDoc.exists) {
-    return null;
-  }
-  const academy = academyDoc.data() as Academy;
-  return academy.adminUserId || null;
 }
 
 async function getStudentUserId(studentId: string, academyId: string): Promise<string | null> {
@@ -525,4 +514,835 @@ export const sendUserNotification = functions.https.onCall(async (data, context)
   );
 
   return { success };
+});
+
+// ============================================
+// Payment Helper Functions
+// ============================================
+
+const ABACATEPAY_API_URL = 'https://api.abacatepay.com/v1';
+const MIN_WITHDRAWAL_AMOUNT = 1000; // R$ 10.00
+
+function getAbacatePayApiKey(): string | null {
+  return process.env.ABACATEPAY_API_KEY || null;
+}
+
+function sanitizeString(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  return value.replace(/[<>"']/g, '').trim().substring(0, 500);
+}
+
+function validateAmount(amount: unknown): { valid: boolean; error?: string } {
+  if (typeof amount !== 'number') {
+    return { valid: false, error: 'Amount must be a number' };
+  }
+  if (amount <= 0) {
+    return { valid: false, error: 'Amount must be positive' };
+  }
+  if (amount > 100000000) {
+    return { valid: false, error: 'Amount exceeds maximum allowed' };
+  }
+  if (!Number.isInteger(amount)) {
+    return { valid: false, error: 'Amount must be an integer (in centavos)' };
+  }
+  return { valid: true };
+}
+
+function validateCPF(cpf: string): boolean {
+  const cleaned = cpf.replace(/\D/g, '');
+  if (cleaned.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cleaned)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) {
+    sum += parseInt(cleaned[i]) * (10 - i);
+  }
+  let remainder = (sum * 10) % 11;
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  if (remainder !== parseInt(cleaned[9])) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i++) {
+    sum += parseInt(cleaned[i]) * (11 - i);
+  }
+  remainder = (sum * 10) % 11;
+  if (remainder === 10 || remainder === 11) remainder = 0;
+  if (remainder !== parseInt(cleaned[10])) return false;
+
+  return true;
+}
+
+function validateCardNumber(cardNumber: string): boolean {
+  const cleaned = cardNumber.replace(/\D/g, '');
+  if (cleaned.length < 13 || cleaned.length > 19) return false;
+
+  let sum = 0;
+  let isEven = false;
+  for (let i = cleaned.length - 1; i >= 0; i--) {
+    let digit = parseInt(cleaned[i]);
+    if (isEven) {
+      digit *= 2;
+      if (digit > 9) digit -= 9;
+    }
+    sum += digit;
+    isEven = !isEven;
+  }
+  return sum % 10 === 0;
+}
+
+function isValidPixKeyType(type: unknown): type is PixKeyType {
+  return ['cpf', 'cnpj', 'email', 'phone', 'random'].includes(type as string);
+}
+
+async function getUserAcademyInfo(uid: string): Promise<{
+  academyId?: string;
+  role?: string;
+  studentId?: string;
+}> {
+  const mappingDoc = await db.collection('userAcademyMapping').doc(uid).get();
+  const userDoc = await db.collection('users').doc(uid).get();
+
+  const mappingData = mappingDoc.data();
+  const userData = userDoc.data();
+
+  return {
+    academyId: mappingData?.primaryAcademyId || mappingData?.academyIds?.[0],
+    role: userData?.role,
+    studentId: userData?.studentId,
+  };
+}
+
+// ============================================
+// Cloud Functions - Payment Callable Functions
+// ============================================
+
+/**
+ * HTTP Callable: Create PIX payment for a financial record (tuition)
+ * Called from Flutter app via FirebaseFunctions.instance.httpsCallable
+ */
+export const createPixPayment = functions.https.onCall(async (data, context) => {
+  // 1. Authenticate
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { academyId, amount, description, financialId, studentId, studentName } = data;
+
+  // 2. Validate required fields
+  if (!academyId || !amount || !financialId || !studentId) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Missing required fields: academyId, amount, financialId, studentId'
+    );
+  }
+
+  // 3. Validate user belongs to academy
+  const userInfo = await getUserAcademyInfo(context.auth.uid);
+  if (userInfo.academyId !== academyId) {
+    throw new functions.https.HttpsError('permission-denied', 'Access denied: Invalid academy');
+  }
+
+  // 4. Validate user is paying for themselves or is staff
+  const isStaff = userInfo.role === 'admin' || userInfo.role === 'instructor';
+  if (!isStaff && userInfo.studentId !== studentId) {
+    throw new functions.https.HttpsError('permission-denied', 'Access denied: Cannot pay for another student');
+  }
+
+  // 5. Validate amount
+  const amountValidation = validateAmount(amount);
+  if (!amountValidation.valid) {
+    throw new functions.https.HttpsError('invalid-argument', amountValidation.error || 'Invalid amount');
+  }
+
+  // 6. Check AbacatePay enabled
+  const academySnap = await db.doc(`academies/${academyId}`).get();
+  if (!academySnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Academy not found');
+  }
+  if (!academySnap.data()?.abacatePayEnabled) {
+    throw new functions.https.HttpsError('failed-precondition', 'Payment processing not enabled for this academy');
+  }
+
+  // 7. Verify financial record
+  const financialSnap = await db.doc(`academies/${academyId}/financials/${financialId}`).get();
+  if (!financialSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Financial record not found');
+  }
+  const financialData = financialSnap.data()!;
+  if (financialData.studentId !== studentId) {
+    throw new functions.https.HttpsError('permission-denied', 'Financial record does not belong to this student');
+  }
+  if (financialData.status === 'paid') {
+    throw new functions.https.HttpsError('already-exists', 'This payment has already been completed');
+  }
+
+  // 8. Get API key
+  const apiKey = getAbacatePayApiKey();
+  if (!apiKey) {
+    console.error('ABACATEPAY_API_KEY not configured');
+    throw new functions.https.HttpsError('internal', 'Payment service not configured');
+  }
+
+  // 9. Call AbacatePay API - pixQrCode/create
+  const response = await fetch(`${ABACATEPAY_API_URL}/pixQrCode/create`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount,
+      description: sanitizeString(description) || 'Mensalidade',
+      externalReference: `${academyId}_${financialId}`,
+      expiresIn: 86400,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    console.error('AbacatePay API error:', errorData);
+    throw new functions.https.HttpsError('internal', 'Failed to create PIX payment');
+  }
+
+  const responseData = await response.json();
+  const pixData = responseData.data || responseData;
+  const abacatePayId = pixData.id;
+
+  if (!abacatePayId) {
+    console.error('No PIX ID in AbacatePay response:', JSON.stringify(responseData));
+    throw new functions.https.HttpsError('internal', 'Payment service returned invalid response');
+  }
+
+  // 10. Update financial record with PIX info
+  await db.doc(`academies/${academyId}/financials/${financialId}`).update({
+    pixCode: pixData.brCode || null,
+    pixQrCode: pixData.brCodeBase64 || null,
+    externalId: abacatePayId,
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // 11. Create walletTransaction record
+  await db.collection(`academies/${academyId}/walletTransactions`).add({
+    academyId,
+    type: 'payment',
+    amount,
+    status: 'pending',
+    financialId,
+    studentId,
+    studentName: sanitizeString(studentName) || 'Aluno',
+    abacatePayTransactionId: abacatePayId,
+    pixCode: pixData.brCode || null,
+    qrCodeUrl: pixData.brCodeBase64 || null,
+    description: sanitizeString(description) || 'Mensalidade',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return {
+    pixCode: pixData.brCode || '',
+    qrCodeUrl: pixData.brCodeBase64 || '',
+    abacatePayId,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+});
+
+/**
+ * HTTP Callable: Create PIX payment for a store order
+ */
+export const createOrderPixPayment = functions.https.onCall(async (data, context) => {
+  // 1. Authenticate
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { academyId, amount, description, orderId, studentId, studentName } = data;
+
+  // 2. Validate required fields
+  if (!academyId || !amount || !orderId || !studentId) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Missing required fields: academyId, amount, orderId, studentId'
+    );
+  }
+
+  // 3. Validate user belongs to academy
+  const userInfo = await getUserAcademyInfo(context.auth.uid);
+  if (userInfo.academyId !== academyId) {
+    throw new functions.https.HttpsError('permission-denied', 'Access denied: Invalid academy');
+  }
+
+  // 4. Validate user is paying for themselves or is staff
+  const isStaff = userInfo.role === 'admin' || userInfo.role === 'instructor';
+  if (!isStaff && userInfo.studentId !== studentId) {
+    throw new functions.https.HttpsError('permission-denied', 'Access denied: Cannot pay for another student');
+  }
+
+  // 5. Validate amount
+  const amountValidation = validateAmount(amount);
+  if (!amountValidation.valid) {
+    throw new functions.https.HttpsError('invalid-argument', amountValidation.error || 'Invalid amount');
+  }
+
+  // 6. Check AbacatePay enabled
+  const academySnap = await db.doc(`academies/${academyId}`).get();
+  if (!academySnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Academy not found');
+  }
+  if (!academySnap.data()?.abacatePayEnabled) {
+    throw new functions.https.HttpsError('failed-precondition', 'Payment processing not enabled for this academy');
+  }
+
+  // 7. Verify order
+  const orderRef = db.doc(`academies/${academyId}/storeOrders/${orderId}`);
+  const orderSnap = await orderRef.get();
+  if (!orderSnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Order not found');
+  }
+  const orderData = orderSnap.data()!;
+  if (orderData.studentId !== studentId) {
+    throw new functions.https.HttpsError('permission-denied', 'Order does not belong to this student');
+  }
+  if (orderData.status !== 'pending_payment') {
+    throw new functions.https.HttpsError('failed-precondition', 'This order is not pending payment');
+  }
+
+  // 8. Verify amount matches
+  const orderTotal = orderData.total ?? orderData.totalAmount;
+  if (Math.abs(orderTotal - amount) > 1) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      `Amount (${amount}) does not match order total (${orderTotal})`
+    );
+  }
+
+  // 9. Get API key
+  const apiKey = getAbacatePayApiKey();
+  if (!apiKey) {
+    console.error('ABACATEPAY_API_KEY not configured');
+    throw new functions.https.HttpsError('internal', 'Payment service not configured');
+  }
+
+  // 10. Call AbacatePay API - pixQrCode/create
+  const response = await fetch(`${ABACATEPAY_API_URL}/pixQrCode/create`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount: Math.round(amount),
+      description: sanitizeString(description) || 'Pedido da Loja',
+      externalReference: `${academyId}_order_${orderId}`,
+      expiresIn: 86400,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    console.error('AbacatePay API error:', errorData);
+    throw new functions.https.HttpsError('internal', 'Failed to create PIX payment');
+  }
+
+  const responseData = await response.json();
+  const pixData = responseData.data || responseData;
+  const abacatePayId = pixData.id;
+
+  if (!abacatePayId) {
+    console.error('No PIX ID in AbacatePay response:', JSON.stringify(responseData));
+    throw new functions.https.HttpsError('internal', 'Payment service returned invalid response');
+  }
+
+  // 11. Create walletTransaction record
+  await db.collection(`academies/${academyId}/walletTransactions`).add({
+    academyId,
+    type: 'payment',
+    amount: Math.round(amount),
+    status: 'pending',
+    financialId: `order_${orderId}`,
+    studentId,
+    studentName: sanitizeString(studentName) || 'Aluno',
+    abacatePayTransactionId: abacatePayId,
+    pixCode: pixData.brCode || null,
+    qrCodeUrl: pixData.brCodeBase64 || null,
+    description: sanitizeString(description) || 'Pedido da Loja',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  // 12. Update order with payment info
+  await orderRef.update({
+    abacatePayTransactionId: abacatePayId,
+    externalPaymentId: abacatePayId,
+    pixCode: pixData.brCode,
+    qrCodeUrl: pixData.brCodeBase64,
+    paymentMethod: 'pix',
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return {
+    pixCode: pixData.brCode || '',
+    qrCodeUrl: pixData.brCodeBase64 || '',
+    abacatePayId,
+    expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+  };
+});
+
+/**
+ * HTTP Callable: Create card payment for financial or order
+ */
+export const createCardPayment = functions.https.onCall(async (data, context) => {
+  // 1. Authenticate
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const {
+    academyId, amount, description, financialId, studentId, studentName,
+    cardNumber, cardHolder, expirationMonth, expirationYear, cvv, cpf,
+  } = data;
+
+  // 2. Validate required fields
+  if (!academyId || !amount || !financialId || !studentId) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Missing required fields: academyId, amount, financialId, studentId'
+    );
+  }
+
+  // 3. Validate user belongs to academy
+  const userInfo = await getUserAcademyInfo(context.auth.uid);
+  if (userInfo.academyId !== academyId) {
+    throw new functions.https.HttpsError('permission-denied', 'Access denied: Invalid academy');
+  }
+
+  // 4. Validate user is paying for themselves or is staff
+  const isStaff = userInfo.role === 'admin' || userInfo.role === 'instructor';
+  if (!isStaff && userInfo.studentId !== studentId) {
+    throw new functions.https.HttpsError('permission-denied', 'Access denied: Cannot pay for another student');
+  }
+
+  // 5. Validate amount
+  const amountValidation = validateAmount(amount);
+  if (!amountValidation.valid) {
+    throw new functions.https.HttpsError('invalid-argument', amountValidation.error || 'Invalid amount');
+  }
+
+  // 6. Validate card data
+  if (!cardNumber || !cardHolder || !expirationMonth || !expirationYear || !cvv || !cpf) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Missing card data: cardNumber, cardHolder, expirationMonth, expirationYear, cvv, cpf'
+    );
+  }
+
+  const cleanedCardNumber = cardNumber.toString().replace(/\D/g, '');
+  if (!validateCardNumber(cleanedCardNumber)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid card number');
+  }
+
+  if (!validateCPF(cpf)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid CPF');
+  }
+
+  const month = parseInt(expirationMonth, 10);
+  const year = parseInt(expirationYear, 10);
+  if (isNaN(month) || month < 1 || month > 12) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid expiration month');
+  }
+
+  const currentDate = new Date();
+  const currentYear = currentDate.getFullYear() % 100;
+  const currentMonth = currentDate.getMonth() + 1;
+  if (year < currentYear || (year === currentYear && month < currentMonth)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Card has expired');
+  }
+
+  const cleanedCvv = cvv.toString().replace(/\D/g, '');
+  if (cleanedCvv.length < 3 || cleanedCvv.length > 4) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid CVV');
+  }
+
+  // 7. Check AbacatePay enabled
+  const academySnap = await db.doc(`academies/${academyId}`).get();
+  if (!academySnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Academy not found');
+  }
+  if (!academySnap.data()?.abacatePayEnabled) {
+    throw new functions.https.HttpsError('failed-precondition', 'Payment processing not enabled for this academy');
+  }
+
+  // 8. Verify financial record (if not a store order)
+  if (!financialId.startsWith('order_')) {
+    const financialSnap = await db.doc(`academies/${academyId}/financials/${financialId}`).get();
+    if (!financialSnap.exists) {
+      throw new functions.https.HttpsError('not-found', 'Financial record not found');
+    }
+    const financialData = financialSnap.data()!;
+    if (financialData.studentId !== studentId) {
+      throw new functions.https.HttpsError('permission-denied', 'Financial record does not belong to this student');
+    }
+    if (financialData.status === 'paid') {
+      throw new functions.https.HttpsError('already-exists', 'This payment has already been completed');
+    }
+  }
+
+  // 9. Get API key
+  const apiKey = getAbacatePayApiKey();
+  if (!apiKey) {
+    console.error('ABACATEPAY_API_KEY not configured');
+    throw new functions.https.HttpsError('internal', 'Payment service not configured');
+  }
+
+  // 10. Call AbacatePay card endpoint
+  const response = await fetch(`${ABACATEPAY_API_URL}/card/charge`, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      amount,
+      description: sanitizeString(description) || 'Pagamento',
+      card: {
+        number: cleanedCardNumber,
+        holderName: sanitizeString(cardHolder) || '',
+        expirationMonth: expirationMonth.toString().padStart(2, '0'),
+        expirationYear: year.toString(),
+        cvv: cleanedCvv,
+      },
+      customer: {
+        document: cpf.replace(/\D/g, ''),
+      },
+      metadata: {
+        academyId,
+        financialId,
+        studentId,
+      },
+    }),
+  });
+
+  const responseData = await response.json();
+
+  if (!response.ok || responseData.status === 'declined' || responseData.status === 'error') {
+    console.warn(`Card payment failed for user ${context.auth.uid}: ${responseData.message}`);
+    throw new functions.https.HttpsError(
+      'aborted',
+      responseData.message || 'Pagamento recusado'
+    );
+  }
+
+  // 11. Create transaction record
+  const isApproved = responseData.status === 'approved';
+  await db.collection(`academies/${academyId}/walletTransactions`).add({
+    academyId,
+    type: 'payment',
+    amount,
+    status: isApproved ? 'completed' : 'pending',
+    financialId,
+    studentId,
+    studentName: sanitizeString(studentName) || 'Aluno',
+    abacatePayTransactionId: responseData.id,
+    paymentMethod: 'card',
+    description: sanitizeString(description) || 'Pagamento',
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    completedAt: isApproved ? admin.firestore.FieldValue.serverTimestamp() : null,
+  });
+
+  // 12. If approved, update financial record and wallet
+  if (isApproved) {
+    // Update wallet balance (deduct gateway fee - R$0.80 = 80 centavos)
+    const gatewayFee = 80;
+    const netAmount = Math.max(amount - gatewayFee, 0);
+    const walletRef = db.doc(`academies/${academyId}/wallet/balance`);
+    const walletSnap = await walletRef.get();
+
+    if (!walletSnap.exists) {
+      await walletRef.set({
+        academyId,
+        availableBalance: netAmount,
+        pendingBalance: 0,
+        totalReceived: amount,
+        totalFees: gatewayFee,
+        totalWithdrawn: 0,
+        transactionCount: 1,
+        lastTransactionAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
+      await walletRef.update({
+        availableBalance: admin.firestore.FieldValue.increment(netAmount),
+        totalReceived: admin.firestore.FieldValue.increment(amount),
+        totalFees: admin.firestore.FieldValue.increment(gatewayFee),
+        transactionCount: admin.firestore.FieldValue.increment(1),
+        lastTransactionAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+
+    // Update financial record or store order
+    if (financialId.startsWith('order_')) {
+      // Store order: update status + decrement stock
+      const orderId = financialId.replace('order_', '');
+      const orderRef = db.doc(`academies/${academyId}/storeOrders/${orderId}`);
+      const orderSnap = await orderRef.get();
+      if (orderSnap.exists && orderSnap.data()?.status === 'pending_payment') {
+        await orderRef.update({
+          status: 'paid',
+          paidAt: admin.firestore.FieldValue.serverTimestamp(),
+          paymentMethod: 'card',
+          externalPaymentId: responseData.id,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // Decrement stock for in_stock products
+        const items = orderSnap.data()?.items as Array<{
+          productId: string; quantity: number;
+        }> | undefined;
+        if (items) {
+          for (const item of items) {
+            const productRef = db.doc(
+              `academies/${academyId}/storeProducts/${item.productId}`
+            );
+            const productSnap = await productRef.get();
+            if (productSnap.exists &&
+                productSnap.data()?.stockType === 'in_stock') {
+              await productRef.update({
+                stockQuantity: admin.firestore.FieldValue.increment(
+                  -item.quantity
+                ),
+                updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+              });
+            }
+          }
+        }
+      }
+    } else {
+      await db.doc(`academies/${academyId}/financials/${financialId}`).update({
+        status: 'paid',
+        paymentDate: admin.firestore.FieldValue.serverTimestamp(),
+        method: 'card',
+        paidViaAbacatePay: true,
+        abacatePayTransactionId: responseData.id,
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  return {
+    success: isApproved,
+    transactionId: responseData.id,
+    message: isApproved ? 'Pagamento aprovado!' : 'Aguardando confirmacao',
+  };
+});
+
+/**
+ * HTTP Callable: Request withdrawal to PIX key
+ * Only academy owner can request withdrawals
+ */
+export const requestWithdrawal = functions.https.onCall(async (data, context) => {
+  // 1. Authenticate
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { academyId, amount, pixKey, pixKeyType } = data;
+
+  // 2. Validate required fields
+  if (!academyId || !amount || !pixKey || !pixKeyType) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      'Missing required fields: academyId, amount, pixKey, pixKeyType'
+    );
+  }
+
+  // 3. Validate user belongs to academy
+  const userInfo = await getUserAcademyInfo(context.auth.uid);
+  if (userInfo.academyId !== academyId) {
+    throw new functions.https.HttpsError('permission-denied', 'Access denied: Invalid academy');
+  }
+
+  // 4. Validate user is academy owner
+  const academySnap = await db.doc(`academies/${academyId}`).get();
+  if (!academySnap.exists) {
+    throw new functions.https.HttpsError('not-found', 'Academy not found');
+  }
+  const academyData = academySnap.data()!;
+  if (academyData.ownerId !== context.auth.uid) {
+    throw new functions.https.HttpsError(
+      'permission-denied',
+      'Only the academy owner can request withdrawals'
+    );
+  }
+
+  // 5. Validate amount
+  const amountValidation = validateAmount(amount);
+  if (!amountValidation.valid) {
+    throw new functions.https.HttpsError('invalid-argument', amountValidation.error || 'Invalid amount');
+  }
+  if (amount < MIN_WITHDRAWAL_AMOUNT) {
+    throw new functions.https.HttpsError(
+      'invalid-argument',
+      `Minimum withdrawal amount is R$ ${(MIN_WITHDRAWAL_AMOUNT / 100).toFixed(2)}`
+    );
+  }
+
+  // 6. Validate PIX key
+  if (!isValidPixKeyType(pixKeyType)) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid PIX key type');
+  }
+  const sanitizedPixKey = sanitizeString(pixKey);
+  if (!sanitizedPixKey) {
+    throw new functions.https.HttpsError('invalid-argument', 'Invalid PIX key');
+  }
+
+  // 7. Check wallet balance
+  const walletRef = db.doc(`academies/${academyId}/wallet/balance`);
+  const walletSnap = await walletRef.get();
+  if (!walletSnap.exists) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      'No wallet found. You need to receive payments first.'
+    );
+  }
+  const walletData = walletSnap.data()!;
+  const availableBalance = walletData.availableBalance || 0;
+  if (availableBalance < amount) {
+    throw new functions.https.HttpsError(
+      'failed-precondition',
+      `Insufficient balance. Available: R$ ${(availableBalance / 100).toFixed(2)}`
+    );
+  }
+
+  // 8. Get API key
+  const apiKey = getAbacatePayApiKey();
+  if (!apiKey) {
+    throw new functions.https.HttpsError('internal', 'Payment processing not configured');
+  }
+
+  // 9. Call AbacatePay withdraw endpoint
+  let abacatePayResponse: { id: string; status: string; fee?: number };
+  try {
+    const response = await fetch(`${ABACATEPAY_API_URL}/pix/withdraw`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        amount,
+        pixKey: sanitizedPixKey,
+        pixKeyType,
+        metadata: {
+          academyId,
+          requestedBy: context.auth.uid,
+        },
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('AbacatePay withdrawal error:', errorData);
+      throw new functions.https.HttpsError(
+        'internal',
+        errorData.message || 'Failed to process withdrawal'
+      );
+    }
+
+    abacatePayResponse = await response.json();
+  } catch (error) {
+    if (error instanceof functions.https.HttpsError) throw error;
+    console.error('AbacatePay API error:', error);
+    throw new functions.https.HttpsError('internal', 'Failed to connect to payment provider');
+  }
+
+  // 10. Atomic wallet update + transaction record
+  try {
+    await db.runTransaction(async (transaction) => {
+      const freshWalletSnap = await transaction.get(walletRef);
+      if (!freshWalletSnap.exists) {
+        throw new Error('Wallet not found');
+      }
+      const freshBalance = freshWalletSnap.data()!.availableBalance || 0;
+      if (freshBalance < amount) {
+        throw new Error('Insufficient balance');
+      }
+
+      transaction.update(walletRef, {
+        availableBalance: admin.firestore.FieldValue.increment(-amount),
+        totalWithdrawn: admin.firestore.FieldValue.increment(amount),
+        transactionCount: admin.firestore.FieldValue.increment(1),
+        lastTransactionAt: admin.firestore.FieldValue.serverTimestamp(),
+        updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    // Create transaction record
+    await db.collection(`academies/${academyId}/walletTransactions`).add({
+      academyId,
+      type: 'withdrawal',
+      amount,
+      status: abacatePayResponse.status === 'completed' ? 'completed' : 'pending',
+      abacatePayTransactionId: abacatePayResponse.id,
+      withdrawalPixKey: sanitizedPixKey,
+      withdrawalPixKeyType: pixKeyType,
+      requestedBy: context.auth.uid,
+      description: `Saque via PIX - ${pixKeyType.toUpperCase()}`,
+      fee: abacatePayResponse.fee || 0,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      completedAt: abacatePayResponse.status === 'completed' ?
+        admin.firestore.FieldValue.serverTimestamp() :
+        null,
+    });
+  } catch (error) {
+    console.error('Transaction error:', error);
+    throw new functions.https.HttpsError(
+      'internal',
+      'Failed to update wallet. Please contact support.'
+    );
+  }
+
+  return {
+    success: true,
+    transactionId: abacatePayResponse.id,
+    status: abacatePayResponse.status,
+    amount,
+    message: 'Withdrawal request submitted successfully',
+  };
+});
+
+// ============================================
+// Check PIX Payment Status
+// ============================================
+export const checkPixStatus = functions.https.onCall(async (data, context) => {
+  if (!context.auth) {
+    throw new functions.https.HttpsError('unauthenticated', 'User must be authenticated');
+  }
+
+  const { abacatePayId } = data;
+  if (!abacatePayId) {
+    throw new functions.https.HttpsError('invalid-argument', 'Missing abacatePayId');
+  }
+
+  const apiKey = getAbacatePayApiKey();
+  if (!apiKey) {
+    throw new functions.https.HttpsError('internal', 'Payment service not configured');
+  }
+
+  const response = await fetch(`${ABACATEPAY_API_URL}/pixQrCode/check?id=${abacatePayId}`, {
+    method: 'GET',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+    },
+  });
+
+  if (!response.ok) {
+    const errorData = await response.json();
+    console.error('AbacatePay check status error:', errorData);
+    throw new functions.https.HttpsError('internal', 'Failed to check payment status');
+  }
+
+  const responseData = await response.json();
+  const statusData = responseData.data || responseData;
+
+  return {
+    status: statusData.status || 'PENDING',
+  };
 });

@@ -319,6 +319,25 @@ async function handleStoreOrderPayment(
     updatedAt: FieldValue.serverTimestamp(),
   });
 
+  // Decrement stock for in_stock products
+  const items = orderData.items as Array<{ productId: string; quantity: number }> | undefined;
+  if (items && items.length > 0) {
+    for (const item of items) {
+      const productRef = adminDb.doc(`academies/${academyId}/storeProducts/${item.productId}`);
+      const productSnap = await productRef.get();
+      if (productSnap.exists) {
+        const productData = productSnap.data()!;
+        if (productData.stockType === 'in_stock') {
+          await productRef.update({
+            stockQuantity: FieldValue.increment(-item.quantity),
+            updatedAt: FieldValue.serverTimestamp(),
+          });
+          console.log(`Decremented stock for product ${item.productId} by ${item.quantity}`);
+        }
+      }
+    }
+  }
+
   // Notify admin
   await notifyAdmin(academyId, 'order_paid', {
     title: 'Pedido Pago',

@@ -10,30 +10,24 @@ import { pushNotificationService } from '@/services/server';
 interface AbacatePayWebhookPayload {
   event: 'billing.paid' | 'billing.expired' | 'billing.cancelled';
   data: {
-    billing: {
-      id: string;        // Billing ID (e.g., "bill_EWKETqphHd4RPEyuPrWWetwE")
-      amount: number;    // Amount in centavos
-      customer: {
-        id: string;
-        metadata: {
-          name: string;
-          cellphone: string;
-          taxId: string;
-          email: string;
-          country: string;
-          zipCode: string;
-        };
-      };
-      frequency: string;
-      kind: string[];
+    // PIX payments come as pixQrCode
+    pixQrCode?: {
+      id: string;
+      amount: number;
+      kind: string;
       status: 'PAID' | 'PENDING' | 'EXPIRED' | 'CANCELLED';
-      products: Array<{
+    };
+    // Billing payments come as billing
+    billing?: {
+      id: string;
+      amount: number;
+      status: 'PAID' | 'PENDING' | 'EXPIRED' | 'CANCELLED';
+      products?: Array<{
         id: string;
         externalId: string;
         quantity: number;
       }>;
-      paidAmount: number;
-      couponsUsed: string[];
+      paidAmount?: number;
     };
     payment: {
       amount: number;    // Amount received
@@ -451,15 +445,27 @@ export async function POST(request: NextRequest) {
     }
 
     const { event, data, devMode } = payload;
-    const transactionId = data.billing.id;
-    const amount = data.billing.amount;
-    const fee = data.payment?.fee || 0;
 
-    // Extract orderId from products externalId (billing/create) or metadata
-    const productExternalId = data.billing.products?.[0]?.externalId;
+    // AbacatePay sends pixQrCode for PIX payments, billing for billing payments
+    const source = data.pixQrCode || data.billing;
+    if (!source) {
+      console.error('[WEBHOOK] No pixQrCode or billing in payload:', JSON.stringify(data));
+      return NextResponse.json(
+        { error: 'Invalid payload: missing pixQrCode or billing' },
+        { status: 400 }
+      );
+    }
+
+    const transactionId = source.id;
+    const amount = source.amount ?? data.payment?.amount;
+    const fee = data.payment?.fee || 0;
+    const status = source.status;
+
+    // Extract orderId from billing products if available
+    const productExternalId = data.billing?.products?.[0]?.externalId;
     const financialIdFromWebhook = productExternalId ? `order_${productExternalId}` : undefined;
 
-    console.log(`[WEBHOOK] Received: ${event} for billing ${transactionId}, amount: ${amount}, externalId: ${productExternalId}`);
+    console.log(`[WEBHOOK] Received: ${event} for ${data.pixQrCode ? 'pixQrCode' : 'billing'} ${transactionId}, amount: ${amount}, fee: ${fee}, status: ${status}`);
 
     // Authenticate webhook request (two-layer per AbacatePay docs)
     // Layer 1: Query string secret (?webhookSecret=xxx)
@@ -516,7 +522,7 @@ export async function POST(request: NextRequest) {
     // Process event
     switch (event) {
       case 'billing.paid':
-        if (data.billing.status === 'PAID') {
+        if (status === 'PAID') {
           await handlePaymentConfirmed(academyId, transaction, docRef, amount, fee);
           console.log(`Payment confirmed for transaction ${transactionId}`);
         }

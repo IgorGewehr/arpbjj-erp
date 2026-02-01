@@ -40,11 +40,6 @@ interface AbacatePayWithdrawResponse {
 }
 
 // ============================================
-// Minimum withdrawal amount (in centavos)
-// ============================================
-const MIN_WITHDRAWAL_AMOUNT = 1000; // R$ 10.00
-
-// ============================================
 // Validate PIX Key Type
 // ============================================
 function isValidPixKeyType(type: unknown): type is PixKeyType {
@@ -95,7 +90,14 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Access denied: Invalid academy', 403);
     }
 
-    // 6. Validate user is the academy owner
+    // 6. Validate user is an admin of the academy
+    if (user.role !== 'admin') {
+      return createErrorResponse(
+        'Access denied: Only admins can request withdrawals',
+        403
+      );
+    }
+
     const academyRef = adminDb.collection('academies').doc(academyId);
     const academySnap = await academyRef.get();
 
@@ -104,12 +106,6 @@ export async function POST(request: NextRequest) {
     }
 
     const academyData = academySnap.data()!;
-    if (academyData.ownerId !== user.uid) {
-      return createErrorResponse(
-        'Access denied: Only the academy owner can request withdrawals',
-        403
-      );
-    }
 
     // 7. Validate amount
     const amountValidation = validateAmount(amount);
@@ -117,21 +113,29 @@ export async function POST(request: NextRequest) {
       return createErrorResponse(amountValidation.error || 'Invalid amount');
     }
 
-    if (amount < MIN_WITHDRAWAL_AMOUNT) {
-      return createErrorResponse(
-        `Minimum withdrawal amount is R$ ${(MIN_WITHDRAWAL_AMOUNT / 100).toFixed(2)}`
-      );
-    }
-
     // 8. Validate PIX key type
     if (!isValidPixKeyType(pixKeyType)) {
       return createErrorResponse('Invalid PIX key type');
     }
 
-    // 9. Validate PIX key format based on type
+    // 9. Validate and format PIX key
     const sanitizedPixKey = sanitizeString(pixKey);
     if (!sanitizedPixKey) {
       return createErrorResponse('Invalid PIX key');
+    }
+
+    // Format CPF/CNPJ with punctuation for AbacatePay API
+    let formattedPixKey = sanitizedPixKey;
+    if (pixKeyType === 'cpf') {
+      const digits = sanitizedPixKey.replace(/\D/g, '');
+      if (digits.length === 11) {
+        formattedPixKey = `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+      }
+    } else if (pixKeyType === 'cnpj') {
+      const digits = sanitizedPixKey.replace(/\D/g, '');
+      if (digits.length === 14) {
+        formattedPixKey = `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+      }
     }
 
     // 10. Check wallet balance
@@ -172,31 +176,37 @@ export async function POST(request: NextRequest) {
         random: 'RANDOM',
       };
 
+      const requestBody = {
+        externalId: withdrawalExternalId,
+        method: 'PIX',
+        amount,
+        pix: {
+          type: pixTypeMap[pixKeyType],
+          key: formattedPixKey,
+        },
+        description: `Saque ${academyData.name || academyId}`,
+      };
+
       const response = await fetch('https://api.abacatepay.com/v1/withdraw/create', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          externalId: withdrawalExternalId,
-          method: 'PIX',
-          amount,
-          pix: {
-            type: pixTypeMap[pixKeyType],
-            key: sanitizedPixKey,
-          },
-          description: `Saque ${academyData.name || academyId}`,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        console.error('AbacatePay withdrawal error:', errorData);
-        return createErrorResponse(
-          errorData.error || 'Failed to process withdrawal',
-          500
-        );
+        const errorText = await response.text();
+        console.error('AbacatePay withdrawal error:', response.status, errorText);
+        let errorMessage = 'Failed to process withdrawal';
+        try {
+          const errorData = JSON.parse(errorText);
+          errorMessage = errorData.error || errorMessage;
+        } catch {
+          errorMessage = errorText || errorMessage;
+        }
+        return createErrorResponse(errorMessage, 500);
       }
 
       abacatePayResponse = await response.json();
@@ -269,8 +279,6 @@ export async function POST(request: NextRequest) {
       });
     } catch (error) {
       console.error('Transaction error:', error);
-      // Note: AbacatePay withdrawal may have succeeded even if our DB update failed
-      // In production, you'd want to handle this with a reconciliation process
       return createErrorResponse(
         'Failed to update wallet. Please contact support.',
         500

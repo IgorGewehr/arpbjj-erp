@@ -12,8 +12,9 @@ import {
   CircularProgress,
   InputAdornment,
   IconButton,
+  Divider,
 } from '@mui/material';
-import { Eye, EyeOff, Key, User, Mail, Lock, CheckCircle, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Key, User, Mail, Lock, CheckCircle, ArrowLeft, GraduationCap, ArrowRight } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
@@ -240,8 +241,60 @@ export default function CreateAccountPage() {
 
       <Box sx={{ mt: 4, p: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
         <Typography variant="body2" color="text.secondary" textAlign="center">
-          Não tem um código? Solicite ao seu professor ou responsável pela academia.
+          Nao tem um codigo? Solicite ao seu professor ou responsavel pela academia.
         </Typography>
+      </Box>
+
+      {/* Sou Professor section */}
+      <Divider sx={{ my: 3 }}>
+        <Typography variant="caption" color="text.secondary">ou</Typography>
+      </Divider>
+
+      <Box
+        sx={{
+          p: 2.5,
+          border: '2px dashed',
+          borderColor: 'grey.300',
+          borderRadius: 2,
+          textAlign: 'center',
+          cursor: 'pointer',
+          transition: 'all 0.2s ease',
+          '&:hover': {
+            borderColor: 'primary.main',
+            bgcolor: 'grey.50',
+          },
+        }}
+        onClick={() => router.push('/criar-academia')}
+      >
+        <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1.5 }}>
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: '50%',
+              bgcolor: 'primary.light',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <GraduationCap size={24} color="#1976d2" />
+          </Box>
+        </Box>
+        <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+          Sou Professor / Dono de Academia
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+          Cadastre sua academia e gerencie alunos, graduacoes e muito mais.
+        </Typography>
+        <Button
+          variant="outlined"
+          size="small"
+          endIcon={<ArrowRight size={16} />}
+          sx={{ textTransform: 'none' }}
+        >
+          Criar minha academia
+        </Button>
       </Box>
     </>
   );

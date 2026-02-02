@@ -28,11 +28,10 @@ interface AbacatePayWithdrawResponse {
     id: string;
     status: 'PENDING' | 'EXPIRED' | 'CANCELLED' | 'COMPLETE' | 'REFUNDED';
     devMode: boolean;
-    receiptUrl: string;
+    receiptUrl?: string;
     kind: string;
     amount: number;
     platformFee: number;
-    externalId: string;
     createdAt: string;
     updatedAt: string;
   };
@@ -267,13 +266,13 @@ export async function POST(request: NextRequest) {
         amount,
         status: internalStatus === 'completed' ? 'completed' : 'pending',
         abacatePayTransactionId: withdrawData.id,
-        externalId: withdrawData.externalId,
+        externalId: withdrawalExternalId,
         withdrawalPixKey: sanitizedPixKey,
         withdrawalPixKeyType: pixKeyType,
         requestedBy: user.uid,
         description: `Saque via PIX - ${pixKeyType.toUpperCase()}`,
         fee: withdrawData.platformFee || 0,
-        receiptUrl: withdrawData.receiptUrl,
+        receiptUrl: withdrawData.receiptUrl || null,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         completedAt: internalStatus === 'completed' ? admin.firestore.FieldValue.serverTimestamp() : null,
       });

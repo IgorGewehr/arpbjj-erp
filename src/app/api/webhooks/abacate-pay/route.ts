@@ -44,7 +44,7 @@ interface AbacatePayWebhookPayload {
       kind: string;
       amount: number;
       platformFee: number;
-      externalId: string;
+      externalId?: string;
       createdAt: string;
       updatedAt: string;
     };

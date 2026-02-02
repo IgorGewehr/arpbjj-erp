@@ -722,6 +722,10 @@ export type NotificationType =
   | 'payment_received'        // Aluno pagou pela plataforma
   | 'payment_pending'         // Lembrete de pagamento pendente
   | 'payment_overdue'         // Pagamento atrasado
+  | 'payment_due_soon'        // Pagamento vence em breve
+  | 'order_paid'              // Pedido da loja pago
+  | 'withdrawal_completed'    // Saque concluído
+  | 'withdrawal_failed'       // Saque falhou
   | 'graduation_eligible'     // Aluno elegível para graduação
   | 'graduation_near'         // Aluno próximo da graduação automática
   | 'new_student_linked'      // Novo aluno vinculou conta

@@ -28,6 +28,8 @@ import {
   Trophy,
   AlertCircle,
   Clock,
+  ShoppingBag,
+  Wallet,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -42,7 +44,13 @@ const getNotificationIcon = (type: NotificationType) => {
       return CreditCard;
     case 'payment_pending':
     case 'payment_overdue':
+    case 'payment_due_soon':
       return AlertCircle;
+    case 'order_paid':
+      return ShoppingBag;
+    case 'withdrawal_completed':
+    case 'withdrawal_failed':
+      return Wallet;
     case 'graduation_eligible':
     case 'graduation_near':
       return Award;
@@ -61,11 +69,16 @@ const getNotificationIcon = (type: NotificationType) => {
 const getNotificationColor = (type: NotificationType, theme: Theme) => {
   switch (type) {
     case 'payment_received':
+    case 'withdrawal_completed':
       return theme.palette.success.main;
     case 'payment_pending':
+    case 'payment_due_soon':
       return theme.palette.warning.main;
     case 'payment_overdue':
+    case 'withdrawal_failed':
       return theme.palette.error.main;
+    case 'order_paid':
+      return theme.palette.info.main;
     case 'graduation_eligible':
     case 'graduation_near':
       return theme.palette.info.main;

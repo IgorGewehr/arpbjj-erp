@@ -250,6 +250,7 @@ export default function CarteiraPage() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [withdrawalOpen, setWithdrawalOpen] = useState(false);
+  const [showAllTransactions, setShowAllTransactions] = useState(false);
 
   const fetchWalletData = useCallback(async () => {
     if (!academyId) return;
@@ -596,7 +597,7 @@ export default function CarteiraPage() {
                 borderColor: 'divider',
                 display: 'flex',
                 flexDirection: 'column',
-                maxHeight: { lg: 350 },
+                maxHeight: showAllTransactions ? 'none' : { lg: 350 },
               }}
             >
               <Box sx={{ p: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -628,7 +629,7 @@ export default function CarteiraPage() {
                   </Box>
                 ) : (
                   <Box sx={{ p: 1 }}>
-                    {transactions.slice(0, 6).map((t) => {
+                    {(showAllTransactions ? transactions : transactions.slice(0, 6)).map((t) => {
                       const isCredit = t.type === 'payment';
                       const status = statusConfig[t.status];
 
@@ -692,18 +693,19 @@ export default function CarteiraPage() {
                 )}
               </Box>
 
-              {transactions.length > 0 && (
+              {transactions.length > 6 && (
                 <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
                   <Button
                     fullWidth
-                    endIcon={<ArrowRight size={16} />}
+                    endIcon={<ArrowRight size={16} style={{ transform: showAllTransactions ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />}
+                    onClick={() => setShowAllTransactions(!showAllTransactions)}
                     sx={{
                       borderRadius: 2,
                       color: 'text.secondary',
                       '&:hover': { bgcolor: 'action.hover' },
                     }}
                   >
-                    Ver extrato completo
+                    {showAllTransactions ? 'Mostrar menos' : 'Ver extrato completo'}
                   </Button>
                 </Box>
               )}

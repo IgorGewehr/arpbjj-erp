@@ -407,8 +407,11 @@ async function notifyAdmin(
 
     if (!academySnap.exists) return;
 
-    const ownerId = academySnap.data()?.ownerId;
-    if (!ownerId) return;
+    const ownerId = academySnap.data()?.ownerId || academySnap.data()?.adminUserId;
+    if (!ownerId) {
+      console.error(`[WEBHOOK] notifyAdmin: No ownerId or adminUserId found for academy ${academyId}`);
+      return;
+    }
 
     // Create in-app notification
     await adminDb.collection(`academies/${academyId}/notifications`).add({

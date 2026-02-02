@@ -149,6 +149,84 @@ async function getStudentUserId(studentId: string, academyId: string): Promise<s
 }
 
 // ============================================
+// Internal Notification Helper
+// ============================================
+
+async function createInternalNotification(
+  academyId: string,
+  userId: string,
+  type: string,
+  priority: string,
+  title: string,
+  message: string,
+  options?: {
+    actionUrl?: string;
+    actionLabel?: string;
+    financialId?: string;
+    studentId?: string;
+    competitionId?: string;
+    expiresInDays?: number;
+  }
+): Promise<void> {
+  try {
+    const data: Record<string, unknown> = {
+      academyId,
+      userId,
+      type,
+      priority,
+      title,
+      message,
+      read: false,
+      channels: ['in_app'],
+      sentVia: ['in_app'],
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    if (options?.actionUrl) data.actionUrl = options.actionUrl;
+    if (options?.actionLabel) data.actionLabel = options.actionLabel;
+    if (options?.financialId) data.financialId = options.financialId;
+    if (options?.studentId) data.studentId = options.studentId;
+    if (options?.competitionId) data.competitionId = options.competitionId;
+    if (options?.expiresInDays) {
+      const expiresAt = new Date();
+      expiresAt.setDate(expiresAt.getDate() + options.expiresInDays);
+      data.expiresAt = admin.firestore.Timestamp.fromDate(expiresAt);
+    }
+
+    await db.collection(`academies/${academyId}/notifications`).add(data);
+  } catch (error) {
+    console.error('Error creating internal notification:', error);
+  }
+}
+
+async function notifyAdminCF(
+  academyId: string,
+  type: string,
+  title: string,
+  message: string,
+  options?: { financialId?: string; studentId?: string }
+): Promise<void> {
+  try {
+    const academySnap = await db.doc(`academies/${academyId}`).get();
+    if (!academySnap.exists) return;
+    const adminUserId = academySnap.data()?.ownerId || academySnap.data()?.adminUserId;
+    if (!adminUserId) return;
+
+    // Internal notification
+    await createInternalNotification(academyId, adminUserId, type, 'high', title, message, {
+      financialId: options?.financialId,
+      studentId: options?.studentId,
+      expiresInDays: 30,
+    });
+
+    // Push notification
+    await sendToUser(adminUserId, title, message, { type, academyId });
+  } catch (error) {
+    console.error('Error notifying admin:', error);
+  }
+}
+
+// ============================================
 // Cloud Functions - Firestore Triggers
 // ============================================
 
@@ -176,6 +254,7 @@ export const onFinancialCreated = functions.firestore
     const formattedDate = dueDate.toLocaleDateString('pt-BR');
     const formattedAmount = (financial.amount / 100).toFixed(2);
 
+    // Push notification
     await sendToUser(
       userId,
       'Nova Mensalidade Disponivel',
@@ -185,6 +264,13 @@ export const onFinancialCreated = functions.firestore
         id: financialId,
         academyId,
       }
+    );
+
+    // Internal notification
+    await createInternalNotification(academyId, userId, 'financial', 'normal',
+      'Nova Mensalidade',
+      `Sua mensalidade de R$ ${formattedAmount} vence em ${formattedDate}.`,
+      { actionUrl: '/portal/financeiro', actionLabel: 'Ver detalhes', financialId, expiresInDays: 30 }
     );
 
     console.log(`Notification sent to user ${userId} for financial ${financialId}`);
@@ -324,7 +410,7 @@ export const scheduledOverdueCheck = functions.pubsub
             (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
           );
 
-          // Notify student about overdue payment
+          // Notify student about overdue payment (push + internal)
           const userId = await getStudentUserId(financial.studentId, academyId);
           if (userId) {
             await sendToUser(
@@ -337,20 +423,32 @@ export const scheduledOverdueCheck = functions.pubsub
                 academyId,
               }
             );
+            await createInternalNotification(academyId, userId, 'financial', 'high',
+              'Pagamento Atrasado',
+              `Sua mensalidade de R$ ${(financial.amount / 100).toFixed(2)} está atrasada há ${daysOverdue} dias.`,
+              { actionUrl: '/portal/financeiro', actionLabel: 'Regularizar', financialId: financialDoc.id, expiresInDays: 30 }
+            );
           }
         }
       }
 
-      // Notify admin about overdue summary
+      // Notify admin about overdue summary (push + internal)
       if (overdueCount > 0) {
+        const adminId = academy.ownerId || academy.adminUserId;
+        const summaryMsg = `Voce tem ${overdueCount} pagamento(s) atrasado(s) totalizando R$ ${(totalOverdueAmount / 100).toFixed(2)}.`;
         await sendToUser(
-          academy.adminUserId,
+          adminId,
           'Resumo de Pagamentos Atrasados',
-          `Voce tem ${overdueCount} pagamento(s) atrasado(s) totalizando R$ ${(totalOverdueAmount / 100).toFixed(2)}.`,
+          summaryMsg,
           {
             type: 'overdue_summary',
             academyId,
           }
+        );
+        await createInternalNotification(academyId, adminId, 'financial', 'high',
+          'Resumo de Pagamentos Atrasados',
+          summaryMsg,
+          { actionUrl: '/financeiro', actionLabel: 'Ver financeiro', expiresInDays: 7 }
         );
         console.log(`Notified admin of academy ${academyId} about ${overdueCount} overdue payments`);
       }
@@ -398,15 +496,21 @@ export const scheduledDueSoonReminder = functions.pubsub
               (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
             );
 
+            const reminderMsg = `Sua mensalidade de R$ ${(financial.amount / 100).toFixed(2)} vence em ${daysUntilDue} dia(s).`;
             await sendToUser(
               userId,
               'Lembrete de Pagamento',
-              `Sua mensalidade de R$ ${(financial.amount / 100).toFixed(2)} vence em ${daysUntilDue} dia(s).`,
+              reminderMsg,
               {
                 type: 'financial',
                 id: financialDoc.id,
                 academyId,
               }
+            );
+            await createInternalNotification(academyId, userId, 'financial', 'normal',
+              'Lembrete de Pagamento',
+              reminderMsg,
+              { actionUrl: '/portal/financeiro', actionLabel: 'Ver detalhes', financialId: financialDoc.id, expiresInDays: 7 }
             );
             console.log(`Sent due soon reminder to user ${userId} for financial ${financialDoc.id}`);
           }
@@ -1142,6 +1246,20 @@ export const createCardPayment = functions.https.onCall(async (data, context) =>
         updatedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     }
+  }
+
+  // Notify admin about payment received
+  if (isApproved) {
+    const isOrder = financialId.startsWith('order_');
+    const notifTitle = isOrder ? 'Pedido Pago' : 'Pagamento Recebido';
+    const notifMessage = isOrder
+      ? `${sanitizeString(studentName) || 'Aluno'} pagou o pedido #${financialId.replace('order_', '').slice(-6).toUpperCase()} - R$ ${(amount / 100).toFixed(2)} via cartão.`
+      : `${sanitizeString(studentName) || 'Aluno'} pagou R$ ${(amount / 100).toFixed(2)} via cartão.`;
+
+    await notifyAdminCF(academyId, isOrder ? 'order_paid' : 'payment_received', notifTitle, notifMessage, {
+      financialId,
+      studentId,
+    });
   }
 
   return {

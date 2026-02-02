@@ -427,15 +427,13 @@ async function notifyAdmin(
       createdAt: FieldValue.serverTimestamp(),
     });
 
-    // Send push notification
-    if (type === 'payment_received' && data.financialId) {
-      await pushNotificationService.notifyPaymentReceived(
-        ownerId,
-        data.message.split(' pagou')[0], // Extract student name
-        0, // Amount already in message
-        data.financialId
-      );
-    }
+    // Send push notification for all admin notification types
+    await pushNotificationService.sendToUser({
+      userId: ownerId,
+      title: data.title,
+      body: data.message,
+      data: { type, academyId },
+    });
   } catch (error) {
     console.error('Error notifying admin:', error);
   }

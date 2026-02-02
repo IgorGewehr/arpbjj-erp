@@ -12,16 +12,22 @@ service cloud.firestore {
     }
 
     // Get user document from root users collection
+    // Used only for root /users rules and legacy fallback
     function getUserData() {
       return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
     }
 
-    // Get user-academy mapping
+    // Get user-academy mapping (primary source of role and academy membership)
     function getUserAcademyMapping() {
       return get(/databases/$(database)/documents/userAcademyMapping/$(request.auth.uid)).data;
     }
 
-    // Check if user belongs to a specific academy
+    // Get academy-scoped user document (secondary source of role and studentId)
+    function getAcademyUserData(academyId) {
+      return get(/databases/$(database)/documents/academies/$(academyId)/users/$(request.auth.uid)).data;
+    }
+
+    // Check if user belongs to a specific academy (via mapping)
     function belongsToAcademy(academyId) {
       let mapping = getUserAcademyMapping();
       return isAuthenticated() && (
@@ -31,49 +37,63 @@ service cloud.firestore {
     }
 
     // Check if user is admin of the academy
+    // Sources: userAcademyMapping.academyDetails (primary) > academyUser doc (fallback)
     function isAcademyAdmin(academyId) {
-      return belongsToAcademy(academyId) && getUserData().role == 'admin';
+      let mapping = getUserAcademyMapping();
+      return belongsToAcademy(academyId) && (
+        // Primary: from userAcademyMapping.academyDetails
+        (mapping.keys().hasAll(['academyDetails']) &&
+         mapping.academyDetails.keys().hasAll([academyId]) &&
+         mapping.academyDetails[academyId].role == 'admin') ||
+        // Fallback: from academy-scoped user doc
+        getAcademyUserData(academyId).role == 'admin'
+      );
     }
 
-    // Check if user is instructor of the academy
+    // Check if user is instructor of the academy (legacy role - kept for backward compatibility)
+    // All staff should now use 'admin' role
     function isAcademyInstructor(academyId) {
-      return belongsToAcademy(academyId) && getUserData().role == 'instructor';
+      let mapping = getUserAcademyMapping();
+      return belongsToAcademy(academyId) && (
+        (mapping.keys().hasAll(['academyDetails']) &&
+         mapping.academyDetails.keys().hasAll([academyId]) &&
+         mapping.academyDetails[academyId].role == 'instructor') ||
+        getAcademyUserData(academyId).role == 'instructor'
+      );
     }
 
     // Check if user is staff (admin or instructor) of the academy
+    // Staff role is standardized as 'admin'; instructor kept as legacy fallback
     function isAcademyStaff(academyId) {
       return isAcademyAdmin(academyId) || isAcademyInstructor(academyId);
     }
 
-    // Check if user is the student (owns this student record)
-    // Supports both new (academyDetails) and legacy (root user doc) formats
+    // Get user's studentId for a given academy
+    // Sources: userAcademyMapping.academyDetails (primary) > academyUser doc (fallback)
     function isOwnStudent(academyId, studentId) {
       let mapping = getUserAcademyMapping();
-      let userData = getUserData();
       return belongsToAcademy(academyId) && (
-        // New format: academyDetails map
+        // Primary: from userAcademyMapping.academyDetails
         (mapping.keys().hasAll(['academyDetails']) &&
          mapping.academyDetails.keys().hasAll([academyId]) &&
          mapping.academyDetails[academyId].studentId == studentId) ||
-        // Legacy format: studentId on root user doc
-        (userData.keys().hasAll(['studentId']) &&
-         userData.studentId == studentId)
+        // Fallback: from academy-scoped user doc
+        (getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
+         getAcademyUserData(academyId).studentId == studentId)
       );
     }
 
     // Check if a document's studentId matches the current user's studentId
-    // Used for reading own records in subcollections
     function isOwnStudentRecord(academyId, docStudentId) {
       let mapping = getUserAcademyMapping();
-      let userData = getUserData();
       return belongsToAcademy(academyId) && (
-        // New format
+        // Primary: from userAcademyMapping.academyDetails
         (mapping.keys().hasAll(['academyDetails']) &&
          mapping.academyDetails.keys().hasAll([academyId]) &&
          docStudentId == mapping.academyDetails[academyId].studentId) ||
-        // Legacy format
-        (userData.keys().hasAll(['studentId']) &&
-         docStudentId == userData.studentId)
+        // Fallback: from academy-scoped user doc
+        (getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
+         docStudentId == getAcademyUserData(academyId).studentId)
       );
     }
 
@@ -88,19 +108,18 @@ service cloud.firestore {
     function isMonitor(academyId) {
       let academy = get(/databases/$(database)/documents/academies/$(academyId)).data;
       let mapping = getUserAcademyMapping();
-      let userData = getUserData();
       return belongsToAcademy(academyId)
              && academy.monitorIds != null
              && (
-               // New format
+               // Primary: from userAcademyMapping.academyDetails
                (mapping.keys().hasAll(['academyDetails']) &&
                 mapping.academyDetails.keys().hasAll([academyId]) &&
                 mapping.academyDetails[academyId].studentId != null &&
                 mapping.academyDetails[academyId].studentId in academy.monitorIds) ||
-               // Legacy format
-               (userData.keys().hasAll(['studentId']) &&
-                userData.studentId != null &&
-                userData.studentId in academy.monitorIds)
+               // Fallback: from academy-scoped user doc
+               (getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
+                getAcademyUserData(academyId).studentId != null &&
+                getAcademyUserData(academyId).studentId in academy.monitorIds)
              );
     }
 
@@ -109,9 +128,14 @@ service cloud.firestore {
       return isAcademyStaff(academyId) || isMonitor(academyId);
     }
 
-    // Get academy-scoped user document
-    function getAcademyUserData(academyId) {
-      return get(/databases/$(database)/documents/academies/$(academyId)/users/$(request.auth.uid)).data;
+    // Helper: get current user's studentId for this academy (for inline use)
+    // Returns studentId from mapping or academy user doc
+    function getUserStudentIdFromMapping(academyId) {
+      let mapping = getUserAcademyMapping();
+      return mapping.keys().hasAll(['academyDetails']) &&
+             mapping.academyDetails.keys().hasAll([academyId])
+             ? mapping.academyDetails[academyId].studentId
+             : null;
     }
 
     // Validate amount is positive
@@ -183,7 +207,7 @@ service cloud.firestore {
     // Academies Collection
     // ============================================
     match /academies/{academyId} {
-      // Staff can read academy info
+      // Anyone who belongs to the academy can read academy info
       allow read: if belongsToAcademy(academyId);
 
       // Owner or admin can update academy settings
@@ -338,9 +362,6 @@ service cloud.firestore {
                       && !request.resource.data.diff(resource.data).affectedKeys()
                           .hasAny(['paidViaAbacatePay', 'abacatePayTransactionId']);
 
-        // Only webhooks/cloud functions can mark as paid via AbacatePay
-        // Client cannot modify these fields
-
         // Staff can delete unpaid financials only
         allow delete: if isAcademyStaff(academyId)
                       && resource.data.status != 'paid';
@@ -390,15 +411,13 @@ service cloud.firestore {
         // Staff can read all orders
         allow read: if isAcademyStaff(academyId);
 
-        // Students can read their own orders
+        // Students can read their own orders (via mapping or academy user doc)
         allow read: if belongsToAcademy(academyId)
-                    && (resource.data.studentId == getUserData().studentId
-                        || resource.data.studentId == getAcademyUserData(academyId).studentId);
+                    && isOwnStudentRecord(academyId, resource.data.studentId);
 
-        // Students can create orders for themselves
+        // Students can create orders for themselves (via mapping or academy user doc)
         allow create: if belongsToAcademy(academyId)
-                      && (request.resource.data.studentId == getUserData().studentId
-                          || request.resource.data.studentId == getAcademyUserData(academyId).studentId)
+                      && isOwnStudentRecord(academyId, request.resource.data.studentId)
                       && request.resource.data.academyId == academyId
                       && request.resource.data.status == 'pending_payment'
                       && isPositiveAmount(request.resource.data.total);
@@ -407,9 +426,6 @@ service cloud.firestore {
         allow update: if isAcademyStaff(academyId)
                       && !request.resource.data.diff(resource.data).affectedKeys()
                           .hasAny(['abacatePayTransactionId', 'paidAt', 'total', 'items']);
-
-        // Only webhooks can mark orders as paid - disallow client modification
-        // of payment-related fields
 
         // Staff can cancel unpaid orders
         allow delete: if isAcademyStaff(academyId)
@@ -432,10 +448,9 @@ service cloud.firestore {
         allow read: if belongsToAcademy(academyId);
         allow write: if isAcademyStaff(academyId);
 
-        // Students can enroll themselves
+        // Students can enroll themselves (via mapping or academy user doc)
         allow create: if belongsToAcademy(academyId)
-                      && (request.resource.data.studentId == getUserData().studentId
-                          || request.resource.data.studentId == getAcademyUserData(academyId).studentId);
+                      && isOwnStudentRecord(academyId, request.resource.data.studentId);
 
         // Students can cancel their own enrollment
         allow delete: if isOwnStudentRecord(academyId, resource.data.studentId);

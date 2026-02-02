@@ -1,36 +1,124 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# BJJEasy - Web
 
-## Getting Started
+Sistema de gerenciamento de academias de Jiu-Jitsu. Plataforma web para administradores e portal do aluno.
 
-First, run the development server:
+## Stack
+
+- **Framework:** Next.js 16 (App Router) + React 19 + TypeScript
+- **UI:** MUI v7, Tailwind CSS v4, Framer Motion
+- **Backend:** Firebase (Firestore, Auth, Cloud Functions, Storage)
+- **State:** TanStack React Query v5, React Context
+- **Mobile:** Capacitor v6 (build nativo a partir do web)
+
+## Setup
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Abrir [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Variaveis de ambiente
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Criar `.env.local` com as credenciais Firebase:
 
-## Learn More
+```
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+NEXT_PUBLIC_DEFAULT_ACADEMY_ID=
 
-To learn more about Next.js, take a look at the following resources:
+FIREBASE_ADMIN_PROJECT_ID=
+FIREBASE_ADMIN_CLIENT_EMAIL=
+FIREBASE_ADMIN_PRIVATE_KEY=
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+ABACATEPAY_API_KEY=
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Arquitetura
 
-## Deploy on Vercel
+### Multi-Tenant
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Cada academia eh um tenant isolado no Firestore. Usuarios podem pertencer a multiplas academias com roles diferentes.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```
+/users/{uid}                          # Perfil global (sem role)
+/userAcademyMapping/{uid}             # Mapa de academias + role por academia (fonte primaria)
+/academies/{academyId}/users/{uid}    # Usuario na academia (fallback)
+/academies/{academyId}/...            # Dados isolados por academia
+```
+
+### Roles
+
+| Role | Descricao |
+|------|-----------|
+| `admin` | Acesso completo - donos, professores, staff |
+| `student` | Portal do aluno - dados proprios |
+| `guardian` | Acompanhamento de filhos |
+
+> A role `instructor` foi descontinuada. Todo staff usa `admin`.
+
+### Permissoes
+
+Fonte de verdade para role (em ordem de prioridade):
+
+1. `userAcademyMapping/{uid}.academyDetails[academyId].role`
+2. `academies/{academyId}/users/{uid}.role`
+
+O documento root `/users/{uid}` **nao** contem role.
+
+### Estrutura de diretorio
+
+```
+src/
+  app/              # Rotas Next.js (App Router)
+  components/       # React components (features/, layout/, providers/)
+  contexts/         # AcademyContext (academyId, academyUser)
+  hooks/            # Hooks de negocio (useFinancial, useStudents, etc.)
+  lib/              # Firebase config, permissoes, helpers de API
+  services/         # Servicos Firestore (financialService, studentService, etc.)
+  types/            # Tipos TypeScript
+  utils/            # Utilitarios
+
+functions/          # Firebase Cloud Functions (pagamentos, webhooks, crons)
+firestore.rules     # Regras de seguranca do Firestore
+```
+
+## Features
+
+- Gerenciamento de alunos e turmas
+- Controle de presenca (chamada)
+- Financeiro (mensalidades, planos, pagamentos PIX/cartao)
+- Graduacao e progressao de faixa
+- Competicoes e inscricoes
+- Loja (produtos e pedidos)
+- Portal do aluno
+- Notificacoes push
+- 2FA (TOTP)
+- Multi-academia (troca de academia)
+- Monitores (alunos com permissoes extras)
+
+## Deploy
+
+```bash
+# Web
+npm run build
+
+# Firestore Rules
+firebase deploy --only firestore:rules
+
+# Cloud Functions
+cd functions && npm run build && firebase deploy --only functions
+
+# Mobile (Capacitor)
+npx cap sync
+npx cap open ios    # ou android
+```
+
+## Projeto irmao
+
+O app mobile **graduabjj** (Flutter) compartilha o mesmo banco Firestore, autenticacao e Cloud Functions.

@@ -16,7 +16,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { CheckCircle, AlertCircle, Clock, Copy, Calendar, QrCode, Receipt, History } from 'lucide-react';
-import { usePermissions, useFeedback } from '@/components/providers';
+import { usePermissions, useFeedback, useAuth } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { useQuery } from '@tanstack/react-query';
@@ -164,6 +164,7 @@ export default function PortalFinanceiroPage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { linkedStudentIds } = usePermissions();
   const { success, error: showError } = useFeedback();
+  const { firebaseUser } = useAuth();
   const { academy } = useAcademy();
   const studentId = linkedStudentIds[0];
 
@@ -271,7 +272,7 @@ export default function PortalFinanceiroPage() {
   };
 
   const handlePayPix = async (payment: Financial) => {
-    if (!academy?.id || !student) return;
+    if (!academy?.id || !student || !firebaseUser) return;
 
     setSelectedPayment(payment);
     setPaymentLink(null);
@@ -279,15 +280,35 @@ export default function PortalFinanceiroPage() {
     setIsGeneratingPayment(true);
 
     try {
-      const service = createAbacatePayService(academy.id);
-      const link = await service.createPixPayment(
-        payment.amount,
-        payment.description || `Mensalidade - ${payment.referenceMonth || ''}`,
-        payment.id,
-        studentId,
-        student.fullName || student.nickname || 'Aluno'
-      );
-      setPaymentLink(link);
+      const token = await firebaseUser.getIdToken();
+      const response = await fetch('/api/payments/create-pix', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          academyId: academy.id,
+          amount: Math.round(payment.amount * 100), // Convert reais to centavos
+          description: payment.description || `Mensalidade - ${payment.referenceMonth || ''}`,
+          financialId: payment.id,
+          studentId,
+          studentName: student.fullName || student.nickname || 'Aluno',
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.data) {
+        setPaymentLink({
+          pixCode: data.data.pixCode,
+          qrCodeUrl: data.data.qrCodeUrl,
+          expiresAt: new Date(data.data.expiresAt),
+          createdAt: new Date(),
+        });
+      } else {
+        showError(data.error || 'Erro ao gerar pagamento PIX');
+      }
     } catch (err) {
       console.error('Error generating PIX payment:', err);
       showError('Erro ao gerar pagamento PIX');

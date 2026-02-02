@@ -108,30 +108,18 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Payment service not configured', 500);
     }
 
-    // 12. Call AbacatePay API to create PIX
-    const response = await fetch(`${ABACATEPAY_API_URL}/billing/create`, {
+    // 12. Call AbacatePay API - pixQrCode/create
+    const response = await fetch(`${ABACATEPAY_API_URL}/pixQrCode/create`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        frequency: 'ONE_TIME',
-        methods: ['PIX'],
-        products: [{
-          externalId: orderId,
-          name: sanitizeString(description) || 'Pedido da Loja',
-          quantity: 1,
-          price: Math.round(amount), // Amount in cents
-        }],
-        returnUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/loja/pedidos`,
-        completionUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/loja/pedidos?success=true`,
-        metadata: {
-          academyId,
-          orderId,
-          studentId,
-          type: 'store_order',
-        },
+        amount: Math.round(amount),
+        description: sanitizeString(description) || 'Pedido da Loja',
+        externalReference: `${academyId}_order_${orderId}`,
+        expiresIn: 86400,
       }),
     });
 
@@ -141,8 +129,14 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Failed to create PIX payment', 500);
     }
 
-    const data = await response.json();
-    const abacatePayId = data.data.id;
+    const responseData = await response.json();
+    const pixData = responseData.data || responseData;
+    const abacatePayId = pixData.id;
+
+    if (!abacatePayId) {
+      console.error('No PIX ID in AbacatePay response:', JSON.stringify(responseData));
+      return createErrorResponse('Payment service returned invalid response', 500);
+    }
 
     // 13. Create walletTransaction record for webhook to find (using Admin SDK)
     await adminDb.collection(`academies/${academyId}/walletTransactions`).add({
@@ -154,8 +148,8 @@ export async function POST(request: NextRequest) {
       studentId,
       studentName: sanitizeString(studentName) || 'Aluno',
       abacatePayTransactionId: abacatePayId,
-      pixCode: data.data.pix?.brcode || null,
-      qrCodeUrl: data.data.pix?.qrcode || null,
+      pixCode: pixData.brCode || null,
+      qrCodeUrl: pixData.brCodeBase64 || null,
       description: sanitizeString(description) || 'Pedido da Loja',
       createdAt: FieldValue.serverTimestamp(),
     });
@@ -164,15 +158,16 @@ export async function POST(request: NextRequest) {
     await orderRef.update({
       abacatePayTransactionId: abacatePayId,
       externalPaymentId: abacatePayId,
-      pixCode: data.data.pix?.brcode,
-      qrCodeUrl: data.data.pix?.qrcode,
+      pixCode: pixData.brCode || null,
+      qrCodeUrl: pixData.brCodeBase64 || null,
       paymentMethod: 'pix',
       updatedAt: FieldValue.serverTimestamp(),
     });
 
     return createSuccessResponse({
-      pixCode: data.data.pix?.brcode || '',
-      qrCodeUrl: data.data.pix?.qrcode || '',
+      pixCode: pixData.brCode || '',
+      qrCodeUrl: pixData.brCodeBase64 || '',
+      abacatePayId,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     });
   } catch (error) {

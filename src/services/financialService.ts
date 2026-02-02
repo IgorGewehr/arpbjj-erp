@@ -211,6 +211,7 @@ export class FinancialService {
 
     // Build docData carefully to avoid undefined values
     const docData: Record<string, unknown> = {
+      academyId: this.academyId,
       studentId: data.studentId,
       studentName: data.studentName,
       type: data.type,

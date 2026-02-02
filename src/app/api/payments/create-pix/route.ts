@@ -101,30 +101,18 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Payment service not configured', 500);
     }
 
-    // 11. Call AbacatePay API to create PIX
-    const response = await fetch(`${ABACATEPAY_API_URL}/billing/create`, {
+    // 11. Call AbacatePay API - pixQrCode/create
+    const response = await fetch(`${ABACATEPAY_API_URL}/pixQrCode/create`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        frequency: 'ONE_TIME',
-        methods: ['PIX'],
-        products: [{
-          externalId: financialId,
-          name: sanitizeString(description) || 'Mensalidade',
-          quantity: 1,
-          price: amount,
-        }],
-        returnUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/financeiro`,
-        completionUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/financeiro?success=true`,
-        metadata: {
-          academyId,
-          financialId,
-          studentId,
-          type: 'financial',
-        },
+        amount,
+        description: sanitizeString(description) || 'Mensalidade',
+        externalReference: `${academyId}_${financialId}`,
+        expiresIn: 86400,
       }),
     });
 
@@ -134,10 +122,24 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('Failed to create PIX payment', 500);
     }
 
-    const data = await response.json();
-    const abacatePayId = data.data.id;
+    const responseData = await response.json();
+    const pixData = responseData.data || responseData;
+    const abacatePayId = pixData.id;
 
-    // 12. Create walletTransaction record for webhook to find (using Admin SDK)
+    if (!abacatePayId) {
+      console.error('No PIX ID in AbacatePay response:', JSON.stringify(responseData));
+      return createErrorResponse('Payment service returned invalid response', 500);
+    }
+
+    // 12. Update financial record with PIX info (using Admin SDK)
+    await adminDb.doc(`academies/${academyId}/financials/${financialId}`).update({
+      pixCode: pixData.brCode || null,
+      pixQrCode: pixData.brCodeBase64 || null,
+      externalId: abacatePayId,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    // 13. Create walletTransaction record for webhook to find (using Admin SDK)
     await adminDb.collection(`academies/${academyId}/walletTransactions`).add({
       academyId,
       type: 'payment',
@@ -147,15 +149,16 @@ export async function POST(request: NextRequest) {
       studentId,
       studentName: sanitizeString(studentName) || 'Aluno',
       abacatePayTransactionId: abacatePayId,
-      pixCode: data.data.pix?.brcode || null,
-      qrCodeUrl: data.data.pix?.qrcode || null,
+      pixCode: pixData.brCode || null,
+      qrCodeUrl: pixData.brCodeBase64 || null,
       description: sanitizeString(description) || 'Mensalidade',
       createdAt: FieldValue.serverTimestamp(),
     });
 
     return createSuccessResponse({
-      pixCode: data.data.pix?.brcode || '',
-      qrCodeUrl: data.data.pix?.qrcode || '',
+      pixCode: pixData.brCode || '',
+      qrCodeUrl: pixData.brCodeBase64 || '',
+      abacatePayId,
       expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     });
   } catch (error) {

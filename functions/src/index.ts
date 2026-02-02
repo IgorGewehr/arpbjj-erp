@@ -600,16 +600,34 @@ async function getUserAcademyInfo(uid: string): Promise<{
   studentId?: string;
 }> {
   const mappingDoc = await db.collection('userAcademyMapping').doc(uid).get();
-  const userDoc = await db.collection('users').doc(uid).get();
-
   const mappingData = mappingDoc.data();
-  const userData = userDoc.data();
 
-  return {
-    academyId: mappingData?.primaryAcademyId || mappingData?.academyIds?.[0],
-    role: userData?.role,
-    studentId: userData?.studentId,
-  };
+  const academyId = mappingData?.primaryAcademyId || mappingData?.academyIds?.[0];
+
+  // Primary: get role and studentId from userAcademyMapping.academyDetails
+  const academyDetails = academyId && mappingData?.academyDetails?.[academyId];
+  if (academyDetails?.role) {
+    return {
+      academyId,
+      role: academyDetails.role,
+      studentId: academyDetails.studentId,
+    };
+  }
+
+  // Fallback: get role and studentId from academy-scoped user doc
+  if (academyId) {
+    const academyUserDoc = await db.collection('academies').doc(academyId).collection('users').doc(uid).get();
+    const academyUserData = academyUserDoc.data();
+    if (academyUserData?.role) {
+      return {
+        academyId,
+        role: academyUserData.role,
+        studentId: academyUserData.studentId,
+      };
+    }
+  }
+
+  return { academyId };
 }
 
 // ============================================

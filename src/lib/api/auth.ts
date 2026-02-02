@@ -85,22 +85,38 @@ export async function verifyIdToken(idToken: string): Promise<AuthResult> {
     const auth = admin.auth(adminApp);
     const decodedToken = await auth.verifyIdToken(idToken);
 
-    // Get user's academy mapping
+    // Get user's academy mapping (primary source of role and academy membership)
     const userMappingDoc = await adminDb
       .collection('userAcademyMapping')
       .doc(decodedToken.uid)
       .get();
 
-    const userDoc = await adminDb
-      .collection('users')
-      .doc(decodedToken.uid)
-      .get();
-
-    const userData = userDoc.data();
     const mappingData = userMappingDoc.data();
 
     // Get academyId from mapping (primaryAcademyId or first in academyIds array)
     const academyId = mappingData?.primaryAcademyId || mappingData?.academyIds?.[0];
+
+    // Get role and studentId from academy-scoped sources (not root user doc)
+    let role: string | undefined;
+    let studentId: string | undefined;
+
+    // Primary: from userAcademyMapping.academyDetails
+    const academyDetails = academyId ? mappingData?.academyDetails?.[academyId] : undefined;
+    if (academyDetails?.role) {
+      role = academyDetails.role;
+      studentId = academyDetails.studentId;
+    } else if (academyId) {
+      // Fallback: from academy-scoped user doc
+      const academyUserDoc = await adminDb
+        .collection('academies')
+        .doc(academyId)
+        .collection('users')
+        .doc(decodedToken.uid)
+        .get();
+      const academyUserData = academyUserDoc.data();
+      role = academyUserData?.role;
+      studentId = academyUserData?.studentId;
+    }
 
     return {
       authenticated: true,
@@ -108,8 +124,8 @@ export async function verifyIdToken(idToken: string): Promise<AuthResult> {
         uid: decodedToken.uid,
         email: decodedToken.email,
         academyId,
-        role: userData?.role,
-        studentId: userData?.studentId,
+        role,
+        studentId,
       },
     };
   } catch (error) {

@@ -275,7 +275,7 @@ export default function StudentProfilePage() {
   const router = useRouter();
   const studentId = params.id as string;
 
-  const { user } = useAuth();
+  const { user, firebaseUser } = useAuth();
   const { academy } = useAcademy();
   const { success: showSuccess, error: showError } = useFeedback();
   const { student, isLoading, refresh: refreshStudent } = useStudent(studentId);
@@ -521,7 +521,7 @@ export default function StudentProfilePage() {
 
   // Handle PIX payment generation
   const handleGeneratePix = useCallback(async (payment: Financial) => {
-    if (!academy?.id || !student) return;
+    if (!academy?.id || !student || !firebaseUser) return;
 
     setSelectedPayment(payment);
     setPixPaymentLink(null);
@@ -530,14 +530,30 @@ export default function StudentProfilePage() {
     setGeneratingPix(true);
 
     try {
-      const service = createAbacatePayService(academy.id);
-      const link = await service.createPixPayment(
-        payment.amount,
-        payment.description || `Mensalidade - ${payment.referenceMonth || ''}`,
-        payment.id,
-        studentId,
-        student.fullName || student.nickname || 'Aluno'
-      );
+      const token = await firebaseUser.getIdToken();
+      const response = await fetch('/api/payments/create-pix', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          academyId: academy.id,
+          amount: Math.round(payment.amount * 100),
+          description: payment.description || `Mensalidade - ${payment.referenceMonth || ''}`,
+          financialId: payment.id,
+          studentId,
+          studentName: student.fullName || student.nickname || 'Aluno',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null);
+        throw new Error(errorData?.error || 'Erro ao gerar pagamento PIX');
+      }
+
+      const result = await response.json();
+      const link = result.data as FinancialPaymentLink;
       setPixPaymentLink(link);
 
       // Generate QR code
@@ -547,11 +563,11 @@ export default function StudentProfilePage() {
       }
     } catch (err) {
       console.error('Error generating PIX payment:', err);
-      showError('Erro ao gerar pagamento PIX');
+      showError(err instanceof Error ? err.message : 'Erro ao gerar pagamento PIX');
     } finally {
       setGeneratingPix(false);
     }
-  }, [academy?.id, student, studentId, showError]);
+  }, [academy?.id, student, studentId, firebaseUser, showError]);
 
   const handleCopyPixCode = useCallback(() => {
     if (pixPaymentLink?.pixCode) {

@@ -980,11 +980,11 @@ function StoreTab() {
                 fullWidth
                 label="Valor Minimo do Pedido (R$)"
                 type="number"
-                value={(settings.storeMinOrderAmount || 0) / 100}
+                value={settings.storeMinOrderAmount || 0}
                 onChange={(e) =>
                   setSettings({
                     ...settings,
-                    storeMinOrderAmount: Math.round(parseFloat(e.target.value || '0') * 100),
+                    storeMinOrderAmount: parseFloat(e.target.value || '0'),
                   })
                 }
                 inputProps={{ min: 0, step: 0.01 }}

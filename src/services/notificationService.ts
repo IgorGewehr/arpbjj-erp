@@ -462,7 +462,7 @@ class NotificationService {
       type: 'payment_pending',
       priority: 'normal',
       title: 'Novo Pedido',
-      message: `${studentName} fez um pedido de R$ ${(total / 100).toFixed(2)} na loja.`,
+      message: `${studentName} fez um pedido de R$ ${total.toFixed(2)} na loja.`,
       actionUrl: `/loja/pedidos/${orderId}`,
       actionLabel: 'Ver pedido',
       expiresInDays: 7,

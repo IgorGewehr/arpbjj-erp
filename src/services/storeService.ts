@@ -288,7 +288,7 @@ class StoreService {
     // Notify admin about new order (non-blocking - student may not have notification permissions)
     this.notifyAdmin(
       'Novo Pedido',
-      `${data.studentName} fez um pedido de R$ ${(total / 100).toFixed(2)}.`,
+      `${data.studentName} fez um pedido de R$ ${total.toFixed(2)}.`,
       `/loja/pedidos?id=${docRef.id}`
     ).catch(() => {});
 

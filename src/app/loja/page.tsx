@@ -163,7 +163,7 @@ function ProductCard({ product, onEdit, onDelete, onToggleActive }: ProductCardP
                 mt: 0.25,
               }}
             >
-              R$ {(product.price / 100).toFixed(2).replace('.', ',')}
+              R$ {product.price.toFixed(2).replace('.', ',')}
             </Typography>
           </Box>
           <IconButton

@@ -854,7 +854,7 @@ export interface StoreProduct {
   academyId: string;
   name: string;
   description?: string;
-  price: number; // in cents
+  price: number; // in reais
   images: string[]; // URLs of images
   category: StoreProductCategory;
   stockType: StoreStockType;
@@ -871,7 +871,7 @@ export interface StoreOrderItem {
   productId: string;
   productName: string;
   quantity: number;
-  unitPrice: number; // in cents
+  unitPrice: number; // in reais
   size?: string;
   color?: string;
 }
@@ -893,7 +893,7 @@ export interface StoreOrder {
   studentId: string;
   studentName: string;
   items: StoreOrderItem[];
-  totalAmount: number; // in cents
+  totalAmount: number; // in reais
   status: StoreOrderStatus;
   paymentMethod?: 'pix';
   abacatePayTransactionId?: string;

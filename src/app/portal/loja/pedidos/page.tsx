@@ -106,7 +106,7 @@ function OrderCard({ order, onViewDetails, onPayNow }: OrderCardProps) {
             {order.items.length} {order.items.length === 1 ? 'item' : 'itens'}
           </Typography>
           <Typography variant="subtitle1" fontWeight={700} color="primary">
-            R$ {(order.totalAmount / 100).toFixed(2)}
+            R$ {(order.totalAmount ).toFixed(2)}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -204,7 +204,7 @@ function OrderDetailDialog({ order, open, onClose, onPayNow }: OrderDetailDialog
                 )}
               </Box>
               <Typography variant="body2">
-                {item.quantity}x R$ {(item.unitPrice / 100).toFixed(2)}
+                {item.quantity}x R$ {(item.unitPrice ).toFixed(2)}
               </Typography>
             </Box>
           </Box>
@@ -217,7 +217,7 @@ function OrderDetailDialog({ order, open, onClose, onPayNow }: OrderDetailDialog
             Total
           </Typography>
           <Typography variant="h6" color="primary" fontWeight={700}>
-            R$ {(order.totalAmount / 100).toFixed(2)}
+            R$ {(order.totalAmount ).toFixed(2)}
           </Typography>
         </Box>
 

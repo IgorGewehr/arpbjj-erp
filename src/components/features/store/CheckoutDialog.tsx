@@ -261,7 +261,7 @@ export function CheckoutDialog({
                     )}
                   </Box>
                   <Typography variant="body2" fontWeight={600}>
-                    R$ {((item.displayPrice * item.quantity) / 100).toFixed(2)}
+                    R$ {((item.displayPrice * item.quantity) ).toFixed(2)}
                   </Typography>
                 </Box>
               ))}
@@ -286,7 +286,7 @@ export function CheckoutDialog({
                 Total
               </Typography>
               <Typography variant="h5" color="primary" fontWeight={800}>
-                R$ {(displayTotal / 100).toFixed(2)}
+                R$ {(displayTotal ).toFixed(2)}
               </Typography>
             </Box>
 
@@ -432,7 +432,7 @@ export function CheckoutDialog({
                         Valor a pagar
                       </Typography>
                       <Typography variant="h5" fontWeight={700} color="primary">
-                        R$ {(savedTotal / 100).toFixed(2)}
+                        R$ {(savedTotal ).toFixed(2)}
                       </Typography>
                     </Box>
                     {timeRemaining && (
@@ -505,7 +505,7 @@ export function CheckoutDialog({
                       Valor a pagar
                     </Typography>
                     <Typography variant="h5" fontWeight={700} color="primary">
-                      R$ {(savedTotal / 100).toFixed(2)}
+                      R$ {(savedTotal ).toFixed(2)}
                     </Typography>
                   </Box>
 

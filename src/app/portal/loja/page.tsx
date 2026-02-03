@@ -157,7 +157,7 @@ function ProductCard({ product, onAddToCart }: ProductCardProps) {
               color: 'primary.main',
             }}
           >
-            R$ {(product.price / 100).toFixed(2).replace('.', ',')}
+            R$ {product.price.toFixed(2).replace('.', ',')}
           </Typography>
           <Typography
             sx={{
@@ -280,7 +280,7 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
             mb: 1.5,
           }}
         >
-          R$ {(product.price / 100).toFixed(2).replace('.', ',')}
+          R$ {product.price.toFixed(2).replace('.', ',')}
         </Typography>
 
         {product.description && (

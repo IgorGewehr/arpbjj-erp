@@ -151,7 +151,7 @@ export default function NovoProdutoPage() {
       return;
     }
 
-    const priceValue = Math.round(parseFloat(price || '0') * 100);
+    const priceValue = parseFloat(price || '0');
     if (priceValue <= 0) {
       showError('Preco deve ser maior que zero');
       return;

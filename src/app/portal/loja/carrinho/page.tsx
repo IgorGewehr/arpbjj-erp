@@ -74,7 +74,7 @@ function CartItemCard({ item, onUpdateQuantity, onRemove }: CartItemCardProps) {
             </Typography>
           )}
           <Typography variant="body2" color="primary" fontWeight={600} sx={{ mt: 0.5 }}>
-            R$ {(item.displayPrice / 100).toFixed(2)} cada
+            R$ {(item.displayPrice ).toFixed(2)} cada
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 1 }}>
@@ -109,7 +109,7 @@ function CartItemCard({ item, onUpdateQuantity, onRemove }: CartItemCardProps) {
           Subtotal (estimado)
         </Typography>
         <Typography variant="body2" fontWeight={600}>
-          R$ {((item.displayPrice * item.quantity) / 100).toFixed(2)}
+          R$ {((item.displayPrice * item.quantity) ).toFixed(2)}
         </Typography>
       </Box>
     </Paper>
@@ -177,7 +177,7 @@ export default function CarrinhoPage() {
     }
 
     if (belowMinimum) {
-      showError(`Pedido minimo: R$ ${((minOrderAmount || 0) / 100).toFixed(2)}`);
+      showError(`Pedido minimo: R$ ${((minOrderAmount || 0) ).toFixed(2)}`);
       return;
     }
 
@@ -250,7 +250,7 @@ export default function CarrinhoPage() {
                 Itens ({cartItems.reduce((sum, i) => sum + i.quantity, 0)})
               </Typography>
               <Typography variant="body2">
-                R$ {(displayTotal / 100).toFixed(2)}
+                R$ {(displayTotal ).toFixed(2)}
               </Typography>
             </Box>
             <Divider sx={{ my: 1.5 }} />
@@ -259,13 +259,13 @@ export default function CarrinhoPage() {
                 Total Estimado
               </Typography>
               <Typography variant="h6" color="primary" fontWeight={700}>
-                R$ {(displayTotal / 100).toFixed(2)}
+                R$ {(displayTotal ).toFixed(2)}
               </Typography>
             </Box>
 
             {belowMinimum && (
               <Alert severity="warning" sx={{ mt: 2 }}>
-                Pedido minimo: R$ {((minOrderAmount || 0) / 100).toFixed(2)}
+                Pedido minimo: R$ {((minOrderAmount || 0) ).toFixed(2)}
               </Alert>
             )}
 

@@ -123,7 +123,7 @@ export default function EditarProdutoPage() {
 
         setName(product.name);
         setDescription(product.description || '');
-        setPrice((product.price / 100).toString());
+        setPrice(product.price.toString());
         setCategory(product.category);
         setStockType(product.stockType);
         setStockQuantity(product.stockQuantity?.toString() || '');
@@ -220,7 +220,7 @@ export default function EditarProdutoPage() {
       return;
     }
 
-    const priceValue = Math.round(parseFloat(price || '0') * 100);
+    const priceValue = parseFloat(price || '0');
     if (priceValue <= 0) {
       showError('Preco deve ser maior que zero');
       return;

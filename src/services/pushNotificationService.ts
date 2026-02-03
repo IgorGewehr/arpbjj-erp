@@ -218,7 +218,7 @@ class PushNotificationService {
     return this.sendToUser({
       userId: adminUserId,
       title: 'Novo Pedido na Loja',
-      body: `${studentName} fez um pedido de R$ ${(totalAmount / 100).toFixed(2)}.`,
+      body: `${studentName} fez um pedido de R$ ${totalAmount.toFixed(2)}.`,
       data: {
         type: 'store_order',
         id: orderId,

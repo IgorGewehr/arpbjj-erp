@@ -141,7 +141,7 @@ function OrderDetailDialog({ order, open, onClose }: OrderDetailDialogProps) {
                   </TableCell>
                   <TableCell align="center">{item.quantity}</TableCell>
                   <TableCell align="right">
-                    R$ {((item.unitPrice * item.quantity) / 100).toFixed(2)}
+                    R$ {((item.unitPrice * item.quantity) ).toFixed(2)}
                   </TableCell>
                 </TableRow>
               ))}
@@ -153,7 +153,7 @@ function OrderDetailDialog({ order, open, onClose }: OrderDetailDialogProps) {
                 </TableCell>
                 <TableCell align="right">
                   <Typography variant="subtitle2" fontWeight={600} color="primary">
-                    R$ {(order.totalAmount / 100).toFixed(2)}
+                    R$ {(order.totalAmount ).toFixed(2)}
                   </Typography>
                 </TableCell>
               </TableRow>
@@ -252,7 +252,7 @@ function OrderRow({ order, onViewDetails, onUpdateStatus, onCancel }: OrderRowPr
       </TableCell>
       <TableCell>
         <Typography variant="body2" fontWeight={600}>
-          R$ {(order.totalAmount / 100).toFixed(2)}
+          R$ {(order.totalAmount ).toFixed(2)}
         </Typography>
       </TableCell>
       <TableCell>

@@ -22,6 +22,7 @@ import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { useQuery } from '@tanstack/react-query';
 import { createFinancialService, createStudentService, createSettingsService, createPlanService } from '@/services';
 import { createAbacatePayService } from '@/services/abacatePayService';
+import { createAsaasService } from '@/services/asaasService';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { PaymentStatus, FinancialPaymentLink, Financial } from '@/types';
@@ -185,6 +186,19 @@ export default function PortalFinanceiroPage() {
     enabled: !!academy?.id,
   });
 
+  // Check if Asaas is enabled
+  const { data: asaasEnabled = false } = useQuery({
+    queryKey: ['asaasEnabled', academy?.id],
+    queryFn: async () => {
+      if (!academy?.id) return false;
+      const service = createAsaasService(academy.id);
+      return service.isEnabled();
+    },
+    enabled: !!academy?.id,
+  });
+
+  const paymentEnabled = abacatePayEnabled || asaasEnabled;
+
   // Fetch student data
   const { data: student } = useQuery({
     queryKey: ['student', studentId, academy?.id],
@@ -281,7 +295,10 @@ export default function PortalFinanceiroPage() {
 
     try {
       const token = await firebaseUser.getIdToken();
-      const response = await fetch('/api/payments/create-pix', {
+      const endpoint = asaasEnabled
+        ? '/api/payments/asaas/create-pix'
+        : '/api/payments/create-pix';
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -482,7 +499,7 @@ export default function PortalFinanceiroPage() {
                 key={payment.id}
                 payment={payment}
                 formatCurrency={formatCurrency}
-                showPayButton={abacatePayEnabled}
+                showPayButton={paymentEnabled}
                 onPayPix={() => handlePayPix(payment)}
               />
             ))}

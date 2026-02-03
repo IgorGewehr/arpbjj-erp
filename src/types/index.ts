@@ -636,8 +636,28 @@ export interface Academy {
   pixKey?: string;
   pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
 
-  // AbacatePay Integration (API key is global in env, not per-academy)
+  // AbacatePay Integration (legacy - API key is global in env, not per-academy)
   abacatePayEnabled?: boolean;
+
+  // Asaas Marketplace Integration (White Label - per-academy sub-account)
+  asaasEnabled?: boolean;
+  asaasSubAccountId?: string;
+  asaasSubAccountApiKey?: string;        // Encrypted
+  asaasSubAccountWalletId?: string;
+  asaasOnboardingStatus?: 'not_started' | 'pending' | 'approved' | 'rejected';
+
+  // Asaas KYC Document Verification
+  asaasKycStatus?: 'not_checked' | 'pending_upload' | 'pending_review' | 'approved' | 'rejected' | 'onboarding_url';
+  asaasKycOnboardingUrl?: string;
+  asaasKycLastCheckedAt?: Date;
+  asaasKycDocuments?: {
+    [groupId: string]: {
+      type: string;
+      status: string;
+      description: string;
+      uploadedAt: Date | null;
+    };
+  };
 
   // Auto-graduation Settings
   autoGraduationEnabled?: boolean;
@@ -793,8 +813,11 @@ export interface WalletTransaction {
   studentId?: string;
   studentName?: string;
 
-  // AbacatePay data
+  // AbacatePay data (legacy)
   abacatePayTransactionId?: string;
+
+  // Asaas data
+  asaasPaymentId?: string;
   pixCode?: string;
   qrCodeUrl?: string;
 
@@ -839,6 +862,10 @@ export interface FinancialWithPayment extends Financial {
   paymentLink?: FinancialPaymentLink;
   abacatePayTransactionId?: string;
   paidViaAbacatePay?: boolean;
+  // Asaas fields
+  asaasPaymentId?: string;
+  paidViaAsaas?: boolean;
+  asaasFee?: number;
 }
 
 // ============================================
@@ -897,6 +924,7 @@ export interface StoreOrder {
   status: StoreOrderStatus;
   paymentMethod?: 'pix';
   abacatePayTransactionId?: string;
+  asaasPaymentId?: string;
   pixCode?: string;
   qrCodeUrl?: string;
   notes?: string;

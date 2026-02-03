@@ -35,7 +35,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -235,7 +235,7 @@ export default function CreateAcademyPage() {
   const [checkingSlug, setCheckingSlug] = useState(false);
   const slugCheckTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Check slug availability (debounced)
+  // Check slug availability via API route (no auth required)
   const checkSlugAvailability = useCallback(async (slug: string) => {
     if (slug.length < 3) {
       setSlugAvailable(null);
@@ -244,8 +244,9 @@ export default function CreateAcademyPage() {
 
     setCheckingSlug(true);
     try {
-      const academyDoc = await getDoc(doc(db, 'academies', slug));
-      setSlugAvailable(!academyDoc.exists());
+      const res = await fetch(`/api/check-slug?slug=${encodeURIComponent(slug)}`);
+      const data = await res.json();
+      setSlugAvailable(data.available === true);
     } catch {
       setSlugAvailable(null);
     } finally {
@@ -369,8 +370,9 @@ export default function CreateAcademyPage() {
       setError('');
 
       // Double-check slug availability before creating
-      const slugDoc = await getDoc(doc(db, 'academies', academySlug));
-      if (slugDoc.exists()) {
+      const checkRes = await fetch(`/api/check-slug?slug=${encodeURIComponent(academySlug)}`);
+      const checkData = await checkRes.json();
+      if (!checkData.available) {
         setError('Este identificador ja esta em uso. Escolha outro.');
         setSlugAvailable(false);
         setLoading(false);
@@ -437,7 +439,9 @@ export default function CreateAcademyPage() {
       });
 
       // Step 6: Create userAcademyMapping with academyDetails
+      // Note: top-level 'role' is required by Firestore security rules for academy creation
       await setDoc(doc(db, 'userAcademyMapping', user.uid), {
+        role: 'admin',
         academyIds: [academySlug],
         primaryAcademyId: academySlug,
         academyDetails: {
@@ -492,12 +496,12 @@ export default function CreateAcademyPage() {
 
   const slugHelperText = useMemo(() => {
     if (academySlug.length < 3) {
-      return 'Identificador unico para sua academia (minimo 3 caracteres)';
+      return 'Identificador unico da academia (minimo 3 caracteres)';
     }
     if (checkingSlug) return 'Verificando disponibilidade...';
-    if (slugAvailable === true) return `Disponivel! Sua URL sera: bjjeasy.com.br/${academySlug}`;
+    if (slugAvailable === true) return 'Identificador disponivel!';
     if (slugAvailable === false) return 'Este identificador ja esta em uso. Escolha outro.';
-    return `Sua URL sera: bjjeasy.com.br/${academySlug}`;
+    return '';
   }, [academySlug, checkingSlug, slugAvailable]);
 
   // ============================================
@@ -693,7 +697,7 @@ export default function CreateAcademyPage() {
         />
 
         <TextField
-          label="Identificador (URL)"
+          label="Identificador"
           value={academySlug}
           onChange={(e) => handleSlugChange(e.target.value)}
           fullWidth
@@ -707,11 +711,6 @@ export default function CreateAcademyPage() {
             },
           }}
           InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Typography color="text.secondary">/</Typography>
-              </InputAdornment>
-            ),
             endAdornment: slugStatusIcon ? (
               <InputAdornment position="end">
                 {checkingSlug ? (
@@ -818,18 +817,9 @@ export default function CreateAcademyPage() {
               border: '1px solid #bbf7d0',
             }}
           >
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Seu painel de administracao:
+            <Typography variant="body2" color="text.secondary">
+              Voce ja pode acessar o painel e comecar a cadastrar seus alunos.
             </Typography>
-            <Chip
-              label={`bjjeasy.com.br/${academySlug}`}
-              sx={{
-                fontFamily: 'monospace',
-                bgcolor: '#111',
-                color: '#fff',
-                fontWeight: 600,
-              }}
-            />
           </Box>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>

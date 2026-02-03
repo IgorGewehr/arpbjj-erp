@@ -27,6 +27,11 @@ export function useFCM() {
 
     async function registerFCM() {
       try {
+        // Skip FCM entirely if notifications are blocked or not supported
+        if (!('Notification' in window) || Notification.permission === 'denied') {
+          return;
+        }
+
         const swRegistration = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
 
         // Send config to whichever SW state is available
@@ -78,7 +83,14 @@ export function useFCM() {
             });
           }
         });
-      } catch (error) {
+      } catch (error: unknown) {
+        // Silently ignore permission-related errors (user choice, not a bug)
+        if (error instanceof Error && 'code' in error) {
+          const code = (error as { code: string }).code;
+          if (code === 'messaging/permission-blocked' || code === 'messaging/permission-default') {
+            return;
+          }
+        }
         console.error('FCM registration failed:', error);
       }
     }

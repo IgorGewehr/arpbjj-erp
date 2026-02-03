@@ -16,6 +16,7 @@ export { createCheckinService } from './checkinService';
 // Multi-tenant services (factory functions only)
 export { createNotificationService } from './notificationService';
 export { createAbacatePayService } from './abacatePayService';
+export { createAsaasService } from './asaasService';
 
 // Global services (ROOT level, not per-academy)
 export { globalUserService } from './globalUserService';

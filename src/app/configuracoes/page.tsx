@@ -57,6 +57,11 @@ import {
   X,
   UserCheck,
   Settings,
+  FileCheck,
+  ExternalLink,
+  CheckCircle,
+  AlertTriangle,
+  Clock,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -289,6 +294,7 @@ function useSettingsData() {
     autoGraduationEnabled: false,
     autoGraduationAttendances: 50,
     abacatePayEnabled: false,
+    asaasEnabled: false,
     storeEnabled: false,
     storePublished: false,
     storeWelcomeMessage: '',
@@ -328,6 +334,7 @@ function useSettingsData() {
             autoGraduationEnabled: data.autoGraduationEnabled || false,
             autoGraduationAttendances: data.autoGraduationAttendances || 50,
             abacatePayEnabled: data.abacatePayEnabled || false,
+            asaasEnabled: data.asaasEnabled || false,
             storeEnabled: data.storeEnabled || false,
             storePublished: data.storePublished || false,
             storeWelcomeMessage: data.storeWelcomeMessage || '',
@@ -820,11 +827,448 @@ function AppearanceTab() {
 }
 
 // ============================================
+// KYC Document Upload Section
+// ============================================
+interface KycDocument {
+  groupId: string;
+  type: string;
+  status: string;
+  description: string;
+}
+
+function KycSection({ academyId }: { academyId: string }) {
+  const theme = useTheme();
+  const { user } = useAuth();
+  const { error, success } = useFeedback();
+  const { academy } = useAcademy();
+
+  const [kycStatus, setKycStatus] = useState<string>('not_checked');
+  const [kycOnboardingUrl, setKycOnboardingUrl] = useState<string | null>(null);
+  const [kycDocuments, setKycDocuments] = useState<KycDocument[]>([]);
+  const [checking, setChecking] = useState(false);
+  const [uploadingGroupId, setUploadingGroupId] = useState<string | null>(null);
+  const [creatingSubAccount, setCreatingSubAccount] = useState(false);
+
+  const hasSubAccount = !!academy?.asaasSubAccountId;
+
+  const checkKycStatus = useCallback(async () => {
+    if (!academyId || !user?.id) return;
+
+    setChecking(true);
+    try {
+      const token = await (await import('firebase/auth')).getAuth().currentUser?.getIdToken();
+      if (!token) {
+        error('Sessao expirada');
+        return;
+      }
+
+      const response = await fetch(
+        `/api/payments/onboard/documents?academyId=${academyId}`,
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Falha ao verificar documentos');
+      }
+
+      const result = await response.json();
+      const { status, onboardingUrl, documents } = result.data;
+
+      setKycStatus(status);
+      setKycOnboardingUrl(onboardingUrl || null);
+      setKycDocuments(documents || []);
+    } catch (err) {
+      console.error('KYC check error:', err);
+      error(err instanceof Error ? err.message : 'Erro ao verificar documentos');
+    } finally {
+      setChecking(false);
+    }
+  }, [academyId, user?.id, error]);
+
+  // Auto-check on mount only when sub-account exists
+  useEffect(() => {
+    if (hasSubAccount) {
+      checkKycStatus();
+    }
+  }, [hasSubAccount, checkKycStatus]);
+
+  const handleCreateSubAccount = async () => {
+    if (!academyId) return;
+
+    // Validate required fields client-side
+    if (!academy?.cnpj || !academy?.email || !academy?.name) {
+      error(
+        'A academia precisa ter CNPJ, email e nome configurados antes de criar a subconta Asaas. ' +
+        'Preencha esses campos na aba "Dados da Academia" e salve.'
+      );
+      return;
+    }
+
+    setCreatingSubAccount(true);
+    try {
+      const token = await (await import('firebase/auth')).getAuth().currentUser?.getIdToken();
+      if (!token) {
+        error('Sessao expirada');
+        return;
+      }
+
+      const response = await fetch('/api/payments/onboard', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ academyId }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Falha ao criar subconta Asaas');
+      }
+
+      success('Subconta Asaas criada com sucesso! Verificando documentos...');
+      // academy will update via onSnapshot in AcademyContext, triggering re-render
+    } catch (err) {
+      console.error('Sub-account creation error:', err);
+      error(err instanceof Error ? err.message : 'Erro ao criar subconta Asaas');
+    } finally {
+      setCreatingSubAccount(false);
+    }
+  };
+
+  // Sub-account not yet created — show creation step
+  if (!hasSubAccount) {
+    const missingFields: string[] = [];
+    if (!academy?.cnpj) missingFields.push('CNPJ');
+    if (!academy?.email) missingFields.push('Email');
+    if (!academy?.name) missingFields.push('Nome');
+
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Alert severity="info" sx={{ borderRadius: 2, mb: 2 }}>
+          <Typography variant="body2">
+            <strong>Subconta Asaas nao encontrada</strong> - Para receber pagamentos via Asaas, crie uma subconta vinculada a esta academia.
+          </Typography>
+        </Alert>
+        {missingFields.length > 0 && (
+          <Alert severity="warning" sx={{ borderRadius: 2, mb: 2 }}>
+            <Typography variant="body2">
+              Campos obrigatorios faltando: <strong>{missingFields.join(', ')}</strong>.
+              Preencha na aba &quot;Dados da Academia&quot; e salve antes de continuar.
+            </Typography>
+          </Alert>
+        )}
+        <Button
+          variant="contained"
+          startIcon={creatingSubAccount ? <CircularProgress size={16} color="inherit" /> : <Wallet size={18} />}
+          onClick={handleCreateSubAccount}
+          disabled={creatingSubAccount || missingFields.length > 0}
+        >
+          {creatingSubAccount ? 'Criando Subconta...' : 'Criar Subconta Asaas'}
+        </Button>
+      </Box>
+    );
+  }
+
+  const handleUpload = async (groupId: string, file: File) => {
+    if (!academyId) return;
+
+    // Validate file type
+    if (!['image/jpeg', 'image/png'].includes(file.type)) {
+      error('Apenas imagens JPG e PNG sao aceitas');
+      return;
+    }
+
+    // Validate file size
+    if (file.size > 5 * 1024 * 1024) {
+      error('Arquivo deve ter no maximo 5MB');
+      return;
+    }
+
+    setUploadingGroupId(groupId);
+    try {
+      const token = await (await import('firebase/auth')).getAuth().currentUser?.getIdToken();
+      if (!token) {
+        error('Sessao expirada');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('documentFile', file);
+      formData.append('academyId', academyId);
+      formData.append('groupId', groupId);
+
+      const response = await fetch('/api/payments/onboard/documents/upload', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || 'Falha ao enviar documento');
+      }
+
+      success('Documento enviado com sucesso!');
+
+      // Update local state
+      setKycDocuments((prev) =>
+        prev.map((doc) =>
+          doc.groupId === groupId ? { ...doc, status: 'AWAITING_APPROVAL' } : doc
+        )
+      );
+
+      // Re-check overall status
+      const allDone = kycDocuments.every(
+        (d) => d.groupId === groupId || d.status === 'AWAITING_APPROVAL' || d.status === 'APPROVED'
+      );
+      if (allDone) {
+        setKycStatus('pending_review');
+      }
+    } catch (err) {
+      console.error('KYC upload error:', err);
+      error(err instanceof Error ? err.message : 'Erro ao enviar documento');
+    } finally {
+      setUploadingGroupId(null);
+    }
+  };
+
+  // Onboarding URL state
+  if (kycStatus === 'onboarding_url' && kycOnboardingUrl) {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Alert severity="info" sx={{ borderRadius: 2 }}>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            <strong>Verificacao de Documentos</strong> - A verificacao dos seus documentos sera feita por um link externo.
+          </Typography>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<ExternalLink size={16} />}
+            href={kycOnboardingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Abrir Verificacao
+          </Button>
+        </Alert>
+      </Box>
+    );
+  }
+
+  // Not checked yet
+  if (kycStatus === 'not_checked') {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Button
+          variant="outlined"
+          startIcon={checking ? <CircularProgress size={16} color="inherit" /> : <FileCheck size={18} />}
+          onClick={checkKycStatus}
+          disabled={checking}
+        >
+          {checking ? 'Verificando...' : 'Verificar Documentos'}
+        </Button>
+      </Box>
+    );
+  }
+
+  // Approved
+  if (kycStatus === 'approved') {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Alert severity="success" icon={<CheckCircle size={20} />} sx={{ borderRadius: 2 }}>
+          <Typography variant="body2">
+            <strong>Documentos Aprovados!</strong> - Sua conta esta totalmente verificada.
+          </Typography>
+        </Alert>
+      </Box>
+    );
+  }
+
+  // Pending review
+  if (kycStatus === 'pending_review') {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Alert severity="info" icon={<Clock size={20} />} sx={{ borderRadius: 2, mb: 2 }}>
+          <Typography variant="body2">
+            <strong>Documentos em Analise</strong> - Seus documentos estao sendo verificados. A aprovacao pode levar ate 48 horas.
+          </Typography>
+        </Alert>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={checking ? <CircularProgress size={14} color="inherit" /> : <RefreshCw size={16} />}
+          onClick={checkKycStatus}
+          disabled={checking}
+        >
+          {checking ? 'Atualizando...' : 'Atualizar Status'}
+        </Button>
+      </Box>
+    );
+  }
+
+  // Rejected
+  if (kycStatus === 'rejected') {
+    return (
+      <Box sx={{ mt: 2 }}>
+        <Alert severity="error" icon={<AlertTriangle size={20} />} sx={{ borderRadius: 2, mb: 2 }}>
+          <Typography variant="body2">
+            <strong>Documentos Rejeitados</strong> - Envie novamente os documentos solicitados.
+          </Typography>
+        </Alert>
+        {kycDocuments
+          .filter((doc) => doc.status === 'REJECTED' || doc.status === 'NOT_SENT')
+          .map((doc) => (
+            <DocumentUploadCard
+              key={doc.groupId}
+              document={doc}
+              uploading={uploadingGroupId === doc.groupId}
+              onUpload={(file) => handleUpload(doc.groupId, file)}
+            />
+          ))}
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={checking ? <CircularProgress size={14} color="inherit" /> : <RefreshCw size={16} />}
+          onClick={checkKycStatus}
+          disabled={checking}
+          sx={{ mt: 2 }}
+        >
+          {checking ? 'Atualizando...' : 'Atualizar Status'}
+        </Button>
+      </Box>
+    );
+  }
+
+  // Pending upload (default for documents needing upload)
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Alert severity="warning" sx={{ borderRadius: 2, mb: 2 }}>
+        <Typography variant="body2">
+          <strong>Documentos Pendentes</strong> - Envie os documentos abaixo para verificacao da sua conta.
+        </Typography>
+      </Alert>
+      {kycDocuments
+        .filter((doc) => doc.status === 'NOT_SENT' || doc.status === 'REJECTED')
+        .map((doc) => (
+          <DocumentUploadCard
+            key={doc.groupId}
+            document={doc}
+            uploading={uploadingGroupId === doc.groupId}
+            onUpload={(file) => handleUpload(doc.groupId, file)}
+          />
+        ))}
+      {kycDocuments.filter((doc) => doc.status === 'AWAITING_APPROVAL' || doc.status === 'APPROVED').length > 0 && (
+        <Box sx={{ mt: 1 }}>
+          {kycDocuments
+            .filter((doc) => doc.status === 'AWAITING_APPROVAL' || doc.status === 'APPROVED')
+            .map((doc) => (
+              <Chip
+                key={doc.groupId}
+                label={`${doc.description}: ${doc.status === 'APPROVED' ? 'Aprovado' : 'Em analise'}`}
+                color={doc.status === 'APPROVED' ? 'success' : 'info'}
+                size="small"
+                sx={{ mr: 1, mb: 1 }}
+              />
+            ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+function DocumentUploadCard({
+  document,
+  uploading,
+  onUpload,
+}: {
+  document: KycDocument;
+  uploading: boolean;
+  onUpload: (file: File) => void;
+}) {
+  const theme = useTheme();
+  const [preview, setPreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onloadend = () => setPreview(reader.result as string);
+    reader.readAsDataURL(file);
+
+    onUpload(file);
+  };
+
+  return (
+    <Box
+      sx={{
+        p: 2,
+        mb: 2,
+        border: '2px dashed',
+        borderColor: document.status === 'REJECTED' ? 'error.main' : 'divider',
+        borderRadius: 2,
+        bgcolor: document.status === 'REJECTED' ? `${theme.palette.error.main}08` : 'transparent',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        <Box sx={{ flex: 1 }}>
+          <Typography variant="subtitle2" fontWeight={600}>
+            {document.description}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {document.type} - {document.status === 'REJECTED' ? 'Rejeitado (reenvie)' : 'Pendente'}
+          </Typography>
+        </Box>
+        {preview && (
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 1,
+              overflow: 'hidden',
+              flexShrink: 0,
+            }}
+          >
+            <img
+              src={preview}
+              alt="Preview"
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
+          </Box>
+        )}
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleFileSelect}
+          accept="image/jpeg,image/png"
+          style={{ display: 'none' }}
+        />
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={uploading ? <CircularProgress size={14} color="inherit" /> : <Upload size={16} />}
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+        >
+          {uploading ? 'Enviando...' : 'Enviar'}
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
+// ============================================
 // Payments Tab
 // ============================================
 function PaymentsTab() {
   const theme = useTheme();
-  const { settings, setSettings, saving, loading, handleSave } = useSettingsData();
+  const { settings, setSettings, saving, loading, handleSave, academyId } = useSettingsData();
 
   return (
     <SettingsSection
@@ -872,16 +1316,78 @@ function PaymentsTab() {
 
       <Divider sx={{ my: 3 }} />
 
-      {/* AbacatePay Integration */}
+      {/* Asaas Integration */}
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+          <CreditCard size={20} color={theme.palette.primary.main} />
+          <Box>
+            <Typography variant="subtitle1" fontWeight={600}>
+              Asaas - Pagamentos via Subconta
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Pagamentos via PIX e cartao com subconta propria (CNPJ da academia)
+            </Typography>
+          </Box>
+        </Box>
+
+        <FormControlLabel
+          control={
+            <Switch
+              checked={settings.asaasEnabled}
+              onChange={(e) =>
+                setSettings({ ...settings, asaasEnabled: e.target.checked })
+              }
+              color="primary"
+            />
+          }
+          label="Ativar pagamentos via Asaas"
+        />
+
+        {settings.asaasEnabled && (
+          <Box sx={{ mt: 2 }}>
+            <Alert severity="success" sx={{ borderRadius: 2 }}>
+              <Typography variant="body2">
+                <strong>Asaas Ativo!</strong> - Alunos podem pagar via PIX e cartao de credito.
+                Os valores serao creditados na sua carteira e podem ser sacados para sua chave PIX.
+              </Typography>
+            </Alert>
+          </Box>
+        )}
+      </Box>
+
+      {/* KYC Section - only when Asaas is enabled */}
+      {settings.asaasEnabled && academyId && (
+        <>
+          <Divider sx={{ my: 2 }} />
+          <Box>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+              <FileCheck size={20} color={theme.palette.info.main} />
+              <Box>
+                <Typography variant="subtitle1" fontWeight={600}>
+                  Verificacao de Documentos (KYC)
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Envie documentos para verificacao e aprovacao da subconta
+                </Typography>
+              </Box>
+            </Box>
+            <KycSection academyId={academyId} />
+          </Box>
+        </>
+      )}
+
+      <Divider sx={{ my: 2 }} />
+
+      {/* AbacatePay Integration (Legacy) */}
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
           <Zap size={20} color={theme.palette.warning.main} />
           <Box>
             <Typography variant="subtitle1" fontWeight={600}>
-              Pagamento pela Plataforma
+              AbacatePay (Legado)
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Permita que alunos paguem mensalidades diretamente pelo app via PIX
+              Cobranca automatica via PIX - para academias que ja usam AbacatePay
             </Typography>
           </Box>
         </Box>
@@ -896,15 +1402,14 @@ function PaymentsTab() {
               color="primary"
             />
           }
-          label="Ativar pagamentos pela plataforma"
+          label="Ativar AbacatePay"
         />
 
         {settings.abacatePayEnabled && (
           <Box sx={{ mt: 2 }}>
-            <Alert severity="success" sx={{ borderRadius: 2 }}>
+            <Alert severity="info" sx={{ borderRadius: 2 }}>
               <Typography variant="body2">
-                <strong>Pagamentos Ativos!</strong> - Alunos podem pagar via PIX e voce sera notificado imediatamente.
-                Os valores serao creditados na sua carteira e podem ser sacados para sua chave PIX.
+                <strong>AbacatePay Ativo!</strong> - Alunos podem pagar via PIX.
               </Typography>
             </Alert>
           </Box>

@@ -194,6 +194,11 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           studentCheckinEnabled: data.studentCheckinEnabled || false,
           // Monitors
           monitorIds: data.monitorIds || [],
+          // Asaas
+          asaasEnabled: data.asaasEnabled || false,
+          asaasSubAccountId: data.asaasSubAccountId,
+          asaasOnboardingStatus: data.asaasOnboardingStatus,
+          asaasKycStatus: data.asaasKycStatus,
           // Subscription & Metadata
           subscription: data.subscription,
           createdAt: data.createdAt?.toDate() || new Date(),
@@ -387,6 +392,11 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           studentCheckinEnabled: data.studentCheckinEnabled || false,
           // Monitors
           monitorIds: data.monitorIds || [],
+          // Asaas
+          asaasEnabled: data.asaasEnabled || false,
+          asaasSubAccountId: data.asaasSubAccountId,
+          asaasOnboardingStatus: data.asaasOnboardingStatus,
+          asaasKycStatus: data.asaasKycStatus,
           // Subscription & Metadata
           subscription: data.subscription,
           createdAt: data.createdAt?.toDate() || new Date(),

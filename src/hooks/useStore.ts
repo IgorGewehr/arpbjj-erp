@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { createStoreService, CreateProductData, CreateOrderData } from '@/services/storeService';
 import { useFeedback, useAuth } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
+import { useAcademySettings } from '@/hooks/useAcademySettings';
 import { StoreProduct, StoreOrder, StoreOrderStatus, StoreOrderItem, CartItemInput, FinancialPaymentLink } from '@/types';
 
 // ============================================
@@ -27,6 +28,7 @@ export function useStore() {
   const { user } = useAuth();
   const { academy } = useAcademy();
   const queryClient = useQueryClient();
+  const { settings } = useAcademySettings();
 
   // Create service instance
   const storeService = useMemo(() => {
@@ -199,7 +201,11 @@ export function useStore() {
     mutationFn: async ({ orderId, method = 'PIX' }: { orderId: string; method?: 'PIX' | 'CARD' }): Promise<FinancialPaymentLink | null> => {
       if (!academy?.id) throw new Error('Academy not available');
 
-      const response = await fetch('/api/store/generate-payment', {
+      const endpoint = settings?.asaasEnabled
+        ? '/api/store/asaas-generate-payment'
+        : '/api/store/generate-payment';
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -312,6 +318,7 @@ export function useStoreCart() {
   const { user } = useAuth();
   const { academy, academyUser } = useAcademy();
   const queryClient = useQueryClient();
+  const { settings } = useAcademySettings();
 
   // Get studentId from academyUser (loaded from academy context)
   const studentId = academyUser?.studentId;
@@ -390,7 +397,11 @@ export function useStoreCart() {
     mutationFn: async ({ orderId, method = 'PIX' }: { orderId: string; method?: 'PIX' | 'CARD' }): Promise<FinancialPaymentLink | null> => {
       if (!academy?.id) throw new Error('Academy not available');
 
-      const response = await fetch('/api/store/generate-payment', {
+      const endpoint = settings?.asaasEnabled
+        ? '/api/store/asaas-generate-payment'
+        : '/api/store/generate-payment';
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

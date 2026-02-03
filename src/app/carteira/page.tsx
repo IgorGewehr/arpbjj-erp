@@ -47,6 +47,7 @@ import { useAuth, useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useAcademySettings, useFinancial } from '@/hooks';
 import { createAbacatePayService } from '@/services/abacatePayService';
+import { createAsaasService } from '@/services/asaasService';
 import { WalletTransaction, AcademyWallet, TransactionStatus } from '@/types';
 import {
   AreaChart,
@@ -252,11 +253,15 @@ export default function CarteiraPage() {
   const [withdrawalOpen, setWithdrawalOpen] = useState(false);
   const [showAllTransactions, setShowAllTransactions] = useState(false);
 
+  const paymentEnabled = settings?.asaasEnabled || settings?.abacatePayEnabled;
+
   const fetchWalletData = useCallback(async () => {
     if (!academyId) return;
 
     try {
-      const service = createAbacatePayService(academyId);
+      const service = settings?.asaasEnabled
+        ? createAsaasService(academyId)
+        : createAbacatePayService(academyId);
       const [walletData, transactionsData] = await Promise.all([
         service.getWallet(),
         service.getTransactions(50),
@@ -275,12 +280,12 @@ export default function CarteiraPage() {
 
   useEffect(() => {
     // Only fetch wallet data if payments are enabled
-    if (!settingsLoading && settings?.abacatePayEnabled) {
+    if (!settingsLoading && paymentEnabled) {
       fetchWalletData();
-    } else if (!settingsLoading && !settings?.abacatePayEnabled) {
+    } else if (!settingsLoading && !paymentEnabled) {
       setLoading(false);
     }
-  }, [fetchWalletData, settingsLoading, settings?.abacatePayEnabled]);
+  }, [fetchWalletData, settingsLoading, paymentEnabled]);
 
   const handleRefresh = () => {
     setRefreshing(true);
@@ -291,7 +296,10 @@ export default function CarteiraPage() {
     if (!academyId || !firebaseUser) return;
 
     const token = await firebaseUser.getIdToken();
-    const response = await fetch('/api/payments/withdraw', {
+    const endpoint = settings?.asaasEnabled
+      ? '/api/payments/asaas/withdraw'
+      : '/api/payments/withdraw';
+    const response = await fetch(endpoint, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -331,8 +339,8 @@ export default function CarteiraPage() {
     failed: { color: theme.palette.error.main, label: 'Falhou', icon: XCircle },
   };
 
-  // If AbacatePay is not enabled
-  if (!settingsLoading && !settings?.abacatePayEnabled) {
+  // If no payment provider is enabled
+  if (!settingsLoading && !paymentEnabled) {
     return (
       <ProtectedRoute>
         <AppLayout title="Carteira">

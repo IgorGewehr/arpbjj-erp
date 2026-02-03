@@ -42,6 +42,13 @@ export interface AcademySettings {
   // AbacatePay Integration (API key is global in env, not per-academy)
   abacatePayEnabled?: boolean;
 
+  // Asaas Integration (per-academy sub-account)
+  asaasEnabled?: boolean;
+
+  // Asaas KYC
+  asaasKycStatus?: 'not_checked' | 'pending_upload' | 'pending_review' | 'approved' | 'rejected' | 'onboarding_url';
+  asaasKycOnboardingUrl?: string;
+
   // Auto-graduation Settings
   autoGraduationEnabled?: boolean;
   autoGraduationAttendances?: number;
@@ -104,6 +111,9 @@ class SettingsService {
           pixKey: data.pixKey,
           pixKeyType: data.pixKeyType,
           abacatePayEnabled: data.abacatePayEnabled || false,
+          asaasEnabled: data.asaasEnabled || false,
+          asaasKycStatus: data.asaasKycStatus,
+          asaasKycOnboardingUrl: data.asaasKycOnboardingUrl,
           autoGraduationEnabled: data.autoGraduationEnabled || false,
           autoGraduationAttendances: data.autoGraduationAttendances,
           storeEnabled: data.storeEnabled || false,
@@ -155,6 +165,7 @@ class SettingsService {
       if (settings.pixKey !== undefined) settingsData.pixKey = settings.pixKey;
       if (settings.pixKeyType !== undefined) settingsData.pixKeyType = settings.pixKeyType;
       if (settings.abacatePayEnabled !== undefined) settingsData.abacatePayEnabled = settings.abacatePayEnabled;
+      if (settings.asaasEnabled !== undefined) settingsData.asaasEnabled = settings.asaasEnabled;
       if (settings.autoGraduationEnabled !== undefined) settingsData.autoGraduationEnabled = settings.autoGraduationEnabled;
       if (settings.autoGraduationAttendances !== undefined) settingsData.autoGraduationAttendances = settings.autoGraduationAttendances;
       if (settings.storeEnabled !== undefined) settingsData.storeEnabled = settings.storeEnabled;
@@ -273,6 +284,7 @@ class SettingsService {
         pixKey: data.pixKey,
         pixKeyType: data.pixKeyType,
         abacatePayEnabled: data.abacatePayEnabled || false,
+        asaasEnabled: data.asaasEnabled || false,
         // Auto-graduation
         autoGraduationEnabled: data.autoGraduationEnabled || false,
         autoGraduationAttendances: data.autoGraduationAttendances,
@@ -338,6 +350,7 @@ export const settingsService = {
           pixKey: data.pixKey,
           pixKeyType: data.pixKeyType,
           abacatePayEnabled: data.abacatePayEnabled || false,
+          asaasEnabled: data.asaasEnabled || false,
           autoGraduationEnabled: data.autoGraduationEnabled || false,
           autoGraduationAttendances: data.autoGraduationAttendances,
           updatedAt: data.updatedAt?.toDate(),
@@ -376,6 +389,7 @@ export const settingsService = {
       if (settings.pixKey !== undefined) settingsData.pixKey = settings.pixKey;
       if (settings.pixKeyType !== undefined) settingsData.pixKeyType = settings.pixKeyType;
       if (settings.abacatePayEnabled !== undefined) settingsData.abacatePayEnabled = settings.abacatePayEnabled;
+      if (settings.asaasEnabled !== undefined) settingsData.asaasEnabled = settings.asaasEnabled;
       if (settings.autoGraduationEnabled !== undefined) settingsData.autoGraduationEnabled = settings.autoGraduationEnabled;
       if (settings.autoGraduationAttendances !== undefined) settingsData.autoGraduationAttendances = settings.autoGraduationAttendances;
 

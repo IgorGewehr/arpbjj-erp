@@ -141,6 +141,20 @@ async function sendToTopic(
 }
 
 async function getStudentUserId(studentId: string, academyId: string): Promise<string | null> {
+  // Primary: query userAcademyMapping to find the user linked to this student
+  const mappingsSnapshot = await db
+    .collection('userAcademyMapping')
+    .get();
+
+  for (const mappingDoc of mappingsSnapshot.docs) {
+    const data = mappingDoc.data();
+    const academyDetail = data.academyDetails?.[academyId];
+    if (academyDetail?.studentId === studentId) {
+      return mappingDoc.id; // doc ID is the userId
+    }
+  }
+
+  // Fallback: check linkedUserId on the student document
   const studentDoc = await db
     .collection('academies')
     .doc(academyId)
@@ -151,8 +165,8 @@ async function getStudentUserId(studentId: string, academyId: string): Promise<s
   if (!studentDoc.exists) {
     return null;
   }
-  const student = studentDoc.data() as Student;
-  return student.userId || null;
+  const student = studentDoc.data();
+  return student?.linkedUserId || null;
 }
 
 // ============================================

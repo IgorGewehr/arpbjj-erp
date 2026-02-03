@@ -2,8 +2,9 @@ import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
+import { Messaging } from 'firebase/messaging';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
@@ -19,5 +20,20 @@ const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : get
 export const auth: Auth = getAuth(app);
 export const db: Firestore = getFirestore(app);
 export const storage: FirebaseStorage = getStorage(app);
+
+// Firebase Cloud Messaging (lazy, browser-only)
+let messagingInstance: Messaging | null = null;
+
+export async function getMessagingInstance(): Promise<Messaging | null> {
+  if (typeof window === 'undefined') return null;
+  if (messagingInstance) return messagingInstance;
+
+  const { isSupported, getMessaging } = await import('firebase/messaging');
+  const supported = await isSupported();
+  if (!supported) return null;
+
+  messagingInstance = getMessaging(app);
+  return messagingInstance;
+}
 
 export default app;

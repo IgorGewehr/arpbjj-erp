@@ -38,6 +38,7 @@ const docToFinancial = (doc: DocumentSnapshot): Financial => {
     paymentDate: data.paymentDate instanceof Timestamp ? data.paymentDate.toDate() : data.paymentDate ? new Date(data.paymentDate) : undefined,
     method: data.method,
     referenceMonth: data.referenceMonth,
+    planId: data.planId,
     receiptUrl: data.receiptUrl,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
@@ -228,6 +229,7 @@ export class FinancialService {
     if (data.paymentDate) docData.paymentDate = Timestamp.fromDate(new Date(data.paymentDate));
     if (data.method) docData.method = data.method;
     if (data.referenceMonth) docData.referenceMonth = data.referenceMonth;
+    if (data.planId) docData.planId = data.planId;
     if (data.receiptUrl) docData.receiptUrl = data.receiptUrl;
 
     const docRef = await addDoc(this.financialsRef, docData);
@@ -245,6 +247,7 @@ export class FinancialService {
       paymentDate: data.paymentDate ? new Date(data.paymentDate) : undefined,
       method: data.method,
       referenceMonth: data.referenceMonth,
+      planId: data.planId,
       receiptUrl: data.receiptUrl,
       createdAt: now,
       updatedAt: now,
@@ -258,7 +261,7 @@ export class FinancialService {
   // Generate Monthly Tuitions for All Active Students
   // ============================================
   async generateMonthlyTuitions(
-    students: Array<{ id: string; fullName: string; tuitionValue: number; tuitionDay: number }>,
+    students: Array<{ id: string; fullName: string; tuitionValue: number; tuitionDay: number; planId?: string }>,
     month: string, // YYYY-MM
     createdBy: string
   ): Promise<Financial[]> {
@@ -266,14 +269,20 @@ export class FinancialService {
     const results: Financial[] = [];
 
     for (const student of students) {
-      // Check if tuition already exists for this month
+      // Check if tuition already exists for this student+plan+month
       const existing = await this.list({
         studentId: student.id,
         month,
         type: 'monthly_tuition',
       });
 
-      if (existing.length > 0) continue;
+      if (student.planId) {
+        // Skip if a payment with this planId already exists
+        if (existing.some((p) => p.planId === student.planId)) continue;
+      } else {
+        // Fallback for legacy entries without planId: skip if any payment without planId exists
+        if (existing.some((p) => !p.planId)) continue;
+      }
 
       // Calculate due date based on student's tuition day
       const dueDate = new Date(year, monthNum - 1, student.tuitionDay);
@@ -288,6 +297,7 @@ export class FinancialService {
           dueDate,
           status: 'pending',
           referenceMonth: month,
+          planId: student.planId,
           createdBy,
         },
         createdBy
@@ -505,7 +515,7 @@ export const financialService = {
   getPaidThisMonth: () => new FinancialService(DEFAULT_ACADEMY_ID).getPaidThisMonth(),
   getMonthlySummary: (month: string) => new FinancialService(DEFAULT_ACADEMY_ID).getMonthlySummary(month),
   create: (data: Omit<Financial, 'id' | 'createdAt' | 'updatedAt'>, createdBy: string) => new FinancialService(DEFAULT_ACADEMY_ID).create(data, createdBy),
-  generateMonthlyTuitions: (students: Array<{ id: string; fullName: string; tuitionValue: number; tuitionDay: number }>, month: string, createdBy: string) => new FinancialService(DEFAULT_ACADEMY_ID).generateMonthlyTuitions(students, month, createdBy),
+  generateMonthlyTuitions: (students: Array<{ id: string; fullName: string; tuitionValue: number; tuitionDay: number; planId?: string }>, month: string, createdBy: string) => new FinancialService(DEFAULT_ACADEMY_ID).generateMonthlyTuitions(students, month, createdBy),
   markAsPaid: (id: string, method: PaymentMethod, paymentDate: Date = new Date()) => new FinancialService(DEFAULT_ACADEMY_ID).markAsPaid(id, method, paymentDate),
   markOverduePayments: () => new FinancialService(DEFAULT_ACADEMY_ID).markOverduePayments(),
   cancel: (id: string) => new FinancialService(DEFAULT_ACADEMY_ID).cancel(id),

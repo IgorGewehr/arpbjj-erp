@@ -86,22 +86,29 @@ async function sendToUser(
 
     // Clean up invalid tokens
     if (response.failureCount > 0) {
-      response.responses.forEach(async (resp, idx) => {
+      const deletePromises: Promise<void>[] = [];
+      response.responses.forEach((resp, idx) => {
         if (!resp.success) {
           const errorCode = resp.error?.code;
           if (
             errorCode === 'messaging/invalid-registration-token' ||
             errorCode === 'messaging/registration-token-not-registered'
           ) {
-            await db
-              .collection('users')
-              .doc(userId)
-              .collection('fcmTokens')
-              .doc(tokens[idx])
-              .delete();
+            deletePromises.push(
+              db
+                .collection('users')
+                .doc(userId)
+                .collection('fcmTokens')
+                .doc(tokens[idx])
+                .delete()
+                .then(() => {
+                  console.log(`Removed invalid token ${tokens[idx]} for user ${userId}`);
+                })
+            );
           }
         }
       });
+      await Promise.all(deletePromises);
     }
 
     return response.successCount > 0;
@@ -303,6 +310,33 @@ export const onCompetitionCreated = functions.firestore
       }
     );
 
+    // Create in-app notifications for all active students
+    const studentsSnapshot = await db
+      .collection('academies')
+      .doc(academyId)
+      .collection('students')
+      .where('status', '==', 'active')
+      .get();
+
+    const notificationPromises: Promise<void>[] = [];
+    for (const studentDoc of studentsSnapshot.docs) {
+      const student = studentDoc.data() as Student;
+      if (student.userId) {
+        notificationPromises.push(
+          createInternalNotification(
+            academyId,
+            student.userId,
+            'competition_reminder',
+            'normal',
+            'Novo Campeonato Criado',
+            `${competition.name} foi adicionado! Data: ${formattedDate}. Faca sua inscricao.`,
+            { competitionId, expiresInDays: 30 }
+          )
+        );
+      }
+    }
+    await Promise.all(notificationPromises);
+
     console.log(`Notification sent to topic academy_${academyId} for competition ${competitionId}`);
   });
 
@@ -349,6 +383,17 @@ export const onTimelineEventCreated = functions.firestore
       academyId,
       studentId,
     });
+
+    // Create in-app notification
+    await createInternalNotification(
+      academyId,
+      userId,
+      event.type,
+      'normal',
+      title,
+      body,
+      { studentId, expiresInDays: 30 }
+    );
 
     console.log(`Notification sent to user ${userId} for timeline event ${eventId}`);
   });
@@ -426,7 +471,8 @@ export const scheduledOverdueCheck = functions.pubsub
             await createInternalNotification(academyId, userId, 'financial', 'high',
               'Pagamento Atrasado',
               `Sua mensalidade de R$ ${(financial.amount / 100).toFixed(2)} está atrasada há ${daysOverdue} dias.`,
-              { actionUrl: '/portal/financeiro', actionLabel: 'Regularizar', financialId: financialDoc.id, expiresInDays: 30 }
+              { actionUrl: '/portal/financeiro', actionLabel: 'Regularizar',
+                financialId: financialDoc.id, expiresInDays: 30 }
             );
           }
         }
@@ -435,7 +481,8 @@ export const scheduledOverdueCheck = functions.pubsub
       // Notify admin about overdue summary (push + internal)
       if (overdueCount > 0) {
         const adminId = academy.ownerId || academy.adminUserId;
-        const summaryMsg = `Voce tem ${overdueCount} pagamento(s) atrasado(s) totalizando R$ ${(totalOverdueAmount / 100).toFixed(2)}.`;
+        const totalFormatted = (totalOverdueAmount / 100).toFixed(2);
+        const summaryMsg = `Voce tem ${overdueCount} pagamento(s) atrasado(s) totalizando R$ ${totalFormatted}.`;
         await sendToUser(
           adminId,
           'Resumo de Pagamentos Atrasados',
@@ -496,7 +543,8 @@ export const scheduledDueSoonReminder = functions.pubsub
               (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
             );
 
-            const reminderMsg = `Sua mensalidade de R$ ${(financial.amount / 100).toFixed(2)} vence em ${daysUntilDue} dia(s).`;
+            const amtFormatted = (financial.amount / 100).toFixed(2);
+            const reminderMsg = `Sua mensalidade de R$ ${amtFormatted} vence em ${daysUntilDue} dia(s).`;
             await sendToUser(
               userId,
               'Lembrete de Pagamento',
@@ -510,7 +558,8 @@ export const scheduledDueSoonReminder = functions.pubsub
             await createInternalNotification(academyId, userId, 'financial', 'normal',
               'Lembrete de Pagamento',
               reminderMsg,
-              { actionUrl: '/portal/financeiro', actionLabel: 'Ver detalhes', financialId: financialDoc.id, expiresInDays: 7 }
+              { actionUrl: '/portal/financeiro', actionLabel: 'Ver detalhes',
+                financialId: financialDoc.id, expiresInDays: 7 }
             );
             console.log(`Sent due soon reminder to user ${userId} for financial ${financialDoc.id}`);
           }
@@ -951,7 +1000,7 @@ export const createOrderPixPayment = functions.https.onCall(async (data, context
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      amount: Math.round(amount),
+      amount: Math.round(amount * 100), // Convert Reais to cents for AbacatePay
       description: sanitizeString(description) || 'Pedido da Loja',
       externalReference: `${academyId}_order_${orderId}`,
       expiresIn: 86400,
@@ -977,7 +1026,7 @@ export const createOrderPixPayment = functions.https.onCall(async (data, context
   await db.collection(`academies/${academyId}/walletTransactions`).add({
     academyId,
     type: 'payment',
-    amount: Math.round(amount),
+    amount: Math.round(amount * 100), // Store in cents (consistent with wallet display)
     status: 'pending',
     financialId: `order_${orderId}`,
     studentId,
@@ -1252,9 +1301,12 @@ export const createCardPayment = functions.https.onCall(async (data, context) =>
   if (isApproved) {
     const isOrder = financialId.startsWith('order_');
     const notifTitle = isOrder ? 'Pedido Pago' : 'Pagamento Recebido';
-    const notifMessage = isOrder
-      ? `${sanitizeString(studentName) || 'Aluno'} pagou o pedido #${financialId.replace('order_', '').slice(-6).toUpperCase()} - R$ ${(amount / 100).toFixed(2)} via cartão.`
-      : `${sanitizeString(studentName) || 'Aluno'} pagou R$ ${(amount / 100).toFixed(2)} via cartão.`;
+    const amtFmt = (amount / 100).toFixed(2);
+    const sName = sanitizeString(studentName) || 'Aluno';
+    const orderCode = financialId.replace('order_', '').slice(-6).toUpperCase();
+    const notifMessage = isOrder ?
+      `${sName} pagou o pedido #${orderCode} - R$ ${amtFmt} via cartão.` :
+      `${sName} pagou R$ ${amtFmt} via cartão.`;
 
     await notifyAdminCF(academyId, isOrder ? 'order_paid' : 'payment_received', notifTitle, notifMessage, {
       financialId,
@@ -1434,6 +1486,15 @@ export const requestWithdrawal = functions.https.onCall(async (data, context) =>
       'Failed to update wallet. Please contact support.'
     );
   }
+
+  // Notify admin about the withdrawal request
+  const amtFormatted = (amount / 100).toFixed(2);
+  await notifyAdminCF(
+    academyId,
+    'withdrawal_requested',
+    'Saque Solicitado',
+    `Saque de R$ ${amtFormatted} via PIX (${pixKeyType.toUpperCase()}) foi solicitado.`,
+  );
 
   return {
     success: true,

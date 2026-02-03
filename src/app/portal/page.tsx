@@ -9,6 +9,7 @@ import { useAuth, usePermissions } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { createStudentService, createFinancialService } from '@/services';
+import { createPlanService } from '@/services/planService';
 import { createAttendanceService } from '@/services/attendanceService';
 import { createCompetitionService } from '@/services/competitionService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
@@ -100,7 +101,17 @@ export default function PortalHomePage() {
   // Total attendance = system count + initial count (previous workouts from other gyms/periods)
   const attendanceCount = systemAttendanceCount + (student?.initialAttendanceCount || 0);
 
-  const hasPlan = !!student?.planId;
+  const { data: studentPlans = [] } = useQuery({
+    queryKey: ['studentPlans', studentId, academyId],
+    queryFn: () => {
+      if (!academyId) return [];
+      const planService = createPlanService(academyId);
+      return planService.getPlansForStudent(studentId);
+    },
+    enabled: !!studentId && !!academyId,
+  });
+
+  const hasPlan = studentPlans.length > 0;
 
   const { data: pendingPayments = [] } = useQuery({
     queryKey: ['studentPayments', studentId, academyId],

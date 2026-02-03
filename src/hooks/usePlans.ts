@@ -131,7 +131,14 @@ export function usePlans() {
   }, []);
 
   // ============================================
-  // Get Plan for Student
+  // Get Plans for Student (multiple plans)
+  // ============================================
+  const getPlansForStudent = useCallback(async (studentId: string): Promise<Plan[]> => {
+    return planService.getPlansForStudent(studentId);
+  }, []);
+
+  // ============================================
+  // Get Plan for Student (legacy — first plan)
   // ============================================
   const getPlanForStudent = useCallback(async (studentId: string): Promise<Plan | null> => {
     return planService.getPlanForStudent(studentId);
@@ -147,6 +154,7 @@ export function usePlans() {
 
     // Actions
     getPlan,
+    getPlansForStudent,
     getPlanForStudent,
     createPlan: createMutation.mutateAsync,
     updatePlan: updateMutation.mutateAsync,

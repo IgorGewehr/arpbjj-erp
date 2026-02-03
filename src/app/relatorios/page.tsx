@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -24,6 +24,7 @@ import {
   TableRow,
   useTheme,
   useMediaQuery,
+  IconButton,
 } from '@mui/material';
 import {
   TrendingUp,
@@ -35,6 +36,9 @@ import {
   ClipboardCheck,
   AlertCircle,
   BarChart3,
+  ChevronLeft,
+  ChevronRight,
+  ShoppingBag,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -50,12 +54,12 @@ import {
 } from 'recharts';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
-import { useAllStudents, useFinancial, useClasses } from '@/hooks';
+import { useAllStudents, useFinancial, useClasses, useStore } from '@/hooks';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { createAttendanceService } from '@/services';
 import { useQuery } from '@tanstack/react-query';
 import { BeltColor, KidsBeltColor, StudentCategory } from '@/types';
-import { startOfDay, endOfDay, startOfWeek, startOfMonth, subDays, format } from 'date-fns';
+import { startOfDay, endOfDay, startOfWeek, startOfMonth, subDays, format, addMonths, subMonths, isSameMonth } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 
 // ============================================
@@ -388,9 +392,10 @@ interface ReportProps {
   classFilter: string;
   categoryFilter: StudentCategory | '';
   classes: Array<{ id: string; name: string; studentIds: string[] }>;
+  selectedMonth: Date;
 }
 
-function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps) {
+function AttendanceReport({ classFilter, categoryFilter, classes, selectedMonth }: ReportProps) {
   const { academyId } = useAcademy();
   const { students: allStudents, isLoading: isLoadingStudents } = useAllStudents();
 
@@ -779,9 +784,10 @@ function AttendanceReport({ classFilter, categoryFilter, classes }: ReportProps)
 // ============================================
 // Financial Report Tab
 // ============================================
-function FinancialReport({ classFilter, categoryFilter, classes }: ReportProps) {
+function FinancialReport({ classFilter, categoryFilter, classes, selectedMonth }: ReportProps) {
   const { stats, financials: allFinancials, pendingPayments: allPendingPayments, overduePayments: allOverduePayments, isLoading } = useFinancial();
   const { students: allStudents } = useAllStudents();
+  const { orders: allOrders, isLoadingOrders } = useStore();
 
   // Get student IDs filtered by category
   const filteredStudentIds = useMemo(() => {
@@ -817,18 +823,60 @@ function FinancialReport({ classFilter, categoryFilter, classes }: ReportProps) 
     return allOverduePayments.filter(f => filteredStudentIds.has(f.studentId));
   }, [allOverduePayments, classFilter, categoryFilter, filteredStudentIds]);
 
+  // Store data for selected month
+  const storeStats = useMemo(() => {
+    if (!allOrders) return { revenue: 0, paidCount: 0, pending: 0, pendingCount: 0 };
+
+    const monthStart = startOfMonth(selectedMonth);
+    const monthEnd = new Date(selectedMonth.getFullYear(), selectedMonth.getMonth() + 1, 0, 23, 59, 59);
+
+    const monthOrders = allOrders.filter(o => {
+      const date = o.paidAt ? new Date(o.paidAt) : new Date(o.createdAt);
+      return date >= monthStart && date <= monthEnd;
+    });
+
+    let revenue = 0;
+    let paidCount = 0;
+    let pending = 0;
+    let pendingCount = 0;
+
+    for (const order of monthOrders) {
+      const isPaid = order.status === 'paid' || order.status === 'preparing' || order.status === 'ready' || order.status === 'delivered';
+      // totalAmount is in cents in Next.js
+      const amount = (order.totalAmount || 0) / 100;
+      if (isPaid) {
+        revenue += amount;
+        paidCount++;
+      } else if (order.status === 'pending_payment') {
+        pending += amount;
+        pendingCount++;
+      }
+    }
+
+    return { revenue, paidCount, pending, pendingCount };
+  }, [allOrders, selectedMonth]);
+
+  const hasStore = storeStats.revenue > 0 || storeStats.paidCount > 0 || storeStats.pendingCount > 0;
+  const combinedRevenue = (stats?.paidAmount || 0) + storeStats.revenue;
+  const combinedPending = (stats?.totalPending || 0) + storeStats.pending;
+
   // Payment distribution
   const paymentDistribution = useMemo(() => {
     if (!financials) return [];
     const paid = financials.filter((p) => p.status === 'paid').length;
     const pending = pendingPayments.length;
     const overdue = overduePayments.length;
-    return [
+    const storeItems = storeStats.paidCount;
+    const items = [
       { name: 'Pagos', value: paid, color: '#22c55e' },
       { name: 'Pendentes', value: pending, color: '#f59e0b' },
       { name: 'Atrasados', value: overdue, color: '#ef4444' },
     ];
-  }, [financials, pendingPayments, overduePayments]);
+    if (storeItems > 0) {
+      items.push({ name: 'Loja', value: storeItems, color: '#3b82f6' });
+    }
+    return items;
+  }, [financials, pendingPayments, overduePayments, storeStats]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {
@@ -843,17 +891,18 @@ function FinancialReport({ classFilter, categoryFilter, classes }: ReportProps) 
         {/* Stats Row */}
         <Grid size={{ xs: 6, sm: 6, md: 3 }}>
           <StatCard
-            title="Receita Mensal"
-            value={formatCurrency(stats?.paidAmount || 0)}
+            title="Receita Total"
+            value={formatCurrency(combinedRevenue)}
+            subtitle={hasStore ? 'mensalidades + loja' : undefined}
             icon={DollarSign}
-            loading={isLoading}
-            trend={12}
+            loading={isLoading || isLoadingOrders}
           />
         </Grid>
         <Grid size={{ xs: 6, sm: 6, md: 3 }}>
           <StatCard
-            title="Recebido"
+            title="Mensalidades"
             value={formatCurrency(stats?.paidAmount || 0)}
+            subtitle={`${stats?.paid || 0} pagamentos`}
             icon={TrendingUp}
             loading={isLoading}
           />
@@ -861,7 +910,7 @@ function FinancialReport({ classFilter, categoryFilter, classes }: ReportProps) 
         <Grid size={{ xs: 6, sm: 6, md: 3 }}>
           <StatCard
             title="Pendente"
-            value={formatCurrency(stats?.totalPending || 0)}
+            value={formatCurrency(combinedPending)}
             icon={Calendar}
             loading={isLoading}
           />
@@ -875,6 +924,54 @@ function FinancialReport({ classFilter, categoryFilter, classes }: ReportProps) 
             loading={isLoading}
           />
         </Grid>
+
+        {/* Store revenue card (if store has data) */}
+        {hasStore && (
+          <Grid size={{ xs: 12 }}>
+            <Paper
+              sx={{
+                p: { xs: 2, sm: 2.5 },
+                borderRadius: 2,
+                border: '1px solid',
+                borderColor: 'grey.200',
+                boxShadow: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                flexWrap: 'wrap',
+                gap: 2,
+              }}
+            >
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                <Box sx={{ p: 1, borderRadius: 1.5, bgcolor: '#eff6ff', display: 'flex' }}>
+                  <ShoppingBag size={20} color="#3b82f6" />
+                </Box>
+                <Box>
+                  <Typography variant="body2" fontWeight={600}>Loja</Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {storeStats.paidCount} pedido{storeStats.paidCount !== 1 ? 's' : ''} pago{storeStats.paidCount !== 1 ? 's' : ''}
+                  </Typography>
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+                <Box sx={{ textAlign: 'right' }}>
+                  <Typography variant="caption" color="text.secondary">Recebido</Typography>
+                  <Typography variant="body2" fontWeight={700} color="#22c55e">
+                    {formatCurrency(storeStats.revenue)}
+                  </Typography>
+                </Box>
+                {storeStats.pendingCount > 0 && (
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="caption" color="text.secondary">Pendente</Typography>
+                    <Typography variant="body2" fontWeight={700} color="#f59e0b">
+                      {formatCurrency(storeStats.pending)}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            </Paper>
+          </Grid>
+        )}
 
         {/* Revenue Chart */}
         <Grid size={{ xs: 12, md: 8 }}>
@@ -1063,7 +1160,7 @@ function FinancialReport({ classFilter, categoryFilter, classes }: ReportProps) 
 // ============================================
 // Students Report Tab
 // ============================================
-function StudentsReport({ classFilter, categoryFilter, classes }: ReportProps) {
+function StudentsReport({ classFilter, categoryFilter, classes, selectedMonth }: ReportProps) {
   const { students: allStudents, isLoading } = useAllStudents();
 
   // Filter students
@@ -1251,9 +1348,25 @@ export default function RelatoriosPage() {
   const [tabValue, setTabValue] = useState(0);
   const [classFilter, setClassFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<StudentCategory | ''>('');
+  const [selectedMonth, setSelectedMonth] = useState(() => {
+    const now = new Date();
+    return new Date(now.getFullYear(), now.getMonth(), 1);
+  });
   const { classes } = useClasses();
 
-  const currentMonth = new Date().toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+  const isCurrentMonth = isSameMonth(selectedMonth, new Date());
+
+  const displayMonth = format(selectedMonth, "MMMM 'de' yyyy", { locale: ptBR });
+
+  const handlePrevMonth = useCallback(() => {
+    setSelectedMonth(prev => subMonths(prev, 1));
+  }, []);
+
+  const handleNextMonth = useCallback(() => {
+    if (!isCurrentMonth) {
+      setSelectedMonth(prev => addMonths(prev, 1));
+    }
+  }, [isCurrentMonth]);
 
   return (
     <ProtectedRoute>
@@ -1274,9 +1387,32 @@ export default function RelatoriosPage() {
               <Typography variant="h4" fontWeight={700} sx={{ mb: 0.5, fontSize: { xs: '1.5rem', sm: '2rem' } }}>
                 Relatorios
               </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Analise da academia - {currentMonth}
-              </Typography>
+              {/* Month navigation */}
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <IconButton size="small" onClick={handlePrevMonth} sx={{ p: 0.5 }}>
+                  <ChevronLeft size={18} />
+                </IconButton>
+                <Chip
+                  icon={<Calendar size={14} />}
+                  label={displayMonth}
+                  size="small"
+                  variant="outlined"
+                  sx={{
+                    textTransform: 'capitalize',
+                    fontWeight: 500,
+                    fontSize: '0.8rem',
+                    cursor: 'default',
+                  }}
+                />
+                <IconButton
+                  size="small"
+                  onClick={handleNextMonth}
+                  disabled={isCurrentMonth}
+                  sx={{ p: 0.5 }}
+                >
+                  <ChevronRight size={18} />
+                </IconButton>
+              </Box>
             </Box>
 
             {/* Filters */}
@@ -1360,13 +1496,13 @@ export default function RelatoriosPage() {
           {/* Tab Content */}
           <Box>
             {tabValue === 0 && (
-              <AttendanceReport classFilter={classFilter} categoryFilter={categoryFilter} classes={classes} />
+              <AttendanceReport classFilter={classFilter} categoryFilter={categoryFilter} classes={classes} selectedMonth={selectedMonth} />
             )}
             {tabValue === 1 && (
-              <FinancialReport classFilter={classFilter} categoryFilter={categoryFilter} classes={classes} />
+              <FinancialReport classFilter={classFilter} categoryFilter={categoryFilter} classes={classes} selectedMonth={selectedMonth} />
             )}
             {tabValue === 2 && (
-              <StudentsReport classFilter={classFilter} categoryFilter={categoryFilter} classes={classes} />
+              <StudentsReport classFilter={classFilter} categoryFilter={categoryFilter} classes={classes} selectedMonth={selectedMonth} />
             )}
           </Box>
         </Box>

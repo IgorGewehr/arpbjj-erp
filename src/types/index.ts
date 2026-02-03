@@ -351,6 +351,7 @@ export interface Financial {
 
   // Reference
   referenceMonth?: string; // YYYY-MM
+  planId?: string;
   receiptUrl?: string;
 
   // Metadata

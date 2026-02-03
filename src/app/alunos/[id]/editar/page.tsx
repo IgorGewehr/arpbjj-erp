@@ -156,27 +156,27 @@ export default function StudentEditPage() {
 
   const { student, isLoading } = useStudent(studentId);
   const { updateStudent, isUpdating } = useStudents({ autoLoad: false });
-  const { activePlans, toggleStudent: togglePlanStudent, getPlanForStudent } = usePlans();
+  const { activePlans, toggleStudent: togglePlanStudent, getPlansForStudent } = usePlans();
   const { classes } = useClasses();
   const queryClient = useQueryClient();
 
   const [activeTab, setActiveTab] = useState('personal');
-  const [currentPlanId, setCurrentPlanId] = useState<string>('');
+  const [currentPlanIds, setCurrentPlanIds] = useState<string[]>([]);
   const [selectedClasses, setSelectedClasses] = useState<string[]>([]);
   const [formData, setFormData] = useState<FormData | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [newAllergy, setNewAllergy] = useState('');
 
-  // Load student's current plan and classes
+  // Load student's current plans and classes
   useEffect(() => {
     if (student && studentId) {
-      getPlanForStudent(studentId).then((plan) => {
-        if (plan) setCurrentPlanId(plan.id);
+      getPlansForStudent(studentId).then((plans) => {
+        setCurrentPlanIds(plans.map((p) => p.id));
       });
       const studentClasses = classes.filter((c) => c.studentIds?.includes(studentId));
       setSelectedClasses(studentClasses.map((c) => c.id));
     }
-  }, [student, studentId, classes, getPlanForStudent]);
+  }, [student, studentId, classes, getPlansForStudent]);
 
   // Initialize form data from student
   useEffect(() => {
@@ -816,68 +816,47 @@ export default function StudentEditPage() {
               {/* Tab: Plano e Turmas */}
               {/* ====================================== */}
               <FormTabPanel tabKey="plans" activeTab={activeTab}>
-                <FormSection title="Plano" icon={CreditCard}>
-                  <Grid container spacing={2.5}>
-                    <Grid size={{ xs: 12, md: 6 }}>
-                      <FormControl fullWidth>
-                        <InputLabel>Plano</InputLabel>
-                        <Select
-                          value={currentPlanId}
-                          onChange={async (e) => {
-                            const newPlanId = e.target.value;
-                            if (currentPlanId && currentPlanId !== newPlanId) {
-                              await togglePlanStudent({ planId: currentPlanId, studentId });
-                            }
-                            if (newPlanId) {
-                              await togglePlanStudent({ planId: newPlanId, studentId });
-                              // Atualizar o formulário com os valores do novo plano
-                              const selectedPlan = activePlans.find((p) => p.id === newPlanId);
-                              if (selectedPlan) {
-                                handleChange('tuitionValue', selectedPlan.monthlyValue.toString());
-                                handleChange('tuitionDay', selectedPlan.defaultDueDay.toString());
-                              }
-                            } else {
-                              // Sem plano - zerar valores
-                              handleChange('tuitionValue', '0');
-                            }
-                            setCurrentPlanId(newPlanId);
-                          }}
-                          label="Plano"
-                          sx={{ borderRadius: 1.5 }}
-                        >
-                          <MenuItem value="">
-                            <em>Sem plano</em>
-                          </MenuItem>
-                          {activePlans.map((plan) => (
-                            <MenuItem key={plan.id} value={plan.id}>
-                              <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', alignItems: 'center', gap: 2 }}>
-                                <span>{plan.name}</span>
-                                <Chip
-                                  label={`R$ ${plan.monthlyValue}`}
-                                  size="small"
-                                  color="success"
-                                  variant="outlined"
-                                />
-                              </Box>
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                      {currentPlanId && (
-                        <Box sx={{ mt: 1 }}>
-                          {(() => {
-                            const plan = activePlans.find((p) => p.id === currentPlanId);
-                            if (!plan) return null;
-                            return (
-                              <Typography variant="caption" color="text.secondary">
-                                {plan.classesPerWeek === 0 ? 'Acesso livre' : `${plan.classesPerWeek}x por semana`} - R$ {plan.monthlyValue}/mês
-                              </Typography>
+                <FormSection title="Planos" icon={CreditCard}>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+                    {activePlans.map((plan) => {
+                      const isSelected = currentPlanIds.includes(plan.id);
+                      return (
+                        <Chip
+                          key={plan.id}
+                          label={`${plan.name} - R$ ${plan.monthlyValue}`}
+                          variant={isSelected ? 'filled' : 'outlined'}
+                          color={isSelected ? 'primary' : 'default'}
+                          onClick={async () => {
+                            await togglePlanStudent({ planId: plan.id, studentId });
+                            setCurrentPlanIds((prev) =>
+                              isSelected
+                                ? prev.filter((id) => id !== plan.id)
+                                : [...prev, plan.id]
                             );
-                          })()}
-                        </Box>
-                      )}
-                    </Grid>
-                  </Grid>
+                          }}
+                          sx={{ cursor: 'pointer' }}
+                        />
+                      );
+                    })}
+                  </Box>
+                  {currentPlanIds.length === 0 && (
+                    <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                      Nenhum plano selecionado (Projeto Social)
+                    </Typography>
+                  )}
+                  {currentPlanIds.length > 0 && (
+                    <Box sx={{ mt: 1 }}>
+                      {currentPlanIds.map((planId) => {
+                        const plan = activePlans.find((p) => p.id === planId);
+                        if (!plan) return null;
+                        return (
+                          <Typography key={planId} variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                            {plan.name}: {plan.classesPerWeek === 0 ? 'Acesso livre' : `${plan.classesPerWeek}x por semana`} - R$ {plan.monthlyValue}/mes
+                          </Typography>
+                        );
+                      })}
+                    </Box>
+                  )}
                 </FormSection>
 
                 <FormDivider spacing="medium" />

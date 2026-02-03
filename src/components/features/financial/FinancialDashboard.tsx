@@ -870,22 +870,24 @@ export function FinancialDashboard() {
   // Handle Generate Tuitions (only for students with plans)
   // ============================================
   const handleGenerateTuitions = useCallback(async (planIdFilter: string | null) => {
-    // Build student data ONLY from students enrolled in active plans
-    const studentsWithPlans = new Map<string, { value: number; day: number }>();
+    // Build student data ONLY from students enrolled in active plans.
+    // A student can appear multiple times — once per plan they're enrolled in.
+    const entries: Array<{ studentId: string; planId: string; value: number; day: number }> = [];
 
     // Filter plans if a specific plan is selected
     const plansToProcess = planIdFilter
       ? plans.filter(p => p.id === planIdFilter && p.isActive)
       : plans.filter(p => p.isActive);
 
-    // Get values from plans - only students in active plans get tuitions
     for (const plan of plansToProcess) {
       for (const studentId of plan.studentIds) {
         const student = activeStudents.find(s => s.id === studentId);
         if (student && student.status === 'active') {
-          studentsWithPlans.set(studentId, {
+          entries.push({
+            studentId,
+            planId: plan.id,
             value: plan.monthlyValue,
-            day: student.tuitionDay || 10,
+            day: student.tuitionDay || plan.defaultDueDay || 10,
           });
         }
       }
@@ -893,13 +895,14 @@ export function FinancialDashboard() {
 
     // NOTE: Students without a plan (projeto social/gratuito) are NOT included
 
-    const studentsData = Array.from(studentsWithPlans.entries()).map(([id, data]) => {
-      const student = activeStudents.find(s => s.id === id);
+    const studentsData = entries.map((entry) => {
+      const student = activeStudents.find(s => s.id === entry.studentId);
       return {
-        id,
+        id: entry.studentId,
         fullName: student?.fullName || '',
-        tuitionValue: data.value,
-        tuitionDay: data.day,
+        tuitionValue: entry.value,
+        tuitionDay: entry.day,
+        planId: entry.planId,
       };
     });
 

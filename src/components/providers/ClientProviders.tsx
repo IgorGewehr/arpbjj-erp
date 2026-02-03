@@ -9,6 +9,12 @@ import { ConfirmDialogProvider } from './ConfirmDialogProvider';
 import { PermissionProvider } from './PermissionProvider';
 import { AcademyProvider } from '@/contexts/AcademyContext';
 import { NotificationProvider } from '@/contexts/NotificationContext';
+import { useFCM } from '@/hooks/useFCM';
+
+function FCMInitializer() {
+  useFCM();
+  return null;
+}
 
 interface ClientProvidersProps {
   children: ReactNode;
@@ -22,6 +28,7 @@ export function ClientProviders({ children }: ClientProvidersProps) {
           <AcademyProvider>
             <NotificationProvider>
               <PermissionProvider>
+                <FCMInitializer />
                 <FeedbackProvider>
                   <ConfirmDialogProvider>
                     {children}

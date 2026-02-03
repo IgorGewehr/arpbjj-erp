@@ -126,9 +126,6 @@ export class PlanService {
   async update(id: string, data: Partial<Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Plan> {
     const docRef = collections.plan(this.academyId, id);
 
-    // Get current plan to check for students that need syncing
-    const currentPlan = await this.getById(id);
-
     const updateData: Record<string, unknown> = {
       updatedAt: Timestamp.fromDate(new Date()),
     };
@@ -143,25 +140,6 @@ export class PlanService {
     if (data.studentIds !== undefined) updateData.studentIds = data.studentIds;
 
     await updateDoc(docRef, updateData);
-
-    // If monthlyValue or defaultDueDay changed, sync all enrolled students
-    if (currentPlan && currentPlan.studentIds.length > 0) {
-      const shouldSyncValue = data.monthlyValue !== undefined && data.monthlyValue !== currentPlan.monthlyValue;
-      const shouldSyncDay = data.defaultDueDay !== undefined && data.defaultDueDay !== currentPlan.defaultDueDay;
-
-      if (shouldSyncValue || shouldSyncDay) {
-        const now = Timestamp.fromDate(new Date());
-        const syncData: Record<string, unknown> = { updatedAt: now };
-        if (shouldSyncValue) syncData.tuitionValue = data.monthlyValue;
-        if (shouldSyncDay) syncData.tuitionDay = data.defaultDueDay;
-
-        // Update all enrolled students with new values
-        for (const studentId of currentPlan.studentIds) {
-          const studentDocRef = collections.student(this.academyId, studentId);
-          await updateDoc(studentDocRef, syncData);
-        }
-      }
-    }
 
     const updatedDoc = await getDoc(docRef);
     return docToPlan(updatedDoc);
@@ -212,43 +190,12 @@ export class PlanService {
 
     const isEnrolled = plan.studentIds.includes(studentId);
 
-    // If student is in another plan, remove from there first
-    if (!isEnrolled) {
-      // Remove from all other plans first
-      const allPlans = await this.list();
-      for (const otherPlan of allPlans) {
-        if (otherPlan.id !== planId && otherPlan.studentIds.includes(studentId)) {
-          await this.removeStudent(otherPlan.id, studentId);
-        }
-      }
-    }
-
     // Update the plan
     const updatedPlan = await this.update(planId, {
       studentIds: isEnrolled
         ? plan.studentIds.filter((id) => id !== studentId)
         : [...plan.studentIds, studentId],
     });
-
-    // Sync student's planId and tuitionDay fields
-    const studentDocRef = collections.student(this.academyId, studentId);
-    if (isEnrolled) {
-      // Removing from plan - clear planId and tuitionValue
-      await updateDoc(studentDocRef, {
-        planId: null,
-        tuitionValue: 0,
-        updatedAt: Timestamp.fromDate(new Date()),
-      });
-    } else {
-      // Adding to plan - set planId, tuitionDay and tuitionValue from plan
-      // Use original plan values to ensure we have the correct monthlyValue
-      await updateDoc(studentDocRef, {
-        planId: planId,
-        tuitionDay: plan.defaultDueDay,
-        tuitionValue: plan.monthlyValue,
-        updatedAt: Timestamp.fromDate(new Date()),
-      });
-    }
 
     return updatedPlan;
   }
@@ -262,11 +209,17 @@ export class PlanService {
   }
 
   // ============================================
-  // Get Plan for Student
+  // Get Plans for Student (multiple plans)
   // ============================================
-  async getPlanForStudent(studentId: string): Promise<Plan | null> {
+  async getPlansForStudent(studentId: string): Promise<Plan[]> {
     const plans = await this.list();
-    return plans.find((p) => p.studentIds.includes(studentId)) || null;
+    return plans.filter((p) => p.studentIds.includes(studentId));
+  }
+
+  /// Legacy wrapper — returns the first plan for a student (or null).
+  async getPlanForStudent(studentId: string): Promise<Plan | null> {
+    const plans = await this.getPlansForStudent(studentId);
+    return plans[0] || null;
   }
 }
 
@@ -291,6 +244,7 @@ export const planService = {
   removeStudent: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).removeStudent(planId, studentId),
   toggleStudent: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).toggleStudent(planId, studentId),
   getStudentsByPlan: (planId: string) => new PlanService(DEFAULT_ACADEMY_ID).getStudentsByPlan(planId),
+  getPlansForStudent: (studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).getPlansForStudent(studentId),
   getPlanForStudent: (studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).getPlanForStudent(studentId),
 };
 

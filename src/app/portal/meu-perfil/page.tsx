@@ -47,12 +47,11 @@ export default function StudentProfilePage() {
   const studentId = linkedStudentIds[0] || user?.studentId;
 
   const [student, setStudent] = useState<Student | null>(null);
-  const [plan, setPlan] = useState<Plan | null>(null);
+  const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [attendanceCount, setAttendanceCount] = useState(0);
-  // Only consider having a plan if the plan actually exists
-  const hasValidPlan = !!student?.planId && !!plan;
+  const hasValidPlan = plans.length > 0;
 
   // Form fields
   const [form, setForm] = useState({
@@ -115,14 +114,10 @@ export default function StudentProfilePage() {
             isProfilePublic: data.isProfilePublic ?? false,
           });
 
-          // Validate if plan actually exists
-          if (data.planId) {
-            const planService = createPlanService(academyId);
-            const planData = await planService.getById(data.planId);
-            setPlan(planData);
-          } else {
-            setPlan(null);
-          }
+          // Load all plans for this student
+          const planService = createPlanService(academyId);
+          const studentPlans = await planService.getPlansForStudent(studentId);
+          setPlans(studentPlans);
 
           const attendanceService = createAttendanceService(academyId);
           const count = await attendanceService.getStudentAttendanceCount(studentId);
@@ -333,16 +328,18 @@ export default function StudentProfilePage() {
             </Typography>
           </Box>
           <Box>
-            <Typography variant="caption" color="text.secondary">Plano</Typography>
+            <Typography variant="caption" color="text.secondary">
+              {plans.length > 1 ? 'Planos' : 'Plano'}
+            </Typography>
             <Typography variant="body2" fontWeight={500} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-              {hasValidPlan && plan ? plan.name : 'Projeto Social'}
+              {hasValidPlan ? plans.map((p) => p.name).join(', ') : 'Projeto Social'}
             </Typography>
           </Box>
-          {hasValidPlan && plan && (
+          {hasValidPlan && (
             <Box>
               <Typography variant="caption" color="text.secondary">Valor</Typography>
               <Typography variant="body2" fontWeight={500} sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                R$ {plan.monthlyValue?.toLocaleString('pt-BR')}/mes
+                R$ {plans.reduce((sum, p) => sum + p.monthlyValue, 0).toLocaleString('pt-BR')}/mes
               </Typography>
             </Box>
           )}

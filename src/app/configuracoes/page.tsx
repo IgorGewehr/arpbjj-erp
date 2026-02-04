@@ -514,9 +514,11 @@ function AcademyTab() {
         <Grid size={{ xs: 12, md: 6 }}>
           <TextField
             fullWidth
-            label="CNPJ"
+            label="CPF/CNPJ"
             value={settings.cnpj}
             onChange={(e) => setSettings({ ...settings, cnpj: e.target.value })}
+            helperText="CPF do responsavel ou CNPJ da academia"
+            placeholder="000.000.000-00 ou 00.000.000/0000-00"
           />
         </Grid>
         <Grid size={{ xs: 12, md: 6 }}>

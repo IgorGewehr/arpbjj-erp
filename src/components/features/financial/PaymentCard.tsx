@@ -18,6 +18,7 @@ import {
   User,
   Calendar,
   CreditCard,
+  RotateCcw,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -33,6 +34,7 @@ interface PaymentCardProps {
   payment: Financial;
   onMarkPaid: (payment: Financial) => void;
   onCancel: (payment: Financial) => void;
+  onReactivate: (payment: Financial) => void;
   showWhatsApp?: boolean;
 }
 
@@ -67,6 +69,7 @@ export function PaymentCard({
   payment,
   onMarkPaid,
   onCancel,
+  onReactivate,
   showWhatsApp = false,
 }: PaymentCardProps) {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
@@ -109,6 +112,12 @@ export function PaymentCard({
     handleMenuClose();
     onCancel(payment);
   }, [handleMenuClose, onCancel, payment]);
+
+  // Handle reactivate
+  const handleReactivate = useCallback(() => {
+    handleMenuClose();
+    onReactivate(payment);
+  }, [handleMenuClose, onReactivate, payment]);
 
   const isPaidOrCancelled = payment.status === 'paid' || payment.status === 'cancelled';
 
@@ -242,7 +251,13 @@ export function PaymentCard({
                 Cancelar
               </MenuItem>
             )}
-            {isPaidOrCancelled && (
+            {payment.status === 'cancelled' && (
+              <MenuItem onClick={handleReactivate} sx={{ color: 'success.main' }}>
+                <RotateCcw size={16} style={{ marginRight: 8 }} />
+                Reativar
+              </MenuItem>
+            )}
+            {payment.status === 'paid' && (
               <MenuItem disabled>
                 <Typography variant="body2" color="text.secondary">
                   Sem acoes disponiveis

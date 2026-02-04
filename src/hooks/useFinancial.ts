@@ -203,6 +203,25 @@ export function useFinancial(options: UseFinancialOptions = {}) {
   });
 
   // ============================================
+  // Reactivate Payment Mutation
+  // ============================================
+  const reactivateMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return financialService.reactivate(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.financials] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.pending] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.overdue] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.summary] });
+      success('Pagamento reativado');
+    },
+    onError: () => {
+      showError('Erro ao reativar pagamento');
+    },
+  });
+
+  // ============================================
   // Generate Monthly Tuitions Mutation
   // ============================================
   const generateTuitionsMutation = useMutation({
@@ -295,6 +314,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
     createFinancial: createMutation.mutateAsync,
     markAsPaid: markPaidMutation.mutateAsync,
     cancelPayment: cancelMutation.mutateAsync,
+    reactivatePayment: reactivateMutation.mutateAsync,
     generateTuitions: generateTuitionsMutation.mutateAsync,
     getWhatsAppLink,
 
@@ -304,6 +324,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
     isCreating: createMutation.isPending,
     isMarkingPaid: markPaidMutation.isPending,
     isCanceling: cancelMutation.isPending,
+    isReactivating: reactivateMutation.isPending,
     isGenerating: generateTuitionsMutation.isPending,
     error,
 

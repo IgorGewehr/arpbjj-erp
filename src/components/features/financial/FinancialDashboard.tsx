@@ -703,6 +703,7 @@ export function FinancialDashboard() {
     setMonth,
     markAsPaid,
     cancelPayment,
+    reactivatePayment,
     generateTuitions,
     isLoading,
     isMarkingPaid,
@@ -878,6 +879,16 @@ export function FinancialDashboard() {
       await cancelPayment(payment.id);
     },
     [cancelPayment]
+  );
+
+  // ============================================
+  // Handle Reactivate Payment
+  // ============================================
+  const handleReactivatePayment = useCallback(
+    async (payment: Financial) => {
+      await reactivatePayment(payment.id);
+    },
+    [reactivatePayment]
   );
 
   // ============================================
@@ -1352,6 +1363,7 @@ export function FinancialDashboard() {
                     payment={payment}
                     onMarkPaid={handleMarkPaidClick}
                     onCancel={handleCancelPayment}
+                    onReactivate={handleReactivatePayment}
                   />
                 ))}
               </Box>
@@ -1409,6 +1421,7 @@ export function FinancialDashboard() {
                     payment={payment}
                     onMarkPaid={handleMarkPaidClick}
                     onCancel={handleCancelPayment}
+                    onReactivate={handleReactivatePayment}
                   />
                 ))}
               </Box>
@@ -1466,6 +1479,7 @@ export function FinancialDashboard() {
                     payment={payment}
                     onMarkPaid={handleMarkPaidClick}
                     onCancel={handleCancelPayment}
+                    onReactivate={handleReactivatePayment}
                     showWhatsApp
                   />
                 ))}

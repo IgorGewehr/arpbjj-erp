@@ -270,18 +270,22 @@ export class FinancialService {
 
     for (const student of students) {
       // Check if tuition already exists for this student+plan+month
+      // IMPORTANT: Filter out cancelled payments - they don't count as "existing"
       const existing = await this.list({
         studentId: student.id,
         month,
         type: 'monthly_tuition',
       });
 
+      // Exclude cancelled payments from the check
+      const activeExisting = existing.filter((p) => p.status !== 'cancelled');
+
       if (student.planId) {
-        // Skip if a payment with this planId already exists
-        if (existing.some((p) => p.planId === student.planId)) continue;
+        // Skip if an ACTIVE payment with this planId already exists
+        if (activeExisting.some((p) => p.planId === student.planId)) continue;
       } else {
-        // Fallback for legacy entries without planId: skip if any payment without planId exists
-        if (existing.some((p) => !p.planId)) continue;
+        // Fallback for legacy entries without planId: skip if any ACTIVE payment without planId exists
+        if (activeExisting.some((p) => !p.planId)) continue;
       }
 
       // Calculate due date based on student's tuition day
@@ -370,6 +374,36 @@ export class FinancialService {
 
     await updateDoc(docRef, {
       status: 'cancelled',
+      updatedAt: Timestamp.fromDate(new Date()),
+    });
+
+    const updatedDoc = await getDoc(docRef);
+    return docToFinancial(updatedDoc);
+  }
+
+  // ============================================
+  // Reactivate Cancelled Payment
+  // ============================================
+  async reactivate(id: string): Promise<Financial> {
+    const docRef = collections.financial(this.academyId, id);
+    const docSnap = await getDoc(docRef);
+
+    if (!docSnap.exists()) {
+      throw new Error('Payment not found');
+    }
+
+    const financial = docToFinancial(docSnap);
+
+    // Determine new status based on due date
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = new Date(financial.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+
+    const newStatus = dueDate.getTime() < today.getTime() ? 'overdue' : 'pending';
+
+    await updateDoc(docRef, {
+      status: newStatus,
       updatedAt: Timestamp.fromDate(new Date()),
     });
 
@@ -519,6 +553,7 @@ export const financialService = {
   markAsPaid: (id: string, method: PaymentMethod, paymentDate: Date = new Date()) => new FinancialService(DEFAULT_ACADEMY_ID).markAsPaid(id, method, paymentDate),
   markOverduePayments: () => new FinancialService(DEFAULT_ACADEMY_ID).markOverduePayments(),
   cancel: (id: string) => new FinancialService(DEFAULT_ACADEMY_ID).cancel(id),
+  reactivate: (id: string) => new FinancialService(DEFAULT_ACADEMY_ID).reactivate(id),
   update: (id: string, data: Partial<Financial>) => new FinancialService(DEFAULT_ACADEMY_ID).update(id, data),
   delete: (id: string) => new FinancialService(DEFAULT_ACADEMY_ID).delete(id),
   getRevenueStats: (startDate: Date, endDate: Date) => new FinancialService(DEFAULT_ACADEMY_ID).getRevenueStats(startDate, endDate),

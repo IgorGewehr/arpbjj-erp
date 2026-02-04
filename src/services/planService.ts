@@ -4,12 +4,20 @@ import {
   addDoc,
   updateDoc,
   deleteDoc,
+  deleteField,
   Timestamp,
   DocumentSnapshot,
   CollectionReference,
 } from 'firebase/firestore';
 import { collections } from '@/lib/firebase/collections';
 import { Plan } from '@/types';
+
+// ============================================
+// Helper: Get the value a student pays in a plan
+// ============================================
+export function getStudentValue(plan: Plan, studentId: string): number {
+  return plan.customValues?.[studentId] ?? plan.monthlyValue;
+}
 
 // Default academy for backwards compatibility
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
@@ -29,6 +37,7 @@ const docToPlan = (doc: DocumentSnapshot): Plan => {
     defaultDueDay: data.defaultDueDay || 10,
     classesPerWeek: data.classesPerWeek,
     studentIds: data.studentIds || [],
+    customValues: data.customValues ?? {},
     isActive: data.isActive,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
@@ -112,6 +121,7 @@ export class PlanService {
       defaultDueDay: data.defaultDueDay || 10,
       classesPerWeek: data.classesPerWeek,
       studentIds: [],
+      customValues: {},
       isActive: data.isActive,
       createdAt: now,
       updatedAt: now,
@@ -176,9 +186,15 @@ export class PlanService {
     const plan = await this.getById(planId);
     if (!plan) throw new Error('Plan not found');
 
-    return this.update(planId, {
+    const docRef = collections.plan(this.academyId, planId);
+    await updateDoc(docRef, {
       studentIds: plan.studentIds.filter((id) => id !== studentId),
+      [`customValues.${studentId}`]: deleteField(),
+      updatedAt: Timestamp.fromDate(new Date()),
     });
+
+    const updatedDoc = await getDoc(docRef);
+    return docToPlan(updatedDoc);
   }
 
   // ============================================
@@ -198,6 +214,32 @@ export class PlanService {
     });
 
     return updatedPlan;
+  }
+
+  // ============================================
+  // Set Custom Value for Student
+  // ============================================
+  async setCustomValue(planId: string, studentId: string, value: number): Promise<Plan> {
+    const docRef = collections.plan(this.academyId, planId);
+    await updateDoc(docRef, {
+      [`customValues.${studentId}`]: value,
+      updatedAt: Timestamp.fromDate(new Date()),
+    });
+    const updatedDoc = await getDoc(docRef);
+    return docToPlan(updatedDoc);
+  }
+
+  // ============================================
+  // Remove Custom Value (restore plan default)
+  // ============================================
+  async removeCustomValue(planId: string, studentId: string): Promise<Plan> {
+    const docRef = collections.plan(this.academyId, planId);
+    await updateDoc(docRef, {
+      [`customValues.${studentId}`]: deleteField(),
+      updatedAt: Timestamp.fromDate(new Date()),
+    });
+    const updatedDoc = await getDoc(docRef);
+    return docToPlan(updatedDoc);
   }
 
   // ============================================
@@ -243,6 +285,8 @@ export const planService = {
   addStudent: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).addStudent(planId, studentId),
   removeStudent: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).removeStudent(planId, studentId),
   toggleStudent: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).toggleStudent(planId, studentId),
+  setCustomValue: (planId: string, studentId: string, value: number) => new PlanService(DEFAULT_ACADEMY_ID).setCustomValue(planId, studentId, value),
+  removeCustomValue: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).removeCustomValue(planId, studentId),
   getStudentsByPlan: (planId: string) => new PlanService(DEFAULT_ACADEMY_ID).getStudentsByPlan(planId),
   getPlansForStudent: (studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).getPlansForStudent(studentId),
   getPlanForStudent: (studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).getPlanForStudent(studentId),

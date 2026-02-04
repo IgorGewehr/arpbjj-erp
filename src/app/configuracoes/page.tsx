@@ -283,6 +283,7 @@ function useSettingsData() {
     city: '',
     state: '',
     zipCode: '',
+    responsibleBirthDate: '',
     logoUrl: '',
     portalSlogan: '',
     sidebarLogoUrl: '',
@@ -323,6 +324,7 @@ function useSettingsData() {
             city: data.city || '',
             state: data.state || '',
             zipCode: data.zipCode || '',
+            responsibleBirthDate: data.responsibleBirthDate || '',
             logoUrl: data.logoUrl || '',
             portalSlogan: data.portalSlogan || '',
             sidebarLogoUrl: data.sidebarLogoUrl || '',
@@ -587,6 +589,16 @@ function AcademyTab() {
             onChange={(e) => setSettings({ ...settings, zipCode: e.target.value })}
           />
         </Grid>
+        <Grid size={{ xs: 12, md: 4 }}>
+          <TextField
+            fullWidth
+            label="Data de Nascimento do Responsavel"
+            type="date"
+            value={settings.responsibleBirthDate}
+            onChange={(e) => setSettings({ ...settings, responsibleBirthDate: e.target.value })}
+            InputLabelProps={{ shrink: true }}
+          />
+        </Grid>
       </Grid>
 
       <SaveButton saving={saving} onClick={handleSave} />
@@ -827,26 +839,16 @@ function AppearanceTab() {
 }
 
 // ============================================
-// KYC Document Upload Section
+// KYC Verification Section
 // ============================================
-interface KycDocument {
-  groupId: string;
-  type: string;
-  status: string;
-  description: string;
-}
-
 function KycSection({ academyId }: { academyId: string }) {
-  const theme = useTheme();
   const { user } = useAuth();
   const { error, success } = useFeedback();
   const { academy } = useAcademy();
 
   const [kycStatus, setKycStatus] = useState<string>('not_checked');
   const [kycOnboardingUrl, setKycOnboardingUrl] = useState<string | null>(null);
-  const [kycDocuments, setKycDocuments] = useState<KycDocument[]>([]);
   const [checking, setChecking] = useState(false);
-  const [uploadingGroupId, setUploadingGroupId] = useState<string | null>(null);
   const [creatingSubAccount, setCreatingSubAccount] = useState(false);
 
   const hasSubAccount = !!academy?.asaasSubAccountId;
@@ -875,11 +877,10 @@ function KycSection({ academyId }: { academyId: string }) {
       }
 
       const result = await response.json();
-      const { status, onboardingUrl, documents } = result.data;
+      const { status, onboardingUrl } = result.data;
 
       setKycStatus(status);
       setKycOnboardingUrl(onboardingUrl || null);
-      setKycDocuments(documents || []);
     } catch (err) {
       console.error('KYC check error:', err);
       error(err instanceof Error ? err.message : 'Erro ao verificar documentos');
@@ -901,7 +902,7 @@ function KycSection({ academyId }: { academyId: string }) {
     // Validate required fields client-side
     if (!academy?.cnpj || !academy?.email || !academy?.name) {
       error(
-        'A academia precisa ter CNPJ, email e nome configurados antes de criar a subconta Asaas. ' +
+        'A academia precisa ter CPF/CNPJ, email e nome configurados antes de criar a subconta Asaas. ' +
         'Preencha esses campos na aba "Dados da Academia" e salve.'
       );
       return;
@@ -930,7 +931,6 @@ function KycSection({ academyId }: { academyId: string }) {
       }
 
       success('Subconta Asaas criada com sucesso! Verificando documentos...');
-      // academy will update via onSnapshot in AcademyContext, triggering re-render
     } catch (err) {
       console.error('Sub-account creation error:', err);
       error(err instanceof Error ? err.message : 'Erro ao criar subconta Asaas');
@@ -942,9 +942,10 @@ function KycSection({ academyId }: { academyId: string }) {
   // Sub-account not yet created — show creation step
   if (!hasSubAccount) {
     const missingFields: string[] = [];
-    if (!academy?.cnpj) missingFields.push('CNPJ');
+    if (!academy?.cnpj) missingFields.push('CPF/CNPJ');
     if (!academy?.email) missingFields.push('Email');
     if (!academy?.name) missingFields.push('Nome');
+    if (!academy?.responsibleBirthDate) missingFields.push('Data de Nascimento do Responsavel');
 
     return (
       <Box sx={{ mt: 2 }}>
@@ -969,92 +970,6 @@ function KycSection({ academyId }: { academyId: string }) {
         >
           {creatingSubAccount ? 'Criando Subconta...' : 'Criar Subconta Asaas'}
         </Button>
-      </Box>
-    );
-  }
-
-  const handleUpload = async (groupId: string, file: File) => {
-    if (!academyId) return;
-
-    // Validate file type
-    if (!['image/jpeg', 'image/png'].includes(file.type)) {
-      error('Apenas imagens JPG e PNG sao aceitas');
-      return;
-    }
-
-    // Validate file size
-    if (file.size > 5 * 1024 * 1024) {
-      error('Arquivo deve ter no maximo 5MB');
-      return;
-    }
-
-    setUploadingGroupId(groupId);
-    try {
-      const token = await (await import('firebase/auth')).getAuth().currentUser?.getIdToken();
-      if (!token) {
-        error('Sessao expirada');
-        return;
-      }
-
-      const formData = new FormData();
-      formData.append('documentFile', file);
-      formData.append('academyId', academyId);
-      formData.append('groupId', groupId);
-
-      const response = await fetch('/api/payments/onboard/documents/upload', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}` },
-        body: formData,
-      });
-
-      if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        throw new Error(data.error || 'Falha ao enviar documento');
-      }
-
-      success('Documento enviado com sucesso!');
-
-      // Update local state
-      setKycDocuments((prev) =>
-        prev.map((doc) =>
-          doc.groupId === groupId ? { ...doc, status: 'AWAITING_APPROVAL' } : doc
-        )
-      );
-
-      // Re-check overall status
-      const allDone = kycDocuments.every(
-        (d) => d.groupId === groupId || d.status === 'AWAITING_APPROVAL' || d.status === 'APPROVED'
-      );
-      if (allDone) {
-        setKycStatus('pending_review');
-      }
-    } catch (err) {
-      console.error('KYC upload error:', err);
-      error(err instanceof Error ? err.message : 'Erro ao enviar documento');
-    } finally {
-      setUploadingGroupId(null);
-    }
-  };
-
-  // Onboarding URL state
-  if (kycStatus === 'onboarding_url' && kycOnboardingUrl) {
-    return (
-      <Box sx={{ mt: 2 }}>
-        <Alert severity="info" sx={{ borderRadius: 2 }}>
-          <Typography variant="body2" sx={{ mb: 1 }}>
-            <strong>Verificacao de Documentos</strong> - A verificacao dos seus documentos sera feita por um link externo.
-          </Typography>
-          <Button
-            variant="outlined"
-            size="small"
-            startIcon={<ExternalLink size={16} />}
-            href={kycOnboardingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Abrir Verificacao
-          </Button>
-        </Alert>
       </Box>
     );
   }
@@ -1110,155 +1025,53 @@ function KycSection({ academyId }: { academyId: string }) {
     );
   }
 
-  // Rejected
-  if (kycStatus === 'rejected') {
-    return (
-      <Box sx={{ mt: 2 }}>
-        <Alert severity="error" icon={<AlertTriangle size={20} />} sx={{ borderRadius: 2, mb: 2 }}>
-          <Typography variant="body2">
-            <strong>Documentos Rejeitados</strong> - Envie novamente os documentos solicitados.
-          </Typography>
-        </Alert>
-        {kycDocuments
-          .filter((doc) => doc.status === 'REJECTED' || doc.status === 'NOT_SENT')
-          .map((doc) => (
-            <DocumentUploadCard
-              key={doc.groupId}
-              document={doc}
-              uploading={uploadingGroupId === doc.groupId}
-              onUpload={(file) => handleUpload(doc.groupId, file)}
-            />
-          ))}
-        <Button
-          variant="outlined"
-          size="small"
-          startIcon={checking ? <CircularProgress size={14} color="inherit" /> : <RefreshCw size={16} />}
-          onClick={checkKycStatus}
-          disabled={checking}
-          sx={{ mt: 2 }}
-        >
-          {checking ? 'Atualizando...' : 'Atualizar Status'}
-        </Button>
-      </Box>
-    );
-  }
+  // Rejected or pending upload — show single verification button
+  const isRejected = kycStatus === 'rejected';
 
-  // Pending upload (default for documents needing upload)
   return (
     <Box sx={{ mt: 2 }}>
-      <Alert severity="warning" sx={{ borderRadius: 2, mb: 2 }}>
+      <Alert
+        severity={isRejected ? 'error' : 'warning'}
+        icon={isRejected ? <AlertTriangle size={20} /> : undefined}
+        sx={{ borderRadius: 2, mb: 2 }}
+      >
         <Typography variant="body2">
-          <strong>Documentos Pendentes</strong> - Envie os documentos abaixo para verificacao da sua conta.
+          {isRejected ? (
+            <><strong>Documentos Rejeitados</strong> - Envie novamente os documentos solicitados.</>
+          ) : (
+            <><strong>Documentos Pendentes</strong> - Complete a verificacao para ativar sua conta.</>
+          )}
         </Typography>
       </Alert>
-      {kycDocuments
-        .filter((doc) => doc.status === 'NOT_SENT' || doc.status === 'REJECTED')
-        .map((doc) => (
-          <DocumentUploadCard
-            key={doc.groupId}
-            document={doc}
-            uploading={uploadingGroupId === doc.groupId}
-            onUpload={(file) => handleUpload(doc.groupId, file)}
-          />
-        ))}
-      {kycDocuments.filter((doc) => doc.status === 'AWAITING_APPROVAL' || doc.status === 'APPROVED').length > 0 && (
-        <Box sx={{ mt: 1 }}>
-          {kycDocuments
-            .filter((doc) => doc.status === 'AWAITING_APPROVAL' || doc.status === 'APPROVED')
-            .map((doc) => (
-              <Chip
-                key={doc.groupId}
-                label={`${doc.description}: ${doc.status === 'APPROVED' ? 'Aprovado' : 'Em analise'}`}
-                color={doc.status === 'APPROVED' ? 'success' : 'info'}
-                size="small"
-                sx={{ mr: 1, mb: 1 }}
-              />
-            ))}
-        </Box>
-      )}
-    </Box>
-  );
-}
-
-function DocumentUploadCard({
-  document,
-  uploading,
-  onUpload,
-}: {
-  document: KycDocument;
-  uploading: boolean;
-  onUpload: (file: File) => void;
-}) {
-  const theme = useTheme();
-  const [preview, setPreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    // Show preview
-    const reader = new FileReader();
-    reader.onloadend = () => setPreview(reader.result as string);
-    reader.readAsDataURL(file);
-
-    onUpload(file);
-  };
-
-  return (
-    <Box
-      sx={{
-        p: 2,
-        mb: 2,
-        border: '2px dashed',
-        borderColor: document.status === 'REJECTED' ? 'error.main' : 'divider',
-        borderRadius: 2,
-        bgcolor: document.status === 'REJECTED' ? `${theme.palette.error.main}08` : 'transparent',
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        <Box sx={{ flex: 1 }}>
-          <Typography variant="subtitle2" fontWeight={600}>
-            {document.description}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {document.type} - {document.status === 'REJECTED' ? 'Rejeitado (reenvie)' : 'Pendente'}
-          </Typography>
-        </Box>
-        {preview && (
-          <Box
-            sx={{
-              width: 48,
-              height: 48,
-              borderRadius: 1,
-              overflow: 'hidden',
-              flexShrink: 0,
-            }}
-          >
-            <img
-              src={preview}
-              alt="Preview"
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-            />
-          </Box>
-        )}
-        <input
-          type="file"
-          ref={fileInputRef}
-          onChange={handleFileSelect}
-          accept="image/jpeg,image/png"
-          style={{ display: 'none' }}
-        />
+      {kycOnboardingUrl ? (
         <Button
-          variant="outlined"
-          size="small"
-          startIcon={uploading ? <CircularProgress size={14} color="inherit" /> : <Upload size={16} />}
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploading}
+          variant="contained"
+          startIcon={<ExternalLink size={18} />}
+          href={kycOnboardingUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          fullWidth
+          sx={{ py: 1.5, borderRadius: 2, textTransform: 'none', fontSize: '0.95rem' }}
         >
-          {uploading ? 'Enviando...' : 'Enviar'}
+          {isRejected ? 'Reenviar Documentos' : 'Iniciar Verificacao'}
         </Button>
-      </Box>
+      ) : (
+        <Alert severity="info" sx={{ borderRadius: 2, mb: 2 }}>
+          <Typography variant="body2">
+            Link de verificacao nao disponivel. Clique em &quot;Atualizar Status&quot; para tentar novamente.
+          </Typography>
+        </Alert>
+      )}
+      <Button
+        variant="outlined"
+        size="small"
+        startIcon={checking ? <CircularProgress size={14} color="inherit" /> : <RefreshCw size={16} />}
+        onClick={checkKycStatus}
+        disabled={checking}
+        sx={{ mt: 2 }}
+      >
+        {checking ? 'Atualizando...' : 'Atualizar Status'}
+      </Button>
     </Box>
   );
 }

@@ -6,7 +6,7 @@ export { financialService, createFinancialService } from './financialService';
 export { assessmentService, createAssessmentService } from './assessmentService';
 export { achievementService, createAchievementService } from './achievementService';
 export { beltProgressionService, createBeltProgressionService } from './beltProgressionService';
-export { planService, createPlanService } from './planService';
+export { planService, createPlanService, getStudentValue } from './planService';
 export { settingsService, createSettingsService } from './settingsService';
 export { linkCodeService, createLinkCodeService } from './linkCodeService';
 export { competitionService, createCompetitionService } from './competitionService';

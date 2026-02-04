@@ -65,7 +65,7 @@ import { useStudent, useStudents, useFinancial, usePlans, useAssessment, useStud
 import { getBeltChipColor } from '@/lib/theme';
 import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode, FinancialPaymentLink } from '@/types';
+import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode, FinancialPaymentLink, Plan } from '@/types';
 import { createFinancialService, createAttendanceService, createStudentService } from '@/services';
 import { createAbacatePayService } from '@/services/abacatePayService';
 import { Attendance } from '@/types';
@@ -281,7 +281,7 @@ export default function StudentProfilePage() {
   const { student, isLoading, refresh: refreshStudent } = useStudent(studentId);
   const { updateBelt } = useStudents({ autoLoad: false });
   const { markAsPaid, isMarkingPaid } = useFinancial({ autoLoad: false });
-  const { plans } = usePlans();
+  const { plans, setCustomValue, removeCustomValue, isSettingCustomValue } = usePlans();
 
   // Check if AbacatePay is enabled
   const [abacatePayEnabled, setAbacatePayEnabled] = useState(false);
@@ -341,6 +341,17 @@ export default function StudentProfilePage() {
   const [linkCodeDialogOpen, setLinkCodeDialogOpen] = useState(false);
   const [generatedLinkCode, setGeneratedLinkCode] = useState<LinkCode | null>(null);
   const [generatingCode, setGeneratingCode] = useState(false);
+
+  // Custom value dialog state
+  const [customValueDialogOpen, setCustomValueDialogOpen] = useState(false);
+  const [customValuePlan, setCustomValuePlan] = useState<Plan | null>(null);
+  const [customValueInput, setCustomValueInput] = useState('');
+
+  // Student plans
+  const studentPlans = useMemo(() => {
+    if (!studentId) return [];
+    return plans.filter(plan => plan.studentIds?.includes(studentId));
+  }, [studentId, plans]);
 
   // Delete dialog state
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -1169,6 +1180,56 @@ export default function StudentProfilePage() {
                 {studentHasPlan && (
                 <TabPanel value={activeTab} index={tabs.indexOf('Financeiro')}>
                   <Box sx={{ px: 3 }}>
+                    {/* Plan & Value Section */}
+                    {studentPlans.length > 0 && (
+                      <Box sx={{ mb: 3 }}>
+                        <Typography variant="overline" color="text.secondary" fontWeight={600} sx={{ letterSpacing: 0.5 }}>
+                          Plano e Valor
+                        </Typography>
+                        {studentPlans.map((plan) => {
+                          const studentValue = plan.customValues?.[studentId] ?? plan.monthlyValue;
+                          const hasCustomValue = plan.customValues?.[studentId] !== undefined;
+                          return (
+                            <Card key={plan.id} sx={{ mt: 1, mb: 1, borderRadius: 2 }} variant="outlined">
+                              <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
+                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                  <Box>
+                                    <Typography variant="subtitle2" fontWeight={600}>{plan.name}</Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Valor padrão: R$ {plan.monthlyValue.toLocaleString('pt-BR')}
+                                    </Typography>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                      <Typography variant="body2" fontWeight={700} color={hasCustomValue ? 'success.main' : 'text.primary'}>
+                                        Valor do aluno: R$ {studentValue.toLocaleString('pt-BR')}
+                                      </Typography>
+                                      {hasCustomValue && (
+                                        <Chip
+                                          label="Valor personalizado"
+                                          size="small"
+                                          color="success"
+                                          sx={{ height: 20, fontSize: '0.6rem' }}
+                                        />
+                                      )}
+                                    </Box>
+                                  </Box>
+                                  <IconButton
+                                    size="small"
+                                    onClick={() => {
+                                      setCustomValuePlan(plan);
+                                      setCustomValueInput(studentValue.toString());
+                                      setCustomValueDialogOpen(true);
+                                    }}
+                                  >
+                                    <Edit size={16} />
+                                  </IconButton>
+                                </Box>
+                              </CardContent>
+                            </Card>
+                          );
+                        })}
+                      </Box>
+                    )}
+
                     {/* Financial Stats */}
                     <Grid container spacing={2} sx={{ mb: 3 }}>
                       <Grid size={{ xs: 12, sm: 4 }}>
@@ -1275,6 +1336,8 @@ export default function StudentProfilePage() {
                             }
                           >
                             <ListItemText
+                              primaryTypographyProps={{ component: 'div' }}
+                              secondaryTypographyProps={{ component: 'div' }}
                               primary={
                                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                   <Typography variant="body2" fontWeight={600}>
@@ -1899,6 +1962,69 @@ export default function StudentProfilePage() {
               startIcon={deleting ? <CircularProgress size={16} color="inherit" /> : <Trash2 size={16} />}
             >
               {deleting ? 'Excluindo...' : 'Excluir Permanentemente'}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        {/* Custom Value Dialog */}
+        <Dialog
+          open={customValueDialogOpen}
+          onClose={() => setCustomValueDialogOpen(false)}
+          maxWidth="xs"
+          fullWidth
+        >
+          <DialogTitle>
+            Valor - {customValuePlan?.name}
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Valor padrão do plano: R$ {customValuePlan?.monthlyValue.toLocaleString('pt-BR')}
+            </Typography>
+            <TextField
+              fullWidth
+              label="Valor do aluno"
+              type="number"
+              value={customValueInput}
+              onChange={(e) => setCustomValueInput(e.target.value)}
+              InputProps={{
+                startAdornment: <Typography sx={{ mr: 1 }}>R$</Typography>,
+              }}
+              sx={{ mb: 1 }}
+            />
+            {customValuePlan?.customValues?.[studentId] !== undefined && (
+              <Button
+                size="small"
+                startIcon={<History size={14} />}
+                onClick={async () => {
+                  if (!customValuePlan) return;
+                  setCustomValueDialogOpen(false);
+                  await removeCustomValue({ planId: customValuePlan.id, studentId });
+                }}
+                disabled={isSettingCustomValue}
+              >
+                Restaurar valor do plano
+              </Button>
+            )}
+          </DialogContent>
+          <DialogActions sx={{ px: 3, py: 2 }}>
+            <Button onClick={() => setCustomValueDialogOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="contained"
+              onClick={async () => {
+                if (!customValuePlan) return;
+                const value = parseFloat(customValueInput);
+                if (isNaN(value) || value <= 0) return;
+                setCustomValueDialogOpen(false);
+                if (value === customValuePlan.monthlyValue) {
+                  await removeCustomValue({ planId: customValuePlan.id, studentId });
+                } else {
+                  await setCustomValue({ planId: customValuePlan.id, studentId, value });
+                }
+              }}
+              disabled={isSettingCustomValue}
+            >
+              Salvar
             </Button>
           </DialogActions>
         </Dialog>

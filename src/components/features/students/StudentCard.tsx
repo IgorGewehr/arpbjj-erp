@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   Card,
   CardActionArea,
@@ -9,9 +9,13 @@ import {
   Avatar,
   Chip,
   IconButton,
+  Menu,
+  MenuItem as MuiMenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
-import { Phone, AlertCircle, ChevronRight, Target } from 'lucide-react';
-import { Student } from '@/types';
+import { Phone, AlertCircle, ChevronRight, Target, MoreVertical } from 'lucide-react';
+import { Student, StudentStatus } from '@/types';
 import { getBeltChipColor } from '@/lib/theme';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 
@@ -22,6 +26,7 @@ interface StudentCardProps {
   student: Student;
   onClick?: (student: Student) => void;
   onWhatsApp?: (student: Student) => void;
+  onStatusChange?: (student: Student, newStatus: StudentStatus) => void;
   compact?: boolean;
 }
 
@@ -88,12 +93,24 @@ export function StudentCard({
   student,
   onClick,
   onWhatsApp,
+  onStatusChange,
   compact = false,
 }: StudentCardProps) {
   // Calculate total attendance count
   const totalAttendance = (student.attendanceCount || 0) + (student.initialAttendanceCount || 0);
   const beltColor = getBeltChipColor(student.currentBelt);
-  const status = statusConfig[student.status];
+
+  // Optimistic status — updates immediately on click, syncs back when prop changes
+  const [optimisticStatus, setOptimisticStatus] = useState<StudentStatus | null>(null);
+  const displayStatus = optimisticStatus ?? student.status;
+  const status = statusConfig[displayStatus];
+
+  useEffect(() => {
+    setOptimisticStatus(null);
+  }, [student.status]);
+
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const menuOpen = Boolean(menuAnchor);
 
   const handleClick = useCallback(() => {
     onClick?.(student);
@@ -109,6 +126,24 @@ export function StudentCard({
     }
   }, [onWhatsApp, student]);
 
+  const handleMenuOpen = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    e.stopPropagation();
+    setMenuAnchor(e.currentTarget);
+  }, []);
+
+  const handleMenuClose = useCallback(() => {
+    setMenuAnchor(null);
+  }, []);
+
+  const handleStatusSelect = useCallback((newStatus: StudentStatus) => {
+    setOptimisticStatus(newStatus);
+    onStatusChange?.(student, newStatus);
+    setMenuAnchor(null);
+  }, [onStatusChange, student]);
+
+  const statusMenuItems = (Object.entries(statusConfig) as [StudentStatus, { label: string; color: 'success' | 'warning' | 'error' | 'default' }][])
+    .filter(([key]) => key !== displayStatus);
+
   const getInitials = (name: string) => {
     const parts = name.split(' ');
     if (parts.length >= 2) {
@@ -122,7 +157,7 @@ export function StudentCard({
       <Card
         sx={{
           borderRadius: 2,
-          opacity: student.status === 'inactive' ? 0.6 : 1,
+          opacity: displayStatus === 'inactive' ? 0.6 : 1,
           position: 'relative',
         }}
       >
@@ -153,7 +188,7 @@ export function StudentCard({
                 >
                   {student.nickname || student.fullName.split(' ')[0]}
                 </Typography>
-                {student.status === 'injured' && (
+                {displayStatus === 'injured' && (
                   <AlertCircle size={14} style={{ color: '#f59e0b' }} />
                 )}
               </Box>
@@ -198,7 +233,7 @@ export function StudentCard({
           </Box>
         </CardActionArea>
 
-        {/* Actions - Desktop only (phone button and arrow) */}
+        {/* Actions - Desktop only (phone button, kebab menu and arrow) */}
         <Box
           sx={{
             position: 'absolute',
@@ -221,8 +256,41 @@ export function StudentCard({
           >
             <Phone size={18} />
           </IconButton>
+          {onStatusChange && (
+            <IconButton
+              size="small"
+              onClick={handleMenuOpen}
+              sx={{
+                bgcolor: 'action.hover',
+                '&:hover': { bgcolor: 'action.selected' },
+              }}
+            >
+              <MoreVertical size={18} />
+            </IconButton>
+          )}
           <ChevronRight size={18} style={{ color: '#9ca3af' }} />
         </Box>
+
+        {/* Status Menu */}
+        <Menu
+          anchorEl={menuAnchor}
+          open={menuOpen}
+          onClose={handleMenuClose}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {statusMenuItems.map(([key, cfg]) => (
+            <MuiMenuItem key={key} onClick={() => handleStatusSelect(key)}>
+              <ListItemIcon>
+                <Chip
+                  size="small"
+                  color={cfg.color}
+                  sx={{ width: 12, height: 12, minWidth: 12, '& .MuiChip-label': { display: 'none' } }}
+                />
+              </ListItemIcon>
+              <ListItemText>{cfg.label}</ListItemText>
+            </MuiMenuItem>
+          ))}
+        </Menu>
       </Card>
     );
   }
@@ -231,14 +299,14 @@ export function StudentCard({
     <Card
       sx={{
         borderRadius: 3,
-        opacity: student.status === 'inactive' ? 0.6 : 1,
+        opacity: displayStatus === 'inactive' ? 0.6 : 1,
         position: 'relative',
         height: { xs: 145, sm: 165 },
         display: 'flex',
         flexDirection: 'column',
       }}
     >
-      <CardActionArea onClick={handleClick} sx={{ p: { xs: 1.5, sm: 2.5 }, pr: { xs: 6, sm: 8 }, height: '100%' }}>
+      <CardActionArea onClick={handleClick} sx={{ p: { xs: 1.5, sm: 2.5 }, pr: { xs: 5, sm: 6 }, height: '100%' }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1.5, sm: 2 }, height: '100%' }}>
           {/* Avatar */}
           <Avatar
@@ -272,7 +340,7 @@ export function StudentCard({
               >
                 {student.nickname || student.fullName.split(' ')[0]}
               </Typography>
-              {student.status === 'injured' && (
+              {displayStatus === 'injured' && (
                 <AlertCircle size={14} style={{ color: '#f59e0b', flexShrink: 0 }} />
               )}
             </Box>
@@ -301,23 +369,20 @@ export function StudentCard({
             </Box>
 
             {/* Tags + Attendance Count */}
-            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 0.5 }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Chip
-                  label={status.label}
-                  size="small"
-                  color={status.color}
-                  variant="outlined"
-                  sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
-                />
-                <Chip
-                  label={student.category === 'kids' ? 'Kids' : 'Adulto'}
-                  size="small"
-                  variant="outlined"
-                  sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
-                />
-              </Box>
-              {/* Attendance Count */}
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+              <Chip
+                label={status.label}
+                size="small"
+                color={status.color}
+                variant="outlined"
+                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
+              />
+              <Chip
+                label={student.category === 'kids' ? 'Kids' : 'Adulto'}
+                size="small"
+                variant="outlined"
+                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
+              />
               <AttendanceCountBadge count={totalAttendance} />
             </Box>
           </Box>
@@ -325,30 +390,50 @@ export function StudentCard({
       </CardActionArea>
 
       {/* Actions - positioned outside CardActionArea to avoid nested buttons */}
-      <Box
-        sx={{
-          position: 'absolute',
-          right: { xs: 8, sm: 20 },
-          top: { xs: 8, sm: 20 },
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 1,
-          zIndex: 1,
-        }}
-      >
-        <IconButton
-          size="small"
-          onClick={handleWhatsApp}
+      {onStatusChange && (
+        <Box
           sx={{
-            bgcolor: 'action.hover',
-            '&:hover': { bgcolor: 'success.light' },
-            width: { xs: 32, sm: 36 },
-            height: { xs: 32, sm: 36 },
+            position: 'absolute',
+            right: { xs: 8, sm: 12 },
+            top: { xs: 8, sm: 12 },
+            zIndex: 1,
           }}
         >
-          <Phone size={16} />
-        </IconButton>
-      </Box>
+          <IconButton
+            size="small"
+            onClick={handleMenuOpen}
+            sx={{
+              bgcolor: 'action.hover',
+              '&:hover': { bgcolor: 'action.selected' },
+              width: { xs: 32, sm: 36 },
+              height: { xs: 32, sm: 36 },
+            }}
+          >
+            <MoreVertical size={16} />
+          </IconButton>
+        </Box>
+      )}
+
+      {/* Status Menu */}
+      <Menu
+        anchorEl={menuAnchor}
+        open={menuOpen}
+        onClose={handleMenuClose}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {statusMenuItems.map(([key, cfg]) => (
+          <MuiMenuItem key={key} onClick={() => handleStatusSelect(key)}>
+            <ListItemIcon>
+              <Chip
+                size="small"
+                color={cfg.color}
+                sx={{ width: 12, height: 12, minWidth: 12, '& .MuiChip-label': { display: 'none' } }}
+              />
+            </ListItemIcon>
+            <ListItemText>{cfg.label}</ListItemText>
+          </MuiMenuItem>
+        ))}
+      </Menu>
     </Card>
   );
 }

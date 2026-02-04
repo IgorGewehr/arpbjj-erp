@@ -61,24 +61,18 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
 
-    // 6. Check for onboardingUrl (external verification flow)
-    if (data.onboardingUrl) {
-      await adminDb.doc(`academies/${academyId}`).update({
-        asaasKycStatus: 'onboarding_url',
-        asaasKycOnboardingUrl: data.onboardingUrl,
-        asaasKycLastCheckedAt: FieldValue.serverTimestamp(),
-        updatedAt: FieldValue.serverTimestamp(),
-      });
+    // 6. Parse document groups
+    const documents = data.data || [];
 
-      return createSuccessResponse({
-        status: 'onboarding_url',
-        onboardingUrl: data.onboardingUrl,
-        documents: [],
-      });
+    // 7. Extract onboardingUrl from document groups
+    let onboardingUrl: string | null = null;
+    for (const group of documents) {
+      if (group.onboardingUrl) {
+        onboardingUrl = group.onboardingUrl;
+        break;
+      }
     }
 
-    // 7. Parse document groups
-    const documents = data.data || [];
     const documentsMap: Record<string, {
       type: string;
       status: string;
@@ -140,7 +134,6 @@ export async function GET(request: NextRequest) {
     // 9. Update Firestore
     await adminDb.doc(`academies/${academyId}`).update({
       asaasKycStatus: kycStatus,
-      asaasKycOnboardingUrl: null,
       asaasKycDocuments: documentsMap,
       asaasKycLastCheckedAt: FieldValue.serverTimestamp(),
       updatedAt: FieldValue.serverTimestamp(),
@@ -148,6 +141,7 @@ export async function GET(request: NextRequest) {
 
     return createSuccessResponse({
       status: kycStatus,
+      onboardingUrl,
       documents: documents.map((group: {
         id: string;
         type?: string;

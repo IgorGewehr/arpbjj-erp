@@ -165,6 +165,7 @@ export async function POST(request: NextRequest) {
     const studentData = studentSnap.exists ? studentSnap.data() : null;
     const studentEmail = studentData?.email || '';
     const studentZipCode = studentData?.address?.zipCode || academyData.zipCode || '';
+    const studentPhone = (studentData?.phone || studentData?.mobilePhone || academyData.phone || '').replace(/\D/g, '');
 
     // 18. Prepare expiry fields for Asaas
     const expiryMonth = month.toString().padStart(2, '0');
@@ -173,6 +174,11 @@ export async function POST(request: NextRequest) {
     // 19. Create card payment in Asaas
     const baseUrl = getAsaasBaseUrl();
     const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Extract client IP for Asaas (required for card payments)
+    const remoteIp = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+      || request.headers.get('x-real-ip')
+      || '127.0.0.1';
 
     const paymentResponse = await fetch(`${baseUrl}/v3/payments`, {
       method: 'POST',
@@ -200,7 +206,9 @@ export async function POST(request: NextRequest) {
           email: studentEmail,
           postalCode: studentZipCode.replace(/\D/g, ''),
           addressNumber: '0',
+          ...(studentPhone && { mobilePhone: studentPhone }),
         },
+        remoteIp,
       }),
     });
 

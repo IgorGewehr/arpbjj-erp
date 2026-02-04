@@ -27,6 +27,9 @@ export interface AcademySettings {
   state?: string;
   zipCode?: string;
 
+  // Responsible Person (for Asaas onboarding)
+  responsibleBirthDate?: string;
+
   // Branding
   logoUrl?: string;
   portalSlogan?: string;              // Frase exibida na TopAppBar do portal (ex: "Vamos avante, ombro a ombro")
@@ -102,6 +105,7 @@ class SettingsService {
           city: data.city,
           state: data.state,
           zipCode: data.zipCode,
+          responsibleBirthDate: data.responsibleBirthDate,
           logoUrl: data.logoUrl,
           portalSlogan: data.portalSlogan,
           sidebarLogoUrl: data.sidebarLogoUrl,
@@ -156,6 +160,7 @@ class SettingsService {
       if (settings.city !== undefined) settingsData.city = settings.city;
       if (settings.state !== undefined) settingsData.state = settings.state;
       if (settings.zipCode !== undefined) settingsData.zipCode = settings.zipCode;
+      if (settings.responsibleBirthDate !== undefined) settingsData.responsibleBirthDate = settings.responsibleBirthDate;
       if (settings.logoUrl !== undefined) settingsData.logoUrl = settings.logoUrl;
       if (settings.portalSlogan !== undefined) settingsData.portalSlogan = settings.portalSlogan;
       if (settings.sidebarLogoUrl !== undefined) settingsData.sidebarLogoUrl = settings.sidebarLogoUrl;
@@ -280,6 +285,8 @@ class SettingsService {
         city: data.city,
         state: data.state,
         zipCode: data.zipCode,
+        // Responsible Person
+        responsibleBirthDate: data.responsibleBirthDate,
         // Financial
         pixKey: data.pixKey,
         pixKeyType: data.pixKeyType,

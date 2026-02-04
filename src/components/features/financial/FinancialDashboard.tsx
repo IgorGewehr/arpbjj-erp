@@ -264,7 +264,10 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
     return students.filter((s) => plan.studentIds?.includes(s.id));
   }, [students, plan.studentIds]);
 
-  const expectedMonthlyRevenue = plan.monthlyValue * enrolledStudents.length;
+  const customValuesCount = enrolledStudents.filter(s => plan.customValues?.[s.id] !== undefined).length;
+  const expectedMonthlyRevenue = enrolledStudents.reduce(
+    (sum, s) => sum + (plan.customValues?.[s.id] ?? plan.monthlyValue), 0
+  );
 
   return (
     <Card sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
@@ -324,6 +327,14 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
               {enrolledStudents.length} aluno{enrolledStudents.length !== 1 ? 's' : ''}
             </Typography>
           </Box>
+          {customValuesCount > 0 && (
+            <Chip
+              label={`${customValuesCount} c/ valor personalizado`}
+              size="small"
+              color="info"
+              sx={{ height: 24, fontSize: '0.7rem' }}
+            />
+          )}
         </Box>
 
         {/* Expected Revenue */}
@@ -367,6 +378,8 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1, mt: 1 }}>
                 {enrolledStudents.map((student) => {
                   const beltColor = getBeltChipColor(student.currentBelt);
+                  const hasCustom = plan.customValues?.[student.id] !== undefined;
+                  const value = plan.customValues?.[student.id] ?? plan.monthlyValue;
                   return (
                     <Chip
                       key={student.id}
@@ -375,9 +388,10 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
                           {student.fullName[0]}
                         </Avatar>
                       }
-                      label={student.nickname || student.fullName.split(' ')[0]}
+                      label={`${student.nickname || student.fullName.split(' ')[0]} - R$ ${value.toLocaleString('pt-BR')}`}
                       size="small"
                       variant="outlined"
+                      color={hasCustom ? 'success' : 'default'}
                     />
                   );
                 })}
@@ -886,7 +900,7 @@ export function FinancialDashboard() {
           entries.push({
             studentId,
             planId: plan.id,
-            value: plan.monthlyValue,
+            value: plan.customValues?.[studentId] ?? plan.monthlyValue,
             day: student.tuitionDay || plan.defaultDueDay || 10,
           });
         }
@@ -976,7 +990,7 @@ export function FinancialDashboard() {
   const expectedRevenue = useMemo(() => {
     return plans.reduce((total, plan) => {
       if (plan.isActive) {
-        return total + (plan.monthlyValue * plan.studentIds.length);
+        return total + plan.studentIds.reduce((sum, sid) => sum + (plan.customValues?.[sid] ?? plan.monthlyValue), 0);
       }
       return total;
     }, 0);

@@ -177,6 +177,8 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           city: data.city,
           state: data.state,
           zipCode: data.zipCode,
+          // Responsible Person
+          responsibleBirthDate: data.responsibleBirthDate,
           // Financial
           pixKey: data.pixKey,
           pixKeyType: data.pixKeyType,
@@ -375,6 +377,8 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           city: data.city,
           state: data.state,
           zipCode: data.zipCode,
+          // Responsible Person
+          responsibleBirthDate: data.responsibleBirthDate,
           // Financial
           pixKey: data.pixKey,
           pixKeyType: data.pixKeyType,

@@ -14,12 +14,42 @@ import {
   IconButton,
   Divider,
 } from '@mui/material';
-import { Eye, EyeOff, Key, User, Mail, Lock, CheckCircle, ArrowLeft, GraduationCap, ArrowRight } from 'lucide-react';
+import { Eye, EyeOff, Key, User, Mail, Lock, CheckCircle, ArrowLeft, GraduationCap, ArrowRight, FileText } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, updateDoc, serverTimestamp, collectionGroup, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { linkCodeService } from '@/services/linkCodeService';
 import { LinkCode } from '@/types';
+
+// ============================================
+// CPF Helpers
+// ============================================
+const formatCpf = (value: string): string => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+};
+
+const validateCpf = (cpf: string): boolean => {
+  const digits = cpf.replace(/\D/g, '');
+  if (digits.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(digits[i]) * (10 - i);
+  let rest = (sum * 10) % 11;
+  if (rest === 10) rest = 0;
+  if (rest !== parseInt(digits[9])) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(digits[i]) * (11 - i);
+  rest = (sum * 10) % 11;
+  if (rest === 10) rest = 0;
+  if (rest !== parseInt(digits[10])) return false;
+
+  return true;
+};
 
 // ============================================
 // Step Types
@@ -39,6 +69,7 @@ export default function CreateAccountPage() {
   const [error, setError] = useState('');
 
   // Registration form
+  const [cpf, setCpf] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -46,11 +77,11 @@ export default function CreateAccountPage() {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   // ============================================
-  // Validate Code
+  // Validate Code (collectionGroup query - multi-tenant)
   // ============================================
   const handleValidateCode = useCallback(async () => {
     if (!code.trim()) {
-      setError('Digite o código de acesso');
+      setError('Digite o codigo de acesso');
       return;
     }
 
@@ -58,31 +89,87 @@ export default function CreateAccountPage() {
       setLoading(true);
       setError('');
 
-      const result = await linkCodeService.validate(code.toUpperCase().trim());
+      const codeUpper = code.toUpperCase().trim();
 
-      if (!result.valid) {
-        setError(result.error || 'Código inválido');
+      // collectionGroup query across all academies' linkCodes
+      const q = query(
+        collectionGroup(db, 'linkCodes'),
+        where('code', '==', codeUpper),
+      );
+      const snapshot = await getDocs(q);
+
+      if (snapshot.empty) {
+        setError('Codigo nao encontrado');
         return;
       }
 
-      if (result.linkCode) {
-        setLinkCode(result.linkCode);
-        setStep('register');
+      const codeDoc = snapshot.docs[0];
+      const data = codeDoc.data();
+
+      // Check if already used
+      if (data.usedAt) {
+        setError('Este codigo ja foi utilizado');
+        return;
       }
+
+      // Check if expired
+      const expiresAt = data.expiresAt instanceof Timestamp
+        ? data.expiresAt.toDate()
+        : new Date(data.expiresAt);
+      if (new Date() > expiresAt) {
+        setError('Este codigo expirou');
+        return;
+      }
+
+      // Extract academyId from document path: academies/{academyId}/linkCodes/{docId}
+      const pathSegments = codeDoc.ref.path.split('/');
+      const academyId = pathSegments[1]; // academies/{academyId}/linkCodes/{docId}
+
+      const createdAt = data.createdAt instanceof Timestamp
+        ? data.createdAt.toDate()
+        : data.createdAt ? new Date(data.createdAt) : new Date();
+
+      const foundLinkCode: LinkCode = {
+        id: codeDoc.id,
+        code: data.code,
+        studentId: data.studentId,
+        studentName: data.studentName,
+        academyId,
+        createdBy: data.createdBy,
+        createdAt,
+        expiresAt,
+        usedAt: data.usedAt instanceof Timestamp ? data.usedAt.toDate() : undefined,
+        usedBy: data.usedBy,
+      };
+
+      setLinkCode(foundLinkCode);
+      setStep('register');
     } catch (err) {
-      setError('Erro ao validar código. Tente novamente.');
+      console.error('Code validation error:', err);
+      setError('Erro ao validar codigo. Tente novamente.');
     } finally {
       setLoading(false);
     }
   }, [code]);
 
   // ============================================
-  // Create Account
+  // Create Account (multi-tenant correct)
   // ============================================
   const handleCreateAccount = useCallback(async () => {
-    if (!linkCode) return;
+    if (!linkCode || !linkCode.academyId) return;
+
+    const academyId = linkCode.academyId;
 
     // Validation
+    const cpfDigits = cpf.replace(/\D/g, '');
+    if (!cpfDigits) {
+      setError('Digite seu CPF');
+      return;
+    }
+    if (!validateCpf(cpfDigits)) {
+      setError('CPF invalido');
+      return;
+    }
     if (!email.trim()) {
       setError('Digite seu email');
       return;
@@ -96,7 +183,7 @@ export default function CreateAccountPage() {
       return;
     }
     if (password !== confirmPassword) {
-      setError('As senhas não coincidem');
+      setError('As senhas nao coincidem');
       return;
     }
 
@@ -113,34 +200,63 @@ export default function CreateAccountPage() {
         displayName: linkCode.studentName,
       });
 
-      // Step 3: Create user document in Firestore (CRITICAL - must succeed)
+      // Step 3: Create global user document (NO role, NO studentId - those are per-academy)
       await setDoc(doc(db, 'users', user.uid), {
+        email: email.trim(),
+        displayName: linkCode.studentName,
+        accountType: 'linked',
+        isActive: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Step 4: Create userAcademyMapping (source of truth for user-academy relationships)
+      await setDoc(doc(db, 'userAcademyMapping', user.uid), {
+        academyIds: [academyId],
+        primaryAcademyId: academyId,
+        academyDetails: {
+          [academyId]: {
+            role: 'student',
+            studentId: linkCode.studentId,
+            joinedAt: serverTimestamp(),
+            status: 'active',
+          },
+        },
+        updatedAt: serverTimestamp(),
+      });
+
+      // Step 5: Create academy user document (academies/{academyId}/users/{uid})
+      await setDoc(doc(db, 'academies', academyId, 'users', user.uid), {
         email: email.trim(),
         displayName: linkCode.studentName,
         role: 'student',
         studentId: linkCode.studentId,
-        isActive: true,
-        createdAt: serverTimestamp(),
         approvedAt: serverTimestamp(),
+        status: 'active',
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
       });
 
-      // Step 4-5: Secondary operations (can fail without breaking the flow)
-      // These update the linkCode and student record
+      // Step 6: Secondary operations (can fail without breaking the flow)
       try {
-        // Mark code as used
-        await linkCodeService.markAsUsed(linkCode.code, user.uid);
+        // Mark code as used in the correct academy's linkCodes subcollection
+        await updateDoc(doc(db, 'academies', academyId, 'linkCodes', linkCode.id), {
+          usedAt: serverTimestamp(),
+          usedBy: user.uid,
+        });
       } catch (linkErr) {
         console.warn('Failed to mark code as used (non-critical):', linkErr);
       }
 
       try {
-        // Update student record with linked user ID
-        await updateDoc(doc(db, 'students', linkCode.studentId), {
+        // Update student record with linked user ID and CPF (correct multi-tenant path)
+        await updateDoc(doc(db, 'academies', academyId, 'students', linkCode.studentId), {
           linkedUserId: user.uid,
+          cpf: cpfDigits,
           updatedAt: serverTimestamp(),
         });
       } catch (studentErr) {
-        console.warn('Failed to update student linkedUserId (non-critical):', studentErr);
+        console.warn('Failed to update student record (non-critical):', studentErr);
       }
 
       // Success - account is created and functional
@@ -150,17 +266,16 @@ export default function CreateAccountPage() {
       if (err instanceof Error) {
         const errorMessage = err.message.toLowerCase();
         if (errorMessage.includes('email-already-in-use')) {
-          setError('Este email já está sendo utilizado');
+          setError('Este email ja esta sendo utilizado');
         } else if (errorMessage.includes('invalid-email')) {
-          setError('Email inválido');
+          setError('Email invalido');
         } else if (errorMessage.includes('weak-password')) {
           setError('Senha muito fraca');
         } else if (errorMessage.includes('permission-denied') || errorMessage.includes('permission denied')) {
-          setError('Erro de permissão ao criar documento. Verifique as regras do Firestore.');
+          setError('Erro de permissao ao criar documento. Verifique as regras do Firestore.');
         } else if (errorMessage.includes('network')) {
-          setError('Erro de conexão. Verifique sua internet.');
+          setError('Erro de conexao. Verifique sua internet.');
         } else {
-          // Show actual error for debugging
           setError(`Erro ao criar conta: ${err.message}`);
         }
       } else {
@@ -169,7 +284,7 @@ export default function CreateAccountPage() {
     } finally {
       setLoading(false);
     }
-  }, [linkCode, email, password, confirmPassword]);
+  }, [linkCode, cpf, email, password, confirmPassword]);
 
   // ============================================
   // Render Code Step
@@ -195,7 +310,7 @@ export default function CreateAccountPage() {
           Criar Conta de Aluno
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Digite o código de acesso fornecido pelo seu professor
+          Digite o codigo de acesso fornecido pelo seu professor
         </Typography>
       </Box>
 
@@ -206,7 +321,7 @@ export default function CreateAccountPage() {
       )}
 
       <TextField
-        label="Código de Acesso"
+        label="Codigo de Acesso"
         value={code}
         onChange={(e) => setCode(e.target.value.toUpperCase())}
         fullWidth
@@ -227,7 +342,7 @@ export default function CreateAccountPage() {
         disabled={loading || code.length < 6}
         sx={{ mb: 2 }}
       >
-        {loading ? <CircularProgress size={24} /> : 'Validar Código'}
+        {loading ? <CircularProgress size={24} /> : 'Validar Codigo'}
       </Button>
 
       <Button
@@ -334,6 +449,23 @@ export default function CreateAccountPage() {
       )}
 
       <TextField
+        label="CPF"
+        value={cpf}
+        onChange={(e) => setCpf(formatCpf(e.target.value))}
+        fullWidth
+        placeholder="000.000.000-00"
+        inputProps={{ maxLength: 14 }}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <FileText size={20} color="#666" />
+            </InputAdornment>
+          ),
+        }}
+      />
+
+      <TextField
         label="Email"
         type="email"
         value={email}
@@ -356,7 +488,7 @@ export default function CreateAccountPage() {
         onChange={(e) => setPassword(e.target.value)}
         fullWidth
         sx={{ mb: 2 }}
-        helperText="Mínimo de 6 caracteres"
+        helperText="Minimo de 6 caracteres"
         InputProps={{
           startAdornment: (
             <InputAdornment position="start">
@@ -447,7 +579,7 @@ export default function CreateAccountPage() {
 
       <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
         Sua conta foi vinculada ao seu perfil de aluno.
-        Agora você pode acessar o portal do aluno.
+        Agora voce pode acessar o portal do aluno.
       </Typography>
 
       <Button

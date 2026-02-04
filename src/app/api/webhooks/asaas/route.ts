@@ -747,7 +747,7 @@ async function processTransferEvent(
   }
 
   // Process event
-  if (event === 'TRANSFER_CONFIRMED') {
+  if (event === 'TRANSFER_CONFIRMED' || event === 'TRANSFER_DONE') {
     await handleWithdrawDone(academyId, transaction, docRef);
     console.log(
       `[ASAAS-WEBHOOK] Withdraw completed for transfer ${asaasTransferId}`
@@ -823,7 +823,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Transfer events
-    if (['TRANSFER_CONFIRMED', 'TRANSFER_FAILED'].includes(event)) {
+    if (['TRANSFER_CONFIRMED', 'TRANSFER_DONE', 'TRANSFER_FAILED'].includes(event)) {
       if (!transfer) {
         console.error(
           '[ASAAS-WEBHOOK] Missing transfer data for transfer event:',

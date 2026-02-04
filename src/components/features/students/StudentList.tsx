@@ -254,6 +254,7 @@ export function StudentList() {
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
+    updateStudent,
   } = useStudents();
   const { classes } = useClasses();
   const { plans } = usePlans();
@@ -345,6 +346,14 @@ export function StudentList() {
       router.push(`/alunos/${student.id}`);
     },
     [router]
+  );
+
+  // Handle quick status change from card kebab menu
+  const handleCardStatusChange = useCallback(
+    (student: Student, newStatus: StudentStatus) => {
+      updateStudent({ id: student.id, data: { status: newStatus } });
+    },
+    [updateStudent]
   );
 
   // Handle filter changes
@@ -742,6 +751,7 @@ export function StudentList() {
                 <StudentCard
                   student={student}
                   onClick={handleStudentClick}
+                  onStatusChange={handleCardStatusChange}
                   compact={viewMode === 'list'}
                 />
               </ScaleOnPress>

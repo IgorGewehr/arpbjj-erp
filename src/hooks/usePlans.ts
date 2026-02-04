@@ -124,6 +124,44 @@ export function usePlans() {
   });
 
   // ============================================
+  // Set Custom Value Mutation
+  // ============================================
+  const setCustomValueMutation = useMutation({
+    mutationFn: async ({ planId, studentId, value }: { planId: string; studentId: string; value: number }) => {
+      return planService.setCustomValue(planId, studentId, value);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.plans] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activePlans] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['student'] });
+      success('Valor personalizado definido com sucesso!');
+    },
+    onError: () => {
+      showError('Erro ao definir valor personalizado');
+    },
+  });
+
+  // ============================================
+  // Remove Custom Value Mutation
+  // ============================================
+  const removeCustomValueMutation = useMutation({
+    mutationFn: async ({ planId, studentId }: { planId: string; studentId: string }) => {
+      return planService.removeCustomValue(planId, studentId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.plans] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activePlans] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['student'] });
+      success('Valor restaurado ao padrão do plano!');
+    },
+    onError: () => {
+      showError('Erro ao restaurar valor do plano');
+    },
+  });
+
+  // ============================================
   // Get Plan by ID
   // ============================================
   const getPlan = useCallback(async (id: string): Promise<Plan | null> => {
@@ -160,6 +198,8 @@ export function usePlans() {
     updatePlan: updateMutation.mutateAsync,
     deletePlan: deleteMutation.mutateAsync,
     toggleStudent: toggleStudentMutation.mutateAsync,
+    setCustomValue: setCustomValueMutation.mutateAsync,
+    removeCustomValue: removeCustomValueMutation.mutateAsync,
 
     // Loading states
     isLoading,
@@ -167,6 +207,7 @@ export function usePlans() {
     isUpdating: updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
     isTogglingStudent: toggleStudentMutation.isPending,
+    isSettingCustomValue: setCustomValueMutation.isPending,
     error,
 
     // Refresh

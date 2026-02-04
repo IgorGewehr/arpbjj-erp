@@ -52,10 +52,10 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Validate required fields
-    const { cnpj, email, phone, name, address, city, state, zipCode } = academyData;
+    const { cnpj, email, phone, name, address, city, state, zipCode, responsibleBirthDate } = academyData;
     if (!cnpj || !email || !name) {
       return createErrorResponse(
-        'Academy must have CNPJ, email, and name configured before onboarding'
+        'A academia precisa ter CPF/CNPJ, email e nome configurados antes do onboarding'
       );
     }
 
@@ -70,11 +70,14 @@ export async function POST(request: NextRequest) {
       ? 'https://api.asaas.com'
       : 'https://sandbox.asaas.com/api';
 
-    // 7. Create sub-account in Asaas
+    // 7. Create sub-account in Asaas (cnpj field stores either CPF or CNPJ)
+    const cleanCpfCnpj = cnpj.replace(/\D/g, '');
+    const isCnpj = cleanCpfCnpj.length === 14;
+
     const accountPayload: Record<string, unknown> = {
       name,
       email,
-      cpfCnpj: cnpj.replace(/\D/g, ''),
+      cpfCnpj: cleanCpfCnpj,
       ...(phone && { phone: phone.replace(/\D/g, '') }),
       ...(address && {
         address,
@@ -83,7 +86,9 @@ export async function POST(request: NextRequest) {
         ...(zipCode && { postalCode: zipCode.replace(/\D/g, '') }),
         province: state,
       }),
-      companyType: 'LIMITED',
+      ...(isCnpj && { companyType: 'LIMITED' }),
+      ...(responsibleBirthDate && { birthDate: responsibleBirthDate }),
+      ...(phone && { mobilePhone: phone.replace(/\D/g, '') }),
       incomeValue: 50000,
     };
 
@@ -130,6 +135,7 @@ export async function POST(request: NextRequest) {
               'PAYMENT_DELETED',
               'PAYMENT_REFUNDED',
               'TRANSFER_DONE',
+              'TRANSFER_CONFIRMED',
               'TRANSFER_FAILED',
             ],
           }),

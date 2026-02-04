@@ -322,6 +322,9 @@ export interface Plan {
   // Students enrolled in this plan
   studentIds: string[];
 
+  // Custom values per student (only students with overrides)
+  customValues?: Record<string, number>;
+
   // Status
   isActive: boolean;
 
@@ -467,6 +470,7 @@ export interface LinkCode {
   code: string;                     // Ex: "ABC123"
   studentId: string;                // Student to be linked
   studentName: string;              // For display
+  academyId?: string;               // Academy that owns this code (extracted from doc path)
 
   createdBy: string;                // Admin who generated
   createdAt: Date;
@@ -631,6 +635,9 @@ export interface Academy {
   city?: string;
   state?: string;
   zipCode?: string;
+
+  // Responsible Person (for Asaas onboarding)
+  responsibleBirthDate?: string;    // YYYY-MM-DD
 
   // Financial Settings
   pixKey?: string;

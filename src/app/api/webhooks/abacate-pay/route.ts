@@ -277,7 +277,7 @@ async function handleFinancialPayment(
     return;
   }
 
-  const financial Data = financialSnap.data();
+  const financialData = financialSnap.data();
   const studentId = financialData?.studentId;
 
   await financialRef.update({
@@ -505,7 +505,11 @@ async function notifyStudent(
       userId,
       title: data.title,
       body: data.message,
-      data: { type: data.type, academyId, financialId: data.financialId },
+      data: {
+        type: data.type,
+        academyId,
+        ...(data.financialId && { financialId: data.financialId })
+      },
     });
   } catch (error) {
     console.error('Error notifying student:', error);

@@ -56,7 +56,7 @@ import {
   XAxis,
   YAxis,
   CartesianGrid,
-  Tooltip,
+  Tooltip as RechartsTooltip,
   ResponsiveContainer,
 } from 'recharts';
 
@@ -600,7 +600,7 @@ export default function CarteiraPage() {
                         tickFormatter={(value) => `R$${value}`}
                         width={60}
                       />
-                      <Tooltip
+                      <RechartsTooltip
                         contentStyle={{
                           backgroundColor: theme.palette.background.paper,
                           borderRadius: 8,

@@ -745,7 +745,7 @@ export default function CreateAcademyPage() {
                 Aceito os{' '}
                 <Typography
                   component="a"
-                  href="https://bjjeasy.netlify.app/termsofservice"
+                  href="/termsofservice"
                   target="_blank"
                   rel="noopener noreferrer"
                   sx={{

@@ -1,9 +1,6 @@
-import type { Metadata } from 'next';
-import { Box, Container, Typography, Paper } from '@mui/material';
+'use client';
 
-export const metadata: Metadata = {
-  title: 'Política de Privacidade',
-};
+import { Box, Container, Typography, Paper } from '@mui/material';
 
 export default function PrivacyPage() {
   return (

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Box,
@@ -12,9 +12,10 @@ import {
   InputAdornment,
   IconButton,
   Divider,
-  Chip,
   Checkbox,
   FormControlLabel,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
 import {
   Eye,
@@ -29,12 +30,7 @@ import {
   GraduationCap,
   MessageCircle,
   Sparkles,
-  Users,
-  Calendar,
-  BarChart3,
-  Shield,
-  XCircle,
-  Loader2,
+  FileText,
 } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
@@ -82,10 +78,10 @@ function WhatsAppButton() {
 }
 
 // ============================================
-// Slug Generator
+// Slug Generator (automatic from name + timestamp)
 // ============================================
 function generateSlug(name: string): string {
-  return name
+  const slug = name
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -93,8 +89,74 @@ function generateSlug(name: string): string {
     .replace(/\s+/g, '-')
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
-    .substring(0, 50);
+    .substring(0, 30);
+
+  // Add timestamp for uniqueness
+  const timestamp = Date.now().toString().substring(6);
+  return `${slug}-${timestamp}`;
 }
+
+// ============================================
+// CPF/CNPJ Helpers
+// ============================================
+const formatCpf = (value: string): string => {
+  const digits = value.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+};
+
+const formatCnpj = (value: string): string => {
+  const digits = value.replace(/\D/g, '').slice(0, 14);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12)}`;
+};
+
+const validateCpf = (cpf: string): boolean => {
+  const digits = cpf.replace(/\D/g, '');
+  if (digits.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(digits)) return false;
+
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(digits[i]) * (10 - i);
+  let rest = (sum * 10) % 11;
+  if (rest === 10) rest = 0;
+  if (rest !== parseInt(digits[9])) return false;
+
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(digits[i]) * (11 - i);
+  rest = (sum * 10) % 11;
+  if (rest === 10) rest = 0;
+  if (rest !== parseInt(digits[10])) return false;
+
+  return true;
+};
+
+const validateCnpj = (cnpj: string): boolean => {
+  const digits = cnpj.replace(/\D/g, '');
+  if (digits.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(digits)) return false;
+
+  const weights1 = [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += parseInt(digits[i]) * weights1[i];
+  let rest = sum % 11;
+  const digit1 = rest < 2 ? 0 : 11 - rest;
+  if (digit1 !== parseInt(digits[12])) return false;
+
+  const weights2 = [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  sum = 0;
+  for (let i = 0; i < 13; i++) sum += parseInt(digits[i]) * weights2[i];
+  rest = sum % 11;
+  const digit2 = rest < 2 ? 0 : 11 - rest;
+  if (digit2 !== parseInt(digits[13])) return false;
+
+  return true;
+};
 
 // ============================================
 // Step Indicator
@@ -156,23 +218,7 @@ function StepIndicator({ activeStep, steps }: { activeStep: number; steps: strin
 }
 
 // ============================================
-// Feature Chips
-// ============================================
-const FREE_FEATURES = [
-  { icon: Users, label: 'Ate 30 alunos' },
-  { icon: Calendar, label: 'Controle de presenca' },
-  { icon: GraduationCap, label: 'Sistema de graduacao' },
-  { icon: BarChart3, label: 'Relatorios basicos' },
-  { icon: Shield, label: 'Painel administrativo' },
-];
-
-// ============================================
-// Step Types
-// ============================================
-type Step = 0 | 1 | 2;
-
-// ============================================
-// Confetti Particle (for success step)
+// Confetti Particles (for success step)
 // ============================================
 function ConfettiParticles() {
   const particles = useMemo(() =>
@@ -186,7 +232,7 @@ function ConfettiParticles() {
       ],
       size: 4 + Math.random() * 8,
     }))
-  , []);
+    , []);
 
   return (
     <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 200, overflow: 'hidden', pointerEvents: 'none' }}>
@@ -210,6 +256,12 @@ function ConfettiParticles() {
 }
 
 // ============================================
+// Step Types
+// ============================================
+type Step = 0 | 1 | 2;
+type DocumentType = 'cpf' | 'cnpj';
+
+// ============================================
 // Main Component
 // ============================================
 export default function CreateAcademyPage() {
@@ -229,72 +281,9 @@ export default function CreateAcademyPage() {
 
   // Academy form
   const [academyName, setAcademyName] = useState('');
-  const [academySlug, setAcademySlug] = useState('');
-  const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [documentType, setDocumentType] = useState<DocumentType>('cpf');
+  const [documentNumber, setDocumentNumber] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-
-  // Slug availability
-  const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null);
-  const [checkingSlug, setCheckingSlug] = useState(false);
-  const slugCheckTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Check slug availability via API route (no auth required)
-  const checkSlugAvailability = useCallback(async (slug: string) => {
-    if (slug.length < 3) {
-      setSlugAvailable(null);
-      return;
-    }
-
-    setCheckingSlug(true);
-    try {
-      const res = await fetch(`/api/check-slug?slug=${encodeURIComponent(slug)}`);
-      const data = await res.json();
-      setSlugAvailable(data.available === true);
-    } catch {
-      setSlugAvailable(null);
-    } finally {
-      setCheckingSlug(false);
-    }
-  }, []);
-
-  // Debounced slug check
-  const debouncedSlugCheck = useCallback((slug: string) => {
-    if (slugCheckTimeout.current) {
-      clearTimeout(slugCheckTimeout.current);
-    }
-    setSlugAvailable(null);
-    if (slug.length >= 3) {
-      slugCheckTimeout.current = setTimeout(() => {
-        checkSlugAvailability(slug);
-      }, 500);
-    }
-  }, [checkSlugAvailability]);
-
-  // Clean up timeout
-  useEffect(() => {
-    return () => {
-      if (slugCheckTimeout.current) {
-        clearTimeout(slugCheckTimeout.current);
-      }
-    };
-  }, []);
-
-  // Auto-generate slug from academy name
-  const handleAcademyNameChange = useCallback((value: string) => {
-    setAcademyName(value);
-    if (!slugManuallyEdited) {
-      const newSlug = generateSlug(value);
-      setAcademySlug(newSlug);
-      debouncedSlugCheck(newSlug);
-    }
-  }, [slugManuallyEdited, debouncedSlugCheck]);
-
-  const handleSlugChange = useCallback((value: string) => {
-    const newSlug = generateSlug(value);
-    setAcademySlug(newSlug);
-    setSlugManuallyEdited(true);
-    debouncedSlugCheck(newSlug);
-  }, [debouncedSlugCheck]);
 
   // Validation for step 1
   const isStep1Valid = useMemo(() => {
@@ -308,8 +297,13 @@ export default function CreateAcademyPage() {
 
   // Validation for step 2
   const isStep2Valid = useMemo(() => {
-    return academyName.trim().length >= 3 && academySlug.length >= 3 && slugAvailable === true && acceptedTerms;
-  }, [academyName, academySlug, slugAvailable, acceptedTerms]);
+    const docDigits = documentNumber.replace(/\D/g, '');
+    const isDocValid = documentType === 'cpf'
+      ? docDigits.length === 11 && validateCpf(documentNumber)
+      : docDigits.length === 14 && validateCnpj(documentNumber);
+
+    return academyName.trim().length >= 3 && isDocValid && acceptedTerms;
+  }, [academyName, documentType, documentNumber, acceptedTerms]);
 
   // ============================================
   // Handle Next Step
@@ -348,25 +342,35 @@ export default function CreateAcademyPage() {
         setError('Nome da academia deve ter pelo menos 3 caracteres');
         return;
       }
-      if (academySlug.length < 3) {
-        setError('Identificador deve ter pelo menos 3 caracteres');
-        return;
+
+      const docDigits = documentNumber.replace(/\D/g, '');
+      if (documentType === 'cpf') {
+        if (docDigits.length !== 11) {
+          setError('CPF deve ter 11 digitos');
+          return;
+        }
+        if (!validateCpf(documentNumber)) {
+          setError('CPF invalido');
+          return;
+        }
+      } else {
+        if (docDigits.length !== 14) {
+          setError('CNPJ deve ter 14 digitos');
+          return;
+        }
+        if (!validateCnpj(documentNumber)) {
+          setError('CNPJ invalido');
+          return;
+        }
       }
-      if (slugAvailable === false) {
-        setError('Este identificador ja esta em uso. Escolha outro.');
-        return;
-      }
-      if (slugAvailable === null) {
-        setError('Aguarde a verificacao do identificador.');
-        return;
-      }
+
       if (!acceptedTerms) {
-        setError('Você precisa aceitar os Termos de Serviço para continuar.');
+        setError('Voce precisa aceitar os Termos de Servico para continuar.');
         return;
       }
       handleCreateAcademy();
     }
-  }, [activeStep, professorName, email, password, confirmPassword, academyName, academySlug, slugAvailable, acceptedTerms]);
+  }, [activeStep, professorName, email, password, confirmPassword, academyName, documentType, documentNumber, acceptedTerms]);
 
   // ============================================
   // Create Academy
@@ -376,15 +380,9 @@ export default function CreateAcademyPage() {
       setLoading(true);
       setError('');
 
-      // Double-check slug availability before creating
-      const checkRes = await fetch(`/api/check-slug?slug=${encodeURIComponent(academySlug)}`);
-      const checkData = await checkRes.json();
-      if (!checkData.available) {
-        setError('Este identificador ja esta em uso. Escolha outro.');
-        setSlugAvailable(false);
-        setLoading(false);
-        return;
-      }
+      // Generate slug automatically from academy name
+      const academySlug = generateSlug(academyName.trim());
+      const docDigits = documentNumber.replace(/\D/g, '');
 
       // Step 1: Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
@@ -418,6 +416,9 @@ export default function CreateAcademyPage() {
         abacatePayEnabled: false,
         autoGraduationEnabled: false,
         studentCheckinEnabled: true,
+        // Owner document info
+        ownerDocumentType: documentType,
+        ownerDocumentNumber: docDigits,
       };
 
       await setDoc(doc(db, 'academies', academySlug), academyData);
@@ -446,7 +447,6 @@ export default function CreateAcademyPage() {
       });
 
       // Step 6: Create userAcademyMapping with academyDetails
-      // Note: top-level 'role' is required by Firestore security rules for academy creation
       await setDoc(doc(db, 'userAcademyMapping', user.uid), {
         role: 'admin',
         academyIds: [academySlug],
@@ -475,8 +475,6 @@ export default function CreateAcademyPage() {
           setError('Senha muito fraca');
         } else if (errorMessage.includes('permission-denied') || errorMessage.includes('permission denied')) {
           setError('Erro de permissao. Entre em contato com o suporte.');
-        } else if (errorMessage.includes('already-exists') || errorMessage.includes('document already exists')) {
-          setError('Este identificador de academia ja existe. Escolha outro nome.');
         } else if (errorMessage.includes('network')) {
           setError('Erro de conexao. Verifique sua internet.');
         } else {
@@ -488,28 +486,7 @@ export default function CreateAcademyPage() {
     } finally {
       setLoading(false);
     }
-  }, [professorName, email, password, academyName, academySlug]);
-
-  // ============================================
-  // Slug status helper
-  // ============================================
-  const slugStatusIcon = useMemo(() => {
-    if (academySlug.length < 3) return null;
-    if (checkingSlug) return <Loader2 size={18} color="#999" className="animate-spin" />;
-    if (slugAvailable === true) return <CheckCircle size={18} color="#22c55e" />;
-    if (slugAvailable === false) return <XCircle size={18} color="#ef4444" />;
-    return null;
-  }, [academySlug, checkingSlug, slugAvailable]);
-
-  const slugHelperText = useMemo(() => {
-    if (academySlug.length < 3) {
-      return 'Identificador unico da academia (minimo 3 caracteres)';
-    }
-    if (checkingSlug) return 'Verificando disponibilidade...';
-    if (slugAvailable === true) return 'Identificador disponivel!';
-    if (slugAvailable === false) return 'Este identificador ja esta em uso. Escolha outro.';
-    return '';
-  }, [academySlug, checkingSlug, slugAvailable]);
+  }, [professorName, email, password, academyName, documentType, documentNumber]);
 
   // ============================================
   // Animation variants
@@ -540,20 +517,11 @@ export default function CreateAcademyPage() {
             transition={{ delay: 0.1, duration: 0.4 }}
           >
             <Box
-              sx={{
-                width: 80,
-                height: 80,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px',
-                boxShadow: '0 8px 24px rgba(102, 126, 234, 0.3)',
-              }}
-            >
-              <User size={36} color="white" />
-            </Box>
+              component="img"
+              src="/bjjeasy_logo.png"
+              alt="BJJEasy"
+              sx={{ width: 80, height: 80, objectFit: 'contain', margin: '0 auto 16px' }}
+            />
           </motion.div>
           <Typography variant="h5" fontWeight={700} gutterBottom>
             Seus Dados
@@ -664,20 +632,11 @@ export default function CreateAcademyPage() {
             transition={{ delay: 0.1, duration: 0.4 }}
           >
             <Box
-              sx={{
-                width: 80,
-                height: 80,
-                borderRadius: '50%',
-                background: 'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                margin: '0 auto 16px',
-                boxShadow: '0 8px 24px rgba(245, 87, 108, 0.3)',
-              }}
-            >
-              <Building2 size={36} color="white" />
-            </Box>
+              component="img"
+              src="/bjjeasy_logo.png"
+              alt="BJJEasy"
+              sx={{ width: 80, height: 80, objectFit: 'contain', margin: '0 auto 16px' }}
+            />
           </motion.div>
           <Typography variant="h5" fontWeight={700} gutterBottom>
             Dados da Academia
@@ -690,9 +649,9 @@ export default function CreateAcademyPage() {
         <TextField
           label="Nome da Academia"
           value={academyName}
-          onChange={(e) => handleAcademyNameChange(e.target.value)}
+          onChange={(e) => setAcademyName(e.target.value)}
           fullWidth
-          sx={{ mb: 2 }}
+          sx={{ mb: 3 }}
           placeholder="Ex: Team Alpha Jiu-Jitsu"
           InputProps={{
             startAdornment: (
@@ -703,34 +662,52 @@ export default function CreateAcademyPage() {
           }}
         />
 
-        <TextField
-          label="Identificador"
-          value={academySlug}
-          onChange={(e) => handleSlugChange(e.target.value)}
-          fullWidth
-          sx={{ mb: 1 }}
-          placeholder="team-alpha"
-          helperText={slugHelperText}
-          error={slugAvailable === false}
-          FormHelperTextProps={{
-            sx: {
-              color: slugAvailable === true ? '#22c55e' : slugAvailable === false ? '#ef4444' : undefined,
-            },
+        {/* Document type toggle */}
+        <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+          Documento do responsavel
+        </Typography>
+        <ToggleButtonGroup
+          value={documentType}
+          exclusive
+          onChange={(_, value) => {
+            if (value) {
+              setDocumentType(value);
+              setDocumentNumber('');
+            }
           }}
+          fullWidth
+          sx={{ mb: 2 }}
+        >
+          <ToggleButton value="cpf" sx={{ textTransform: 'none' }}>
+            <User size={16} style={{ marginRight: 8 }} />
+            CPF (Pessoa Fisica)
+          </ToggleButton>
+          <ToggleButton value="cnpj" sx={{ textTransform: 'none' }}>
+            <Building2 size={16} style={{ marginRight: 8 }} />
+            CNPJ (Empresa)
+          </ToggleButton>
+        </ToggleButtonGroup>
+
+        <TextField
+          label={documentType === 'cpf' ? 'CPF' : 'CNPJ'}
+          value={documentNumber}
+          onChange={(e) => setDocumentNumber(
+            documentType === 'cpf' ? formatCpf(e.target.value) : formatCnpj(e.target.value)
+          )}
+          fullWidth
+          sx={{ mb: 2 }}
+          placeholder={documentType === 'cpf' ? '000.000.000-00' : '00.000.000/0000-00'}
+          inputProps={{ maxLength: documentType === 'cpf' ? 14 : 18 }}
           InputProps={{
-            endAdornment: slugStatusIcon ? (
-              <InputAdornment position="end">
-                {checkingSlug ? (
-                  <CircularProgress size={18} />
-                ) : (
-                  slugStatusIcon
-                )}
+            startAdornment: (
+              <InputAdornment position="start">
+                <FileText size={20} color="#666" />
               </InputAdornment>
-            ) : undefined,
+            ),
           }}
         />
 
-        {/* Termos de Serviço */}
+        {/* Terms checkbox */}
         <Box sx={{ mt: 2, mb: 2 }}>
           <FormControlLabel
             control={
@@ -754,43 +731,11 @@ export default function CreateAcademyPage() {
                     '&:hover': { textDecoration: 'underline' },
                   }}
                 >
-                  Termos e Condições de Serviço
+                  Termos e Condicoes de Servico
                 </Typography>
               </Typography>
             }
           />
-        </Box>
-
-        {/* Feature chips - what's included in free plan */}
-        <Box
-          sx={{
-            mt: 3,
-            p: 2,
-            bgcolor: '#f8f9fa',
-            borderRadius: 2,
-            border: '1px solid #e9ecef',
-          }}
-        >
-          <Typography variant="body2" fontWeight={600} sx={{ mb: 1.5, display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            <Sparkles size={16} color="#f59e0b" />
-            Incluso no plano gratuito (30 dias):
-          </Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-            {FREE_FEATURES.map((feature) => (
-              <Chip
-                key={feature.label}
-                icon={<feature.icon size={14} />}
-                label={feature.label}
-                size="small"
-                sx={{
-                  bgcolor: 'white',
-                  border: '1px solid #e0e0e0',
-                  fontSize: '0.75rem',
-                  '& .MuiChip-icon': { color: '#666' },
-                }}
-              />
-            ))}
-          </Box>
         </Box>
       </Box>
     </motion.div>
@@ -864,7 +809,7 @@ export default function CreateAcademyPage() {
             <Button
               variant="contained"
               size="large"
-              onClick={() => router.push('/dashboard')}
+              onClick={() => router.push('/login')}
               startIcon={<Sparkles size={20} />}
               sx={{
                 minWidth: 200,
@@ -873,11 +818,11 @@ export default function CreateAcademyPage() {
                 fontSize: '1rem',
               }}
             >
-              Acessar Meu Painel
+              Fazer Login Agora
             </Button>
 
             <Typography variant="caption" color="text.secondary">
-              Voce sera redirecionado para o dashboard da sua academia
+              Use suas credenciais para acessar
             </Typography>
           </Box>
         </motion.div>

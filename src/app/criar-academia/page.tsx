@@ -13,6 +13,8 @@ import {
   IconButton,
   Divider,
   Chip,
+  Checkbox,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Eye,
@@ -229,6 +231,7 @@ export default function CreateAcademyPage() {
   const [academyName, setAcademyName] = useState('');
   const [academySlug, setAcademySlug] = useState('');
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   // Slug availability
   const [slugAvailable, setSlugAvailable] = useState<boolean | null>(null);
@@ -305,8 +308,8 @@ export default function CreateAcademyPage() {
 
   // Validation for step 2
   const isStep2Valid = useMemo(() => {
-    return academyName.trim().length >= 3 && academySlug.length >= 3 && slugAvailable === true;
-  }, [academyName, academySlug, slugAvailable]);
+    return academyName.trim().length >= 3 && academySlug.length >= 3 && slugAvailable === true && acceptedTerms;
+  }, [academyName, academySlug, slugAvailable, acceptedTerms]);
 
   // ============================================
   // Handle Next Step
@@ -357,9 +360,13 @@ export default function CreateAcademyPage() {
         setError('Aguarde a verificacao do identificador.');
         return;
       }
+      if (!acceptedTerms) {
+        setError('Você precisa aceitar os Termos de Serviço para continuar.');
+        return;
+      }
       handleCreateAcademy();
     }
-  }, [activeStep, professorName, email, password, confirmPassword, academyName, academySlug, slugAvailable]);
+  }, [activeStep, professorName, email, password, confirmPassword, academyName, academySlug, slugAvailable, acceptedTerms]);
 
   // ============================================
   // Create Academy
@@ -722,6 +729,37 @@ export default function CreateAcademyPage() {
             ) : undefined,
           }}
         />
+
+        {/* Termos de Serviço */}
+        <Box sx={{ mt: 2, mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={acceptedTerms}
+                onChange={(e) => setAcceptedTerms(e.target.checked)}
+                color="primary"
+              />
+            }
+            label={
+              <Typography variant="body2" color="text.secondary">
+                Aceito os{' '}
+                <Typography
+                  component="a"
+                  href="https://bjjeasy.netlify.app/termsofservice"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  sx={{
+                    color: 'primary.main',
+                    textDecoration: 'none',
+                    '&:hover': { textDecoration: 'underline' },
+                  }}
+                >
+                  Termos e Condições de Serviço
+                </Typography>
+              </Typography>
+            }
+          />
+        </Box>
 
         {/* Feature chips - what's included in free plan */}
         <Box

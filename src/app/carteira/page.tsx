@@ -24,6 +24,7 @@ import {
   SelectChangeEvent,
   CircularProgress,
   alpha,
+  Tooltip,
 } from '@mui/material';
 import {
   Wallet,
@@ -453,23 +454,31 @@ export default function CarteiraPage() {
                   >
                     <RefreshCw size={20} className={refreshing ? 'spin' : ''} />
                   </IconButton>
-                  <Button
-                    variant="contained"
-                    startIcon={<Banknote size={18} />}
-                    onClick={() => setWithdrawalOpen(true)}
-                    disabled={!wallet || wallet.availableBalance < 100}
-                    sx={{
-                      bgcolor: 'white',
-                      color: theme.palette.primary.main,
-                      fontWeight: 600,
-                      borderRadius: 2,
-                      px: 3,
-                      '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' },
-                      '&:disabled': { bgcolor: 'rgba(255,255,255,0.3)', color: 'rgba(255,255,255,0.5)' },
-                    }}
+                  <Tooltip
+                    title="Taxa de R$ 0,80 por saque será deduzida do valor total"
+                    placement="left"
+                    arrow
                   >
-                    Sacar
-                  </Button>
+                    <span>
+                      <Button
+                        variant="contained"
+                        startIcon={<Banknote size={18} />}
+                        onClick={() => setWithdrawalOpen(true)}
+                        disabled={!wallet || wallet.availableBalance < 100}
+                        sx={{
+                          bgcolor: 'white',
+                          color: theme.palette.primary.main,
+                          fontWeight: 600,
+                          borderRadius: 2,
+                          px: 3,
+                          '&:hover': { bgcolor: 'rgba(255,255,255,0.9)' },
+                          '&:disabled': { bgcolor: 'rgba(255,255,255,0.3)', color: 'rgba(255,255,255,0.5)' },
+                        }}
+                      >
+                        Sacar
+                      </Button>
+                    </span>
+                  </Tooltip>
                 </Box>
               </Box>
 
@@ -508,6 +517,26 @@ export default function CarteiraPage() {
               </Box>
             </Box>
           </Paper>
+
+          {/* Informação sobre taxas */}
+          <Alert
+            severity="info"
+            icon={<AlertCircle size={20} />}
+            sx={{
+              borderRadius: 2,
+              border: '1px solid',
+              borderColor: 'info.main',
+            }}
+          >
+            <Typography variant="body2" fontWeight={500}>
+              Informação sobre Taxas
+            </Typography>
+            <Typography variant="body2" sx={{ mt: 0.5 }}>
+              Uma taxa de <strong>R$ 0,80</strong> é cobrada pelo gateway de pagamento (AbacatePay)
+              em cada transação de pagamento recebido e em cada saque realizado. Esta taxa é
+              automaticamente deduzida do valor total.
+            </Typography>
+          </Alert>
 
           {/* Content Grid */}
           <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: '1fr 400px' }, gap: 3 }}>
@@ -686,6 +715,11 @@ export default function CarteiraPage() {
                             <Typography variant="caption" color="text.secondary">
                               {format(t.createdAt, "dd MMM 'às' HH:mm", { locale: ptBR })}
                             </Typography>
+                            {t.fee && t.fee > 0 && (
+                              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                                Taxa: {formatCurrency(t.fee)}
+                              </Typography>
+                            )}
                           </Box>
                           <Typography
                             variant="body2"

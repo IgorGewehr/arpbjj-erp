@@ -813,6 +813,7 @@ export interface WalletTransaction {
   // Transaction details
   type: TransactionType;
   amount: number;                       // In cents (BRL)
+  fee?: number;                         // Fee charged (in cents)
   status: TransactionStatus;
 
   // References

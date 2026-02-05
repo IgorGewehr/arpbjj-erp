@@ -277,6 +277,9 @@ async function handleFinancialPayment(
     return;
   }
 
+  const financial Data = financialSnap.data();
+  const studentId = financialData?.studentId;
+
   await financialRef.update({
     status: 'paid',
     paymentDate: FieldValue.serverTimestamp(),
@@ -292,6 +295,17 @@ async function handleFinancialPayment(
     message: `${studentName || 'Aluno'} pagou R$ ${(amount / 100).toFixed(2)} via PIX.`,
     financialId,
   });
+
+  // Notify student of payment confirmation
+  if (studentId) {
+    await notifyStudent(academyId, studentId, {
+      title: 'Pagamento Confirmado',
+      message: `Seu pagamento de R$ ${(amount / 100).toFixed(2)} foi confirmado!`,
+      actionUrl: '/portal/financeiro',
+      type: 'payment_confirmed',
+      financialId,
+    });
+  }
 }
 
 // ============================================
@@ -439,6 +453,62 @@ async function notifyAdmin(
     });
   } catch (error) {
     console.error('Error notifying admin:', error);
+  }
+}
+
+// ============================================
+// Notify Student
+// ============================================
+async function notifyStudent(
+  academyId: string,
+  studentId: string,
+  data: {
+    title: string;
+    message: string;
+    type: string;
+    financialId?: string;
+    actionUrl?: string;
+  }
+): Promise<void> {
+  try {
+    // Get student's userId
+    const studentSnap = await adminDb.doc(`academies/${academyId}/students/${studentId}`).get();
+    if (!studentSnap.exists) {
+      console.error(`[WEBHOOK] notifyStudent: Student ${studentId} not found`);
+      return;
+    }
+
+    const userId = studentSnap.data()?.userId;
+    if (!userId) {
+      console.error(`[WEBHOOK] notifyStudent: No userId for student ${studentId}`);
+      return;
+    }
+
+    // Create in-app notification
+    await adminDb.collection(`academies/${academyId}/notifications`).add({
+      academyId,
+      userId,
+      type: data.type,
+      priority: 'normal',
+      title: data.title,
+      message: data.message,
+      financialId: data.financialId,
+      actionUrl: data.actionUrl,
+      read: false,
+      channels: ['in_app', 'push'],
+      sentVia: ['in_app'],
+      createdAt: FieldValue.serverTimestamp(),
+    });
+
+    // Send push notification
+    await pushNotificationService.sendToUser({
+      userId,
+      title: data.title,
+      body: data.message,
+      data: { type: data.type, academyId, financialId: data.financialId },
+    });
+  } catch (error) {
+    console.error('Error notifying student:', error);
   }
 }
 
@@ -696,7 +766,7 @@ export async function POST(request: NextRequest) {
     const { academyId, transaction, docRef } = result;
     console.log(`[WEBHOOK] Found transaction in academy ${academyId}, financialId: ${transaction.financialId}, status: ${transaction.status}`);
 
-    // Validate amount matches
+    // Validate amount matches (stored transaction amount)
     if (transaction.amount !== amount) {
       console.error(`[WEBHOOK] Amount mismatch: expected ${transaction.amount}, got ${amount}`);
       return NextResponse.json(
@@ -704,6 +774,10 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Validate webhook timestamp (prevent replay attacks beyond dedupe window)
+    // Note: AbacatePay doesn't provide timestamp in payload, so we rely on dedupe window
+    // and HMAC signature for replay protection
 
     // Process event
     switch (event) {

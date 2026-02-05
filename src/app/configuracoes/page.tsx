@@ -1132,7 +1132,7 @@ function PaymentsTab() {
       <Divider sx={{ my: 3 }} />
 
       {/* Asaas Integration */}
-      <Box>
+      <Box sx={{ mb: 3, opacity: 0.6 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
           <CreditCard size={20} color={theme.palette.primary.main} />
           <Box>
@@ -1148,48 +1148,26 @@ function PaymentsTab() {
         <FormControlLabel
           control={
             <Switch
-              checked={settings.asaasEnabled}
-              onChange={(e) =>
-                setSettings({ ...settings, asaasEnabled: e.target.checked })
-              }
+              checked={false}
+              disabled
               color="primary"
             />
           }
-          label="Ativar pagamentos via Asaas"
-        />
-
-        {settings.asaasEnabled && (
-          <Box sx={{ mt: 2 }}>
-            <Alert severity="success" sx={{ borderRadius: 2 }}>
-              <Typography variant="body2">
-                <strong>Asaas Ativo!</strong> - Alunos podem pagar via PIX e cartao de credito.
-                Os valores serao creditados na sua carteira e podem ser sacados para sua chave PIX.
-              </Typography>
-            </Alert>
-          </Box>
-        )}
-      </Box>
-
-      {/* KYC Section - only when Asaas is enabled */}
-      {settings.asaasEnabled && academyId && (
-        <>
-          <Divider sx={{ my: 2 }} />
-          <Box>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
-              <FileCheck size={20} color={theme.palette.info.main} />
-              <Box>
-                <Typography variant="subtitle1" fontWeight={600}>
-                  Verificacao de Documentos (KYC)
+          label={
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Typography variant="body1" fontWeight={500} color="text.secondary">
+                  Ativar pagamentos via Asaas
                 </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Envie documentos para verificacao e aprovacao da subconta
-                </Typography>
+                <Chip label="Em breve" size="small" color="warning" sx={{ height: 20, fontSize: '0.65rem' }} />
               </Box>
+              <Typography variant="caption" color="text.secondary">
+                Pagamentos via Asaas estarão disponíveis em breve
+              </Typography>
             </Box>
-            <KycSection academyId={academyId} />
-          </Box>
-        </>
-      )}
+          }
+        />
+      </Box>
 
       <Divider sx={{ my: 2 }} />
 

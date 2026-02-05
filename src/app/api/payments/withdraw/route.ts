@@ -46,6 +46,26 @@ function isValidPixKeyType(type: unknown): type is PixKeyType {
 }
 
 // ============================================
+// Validate PIX Key Format
+// ============================================
+function validatePixKey(key: string, type: PixKeyType): boolean {
+  switch (type) {
+    case 'cpf':
+      return /^\d{11}$/.test(key.replace(/\D/g, ''));
+    case 'cnpj':
+      return /^\d{14}$/.test(key.replace(/\D/g, ''));
+    case 'email':
+      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(key);
+    case 'phone':
+      return /^\d{10,11}$/.test(key.replace(/\D/g, ''));
+    case 'random':
+      return key.length >= 32;
+    default:
+      return false;
+  }
+}
+
+// ============================================
 // Get API Key from Environment
 // ============================================
 function getApiKey(): string | null {
@@ -84,15 +104,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 5. Validate user belongs to academy
-    if (user.academyId !== academyId) {
-      return createErrorResponse('Access denied: Invalid academy', 403);
-    }
-
-    // 6. Validate user is an admin of the academy
-    if (user.role !== 'admin') {
+    // 5. Validate user belongs to academy and is admin
+    if (user.role !== 'admin' || user.academyId !== academyId) {
       return createErrorResponse(
-        'Access denied: Only admins can request withdrawals',
+        'Access denied: Only academy admins can request withdrawals',
         403
       );
     }
@@ -121,6 +136,11 @@ export async function POST(request: NextRequest) {
     const sanitizedPixKey = sanitizeString(pixKey);
     if (!sanitizedPixKey) {
       return createErrorResponse('Invalid PIX key');
+    }
+
+    // Validate PIX key format
+    if (!validatePixKey(sanitizedPixKey, pixKeyType)) {
+      return createErrorResponse('Chave PIX inválida para o tipo especificado', 400);
     }
 
     // Format CPF/CNPJ with punctuation for AbacatePay API

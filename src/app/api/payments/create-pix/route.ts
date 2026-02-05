@@ -94,6 +94,11 @@ export async function POST(request: NextRequest) {
       return createErrorResponse('This payment has already been completed');
     }
 
+    // Re-validate amount against Firestore financial record
+    if (financialData.amount !== amount) {
+      return createErrorResponse('Valor não corresponde ao registro financeiro', 400);
+    }
+
     // 10. Get API key
     const apiKey = getApiKey();
     if (!apiKey) {

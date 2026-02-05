@@ -29,9 +29,16 @@ export default function TermsOfServicePage() {
               Termos de Serviço
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              Última atualização: 29 de janeiro de 2026
+              Última atualização: 05 de Fevereiro de 2026
             </Typography>
           </Box>
+
+          <Section title="Mensagem para Mestres de Jiu-Jitsu">
+            Este sistema foi criado para facilitar a gestão da sua academia. Ao usar nosso módulo
+            financeiro, você entende que nós apenas processamos os pagamentos para você e que o
+            dinheiro das mensalidades e vendas é seu, ficando disponível para saque conforme as
+            regras abaixo. Nossa empresa é apenas uma facilitadora tecnológica.
+          </Section>
 
           <Section title="1. Aceitação dos Termos">
             Ao acessar e utilizar o aplicativo BJJEasy (&quot;Aplicativo&quot;), você concorda com
@@ -100,6 +107,18 @@ export default function TermsOfServicePage() {
             <SubSection title="5.3">
               A academia é responsável pela gestão das cobranças de seus alunos. O BJJEasy atua
               como ferramenta de gestão, não como intermediador financeiro.
+            </SubSection>
+            <SubSection title="5.4">
+              A [NOME DA LTDA] atua exclusivamente como custodiante e intermediária dos valores
+              processados através do sistema de pagamentos. Os valores recebidos de mensalidades
+              e vendas são de propriedade da academia, não constituindo faturamento da empresa
+              prestadora do serviço.
+            </SubSection>
+            <SubSection title="5.5">
+              Os valores ficam disponíveis para saque após a liquidação do gateway de pagamento
+              (AbacatePay). Uma taxa de processamento de R$ 0,80 por transação de saque é cobrada
+              pelo gateway e é de responsabilidade da academia. Esta taxa será deduzida do valor
+              total do saque solicitado.
             </SubSection>
           </Section>
 

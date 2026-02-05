@@ -106,7 +106,7 @@ export default function TermsOfServicePage() {
               como ferramenta de gestão, não como intermediador financeiro.
             </SubSection>
             <SubSection title="5.4">
-              A [NOME DA LTDA] atua exclusivamente como custodiante e intermediária dos valores
+              A Mambapay Ltda atua exclusivamente como custodiante e intermediária dos valores
               processados através do sistema de pagamentos. Os valores recebidos de mensalidades
               e vendas são de propriedade da academia, não constituindo faturamento da empresa
               prestadora do serviço.

@@ -182,17 +182,23 @@ service cloud.firestore {
 
       // Users can create their own mapping:
       // 1. During normal signup (empty mapping with no academies)
-      // 2. During academy creation (mapping with admin role)
+      // 2. During academy creation (mapping with admin role in root)
+      // 3. During student registration via link code (role in academyDetails)
       allow create: if isAuthenticated()
                     && request.auth.uid == userId
                     && (
                       // Empty mapping during normal signup
                       (request.resource.data.academyIds.size() == 0)
                       ||
-                      // Admin mapping during academy creation
+                      // Admin mapping during academy creation (legacy format with root-level role)
                       (request.resource.data.role == 'admin'
                        && request.resource.data.academyIds.size() == 1
                        && request.resource.data.primaryAcademyId == request.resource.data.academyIds[0])
+                      ||
+                      // Student/any role mapping during registration (role in academyDetails)
+                      (request.resource.data.academyIds.size() >= 1
+                       && request.resource.data.primaryAcademyId in request.resource.data.academyIds
+                       && request.resource.data.keys().hasAll(['academyDetails']))
                     );
 
       // Users can update their own mapping to add/remove academies
@@ -332,10 +338,21 @@ service cloud.firestore {
       // Link Codes Subcollection
       // ============================================
       match /linkCodes/{codeId} {
+        // Staff can read all codes
+        allow read: if isAcademyStaff(academyId);
+
+        // Students can read codes from their academy
         allow read: if belongsToAcademy(academyId);
+
+        // CRITICAL: Allow unauthenticated users to read UNUSED codes
+        // This is necessary for account registration with link codes
+        // Users can query via collectionGroup to find their code across all academies
+        allow read: if resource.data.usedAt == null;
+
+        // Staff can create/delete codes
         allow write: if isAcademyStaff(academyId);
 
-        // Allow marking as used during account linking
+        // Allow marking as used during account linking (authenticated users only)
         allow update: if isAuthenticated()
                       && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['usedAt', 'usedBy'])

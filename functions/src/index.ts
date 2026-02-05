@@ -200,6 +200,7 @@ async function createInternalNotification(
       read: false,
       channels: ['in_app'],
       sentVia: ['in_app'],
+      origin: 'system', // Mark as system-generated to avoid duplicate push in onNotificationCreated
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
@@ -412,6 +413,54 @@ export const onTimelineEventCreated = functions.firestore
     console.log(`Notification sent to user ${userId} for timeline event ${eventId}`);
   });
 
+/**
+ * Trigger: New in-app notification created
+ * Action: Send corresponding push notification if not created by system
+ * This handles notifications created directly by client apps (e.g. Store Orders)
+ */
+export const onNotificationCreated = functions.firestore
+  .document('academies/{academyId}/notifications/{notificationId}')
+  .onCreate(async (snapshot, context) => {
+    const { academyId, notificationId } = context.params;
+    const data = snapshot.data();
+
+    // Skip if created by system (already sent push via other triggers)
+    if (data.origin === 'system') {
+      return;
+    }
+
+    console.log(`New client notification created: ${notificationId} in academy ${academyId}`);
+
+    // Validate required fields
+    if (!data.userId || !data.title || !data.message) {
+      console.log('Missing required fields for push notification');
+      return;
+    }
+
+    // Convert Firestore Timestamp to ISO string for data payload if needed
+    const safeData: Record<string, string> = {
+      notificationId,
+      academyId,
+      type: data.type || 'system',
+    };
+
+    if (data.actionUrl) safeData.actionUrl = data.actionUrl;
+    if (data.studentId) safeData.studentId = data.studentId;
+    if (data.financialId) safeData.financialId = data.financialId;
+    if (data.competitionId) safeData.competitionId = data.competitionId;
+
+    // Send push notification
+    await sendToUser(
+      data.userId,
+      data.title,
+      data.message,
+      safeData
+    );
+
+    console.log(`Push sent for client notification ${notificationId}`);
+  });
+
+
 // ============================================
 // Cloud Functions - Scheduled (Cron Jobs)
 // ============================================
@@ -485,8 +534,10 @@ export const scheduledOverdueCheck = functions.pubsub
             await createInternalNotification(academyId, userId, 'financial', 'high',
               'Pagamento Atrasado',
               `Sua mensalidade de R$ ${(financial.amount / 100).toFixed(2)} está atrasada há ${daysOverdue} dias.`,
-              { actionUrl: '/portal/financeiro', actionLabel: 'Regularizar',
-                financialId: financialDoc.id, expiresInDays: 30 }
+              {
+                actionUrl: '/portal/financeiro', actionLabel: 'Regularizar',
+                financialId: financialDoc.id, expiresInDays: 30,
+              }
             );
           }
         }
@@ -572,8 +623,10 @@ export const scheduledDueSoonReminder = functions.pubsub
             await createInternalNotification(academyId, userId, 'financial', 'normal',
               'Lembrete de Pagamento',
               reminderMsg,
-              { actionUrl: '/portal/financeiro', actionLabel: 'Ver detalhes',
-                financialId: financialDoc.id, expiresInDays: 7 }
+              {
+                actionUrl: '/portal/financeiro', actionLabel: 'Ver detalhes',
+                financialId: financialDoc.id, expiresInDays: 7,
+              }
             );
             console.log(`Sent due soon reminder to user ${userId} for financial ${financialDoc.id}`);
           }
@@ -1288,7 +1341,7 @@ export const createCardPayment = functions.https.onCall(async (data, context) =>
             );
             const productSnap = await productRef.get();
             if (productSnap.exists &&
-                productSnap.data()?.stockType === 'in_stock') {
+              productSnap.data()?.stockType === 'in_stock') {
               await productRef.update({
                 stockQuantity: admin.firestore.FieldValue.increment(
                   -item.quantity

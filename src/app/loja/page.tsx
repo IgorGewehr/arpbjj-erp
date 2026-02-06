@@ -360,7 +360,7 @@ export default function LojaPage() {
   if (!academy?.storeEnabled) {
     return (
       <ProtectedRoute>
-        <AppLayout title="Loja">
+        <AppLayout>
           <Box
             sx={{
               display: 'flex',
@@ -393,7 +393,7 @@ export default function LojaPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Loja">
+      <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
           <Box

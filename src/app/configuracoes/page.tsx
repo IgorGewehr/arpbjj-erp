@@ -1894,7 +1894,7 @@ export default function ConfiguracoesPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Configuracoes">
+      <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
           <Box sx={{ mb: 3 }}>

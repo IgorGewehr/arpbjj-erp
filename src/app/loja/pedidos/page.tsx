@@ -432,7 +432,7 @@ export default function PedidosPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Pedidos">
+      <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>

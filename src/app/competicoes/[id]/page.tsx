@@ -684,7 +684,7 @@ export default function CompetitionDetailsPage() {
   if (loading) {
     return (
       <ProtectedRoute>
-        <AppLayout title="Carregando...">
+        <AppLayout>
           <Box sx={{ p: 3 }}>
             <Skeleton variant="rounded" height={200} sx={{ mb: 3 }} />
             <Skeleton variant="rounded" height={400} />
@@ -707,7 +707,7 @@ export default function CompetitionDetailsPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title={competition.name}>
+      <AppLayout>
         <Box sx={{ p: 3 }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>

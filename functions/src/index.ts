@@ -169,6 +169,40 @@ async function getStudentUserId(studentId: string, academyId: string): Promise<s
   return student?.linkedUserId || null;
 }
 
+/**
+ * Get the admin userId for an academy
+ * Checks multiple sources in order of priority:
+ * 1. ownerId field on academy document
+ * 2. adminUserId field on academy document
+ * 3. Users subcollection with role 'admin'
+ * @param {string} academyId - The academy ID
+ * @return {Promise<string | null>} The admin userId or null if not found
+ */
+async function getAcademyAdminUserId(academyId: string): Promise<string | null> {
+  // 1. Try from academy document root fields
+  const academySnap = await db.doc(`academies/${academyId}`).get();
+  if (!academySnap.exists) return null;
+
+  const academyData = academySnap.data();
+  const ownerId = academyData?.ownerId || academyData?.adminUserId;
+  if (ownerId) return ownerId;
+
+  // 2. Fallback: search in users subcollection for admin role
+  const adminsSnapshot = await db
+    .collection(`academies/${academyId}/users`)
+    .where('role', '==', 'admin')
+    .limit(1)
+    .get();
+
+  if (!adminsSnapshot.empty) {
+    const adminUserId = adminsSnapshot.docs[0].id;
+    console.log(`Found admin ${adminUserId} in users subcollection for academy ${academyId}`);
+    return adminUserId;
+  }
+
+  return null;
+}
+
 // ============================================
 // Internal Notification Helper
 // ============================================
@@ -229,10 +263,11 @@ async function notifyAdminCF(
   options?: { financialId?: string; studentId?: string }
 ): Promise<void> {
   try {
-    const academySnap = await db.doc(`academies/${academyId}`).get();
-    if (!academySnap.exists) return;
-    const adminUserId = academySnap.data()?.ownerId || academySnap.data()?.adminUserId;
-    if (!adminUserId) return;
+    const adminUserId = await getAcademyAdminUserId(academyId);
+    if (!adminUserId) {
+      console.log(`notifyAdminCF: No admin found for academy ${academyId}`);
+      return;
+    }
 
     // Internal notification
     await createInternalNotification(academyId, adminUserId, type, 'high', title, message, {
@@ -480,10 +515,10 @@ export const scheduledOverdueCheck = functions.pubsub
 
     for (const academyDoc of academiesSnapshot.docs) {
       const academyId = academyDoc.id;
-      const academy = academyDoc.data() as Academy;
 
-      // Skip if no admin user
-      if (!academy.adminUserId) {
+      // Get admin user for this academy
+      const adminId = await getAcademyAdminUserId(academyId);
+      if (!adminId) {
         console.log(`Academy ${academyId} has no admin user`);
         continue;
       }
@@ -545,7 +580,6 @@ export const scheduledOverdueCheck = functions.pubsub
 
       // Notify admin about overdue summary (push + internal)
       if (overdueCount > 0) {
-        const adminId = academy.ownerId || academy.adminUserId;
         const totalFormatted = (totalOverdueAmount / 100).toFixed(2);
         const summaryMsg = `Voce tem ${overdueCount} pagamento(s) atrasado(s) totalizando R$ ${totalFormatted}.`;
         await sendToUser(

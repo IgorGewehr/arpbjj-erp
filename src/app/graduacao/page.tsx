@@ -7,7 +7,7 @@ import { GraduationDashboard } from '@/components/features/graduation';
 export default function GraduacaoPage() {
   return (
     <ProtectedRoute>
-      <AppLayout title="Graduacao">
+      <AppLayout>
         <GraduationDashboard />
       </AppLayout>
     </ProtectedRoute>

@@ -260,7 +260,7 @@ export default function EditarProdutoPage() {
   if (loading || isAcademyLoading) {
     return (
       <ProtectedRoute>
-        <AppLayout title="Editar Produto">
+        <AppLayout>
           <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 800, mx: 'auto' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
               <Skeleton variant="circular" width={40} height={40} />
@@ -279,7 +279,7 @@ export default function EditarProdutoPage() {
   if (notFound) {
     return (
       <ProtectedRoute>
-        <AppLayout title="Produto nao encontrado">
+        <AppLayout>
           <Box
             sx={{
               display: 'flex',
@@ -309,7 +309,7 @@ export default function EditarProdutoPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Editar Produto">
+      <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 800, mx: 'auto' }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>

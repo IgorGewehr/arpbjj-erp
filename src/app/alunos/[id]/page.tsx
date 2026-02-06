@@ -677,7 +677,7 @@ export default function StudentProfilePage() {
   if (isLoading) {
     return (
       <ProtectedRoute>
-        <AppLayout title="Perfil do Aluno">
+        <AppLayout>
           <Box sx={{ p: { xs: 2, sm: 3 } }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
               <Skeleton variant="circular" width={40} height={40} />
@@ -704,7 +704,7 @@ export default function StudentProfilePage() {
   if (!student) {
     return (
       <ProtectedRoute>
-        <AppLayout title="Aluno nao encontrado">
+        <AppLayout>
           <Box sx={{ p: { xs: 2, sm: 3 } }}>
             <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
             <User size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
@@ -726,7 +726,7 @@ export default function StudentProfilePage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Perfil do Aluno">
+      <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>

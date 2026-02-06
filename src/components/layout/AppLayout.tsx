@@ -18,7 +18,6 @@ const SIDEBAR_COLLAPSED_KEY = 'sidebar_collapsed';
 // ============================================
 interface AppLayoutProps {
   children: ReactNode;
-  title?: string;
 }
 
 // ============================================
@@ -31,7 +30,7 @@ function getInitialCollapsedState(): boolean {
   return saved === 'true';
 }
 
-export function AppLayout({ children, title }: AppLayoutProps) {
+export function AppLayout({ children }: AppLayoutProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -92,7 +91,7 @@ export function AppLayout({ children, title }: AppLayoutProps) {
         {/* TopBar */}
         <TopBar
           onMenuClick={handleDrawerToggle}
-          title={title}
+          sidebarWidth={isMobile ? 0 : currentSidebarWidth}
         />
 
         {/* Page Content */}

@@ -7,7 +7,7 @@ import { StudentList } from '@/components/features/students';
 export default function AlunosPage() {
   return (
     <ProtectedRoute>
-      <AppLayout title="Alunos">
+      <AppLayout>
         <StudentList />
       </AppLayout>
     </ProtectedRoute>

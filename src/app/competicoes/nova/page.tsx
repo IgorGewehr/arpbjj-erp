@@ -164,7 +164,7 @@ export default function NewCompetitionPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Nova Competição">
+      <AppLayout>
         <Box sx={{ p: 3 }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>

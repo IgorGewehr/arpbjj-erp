@@ -520,6 +520,34 @@ async function handleWithdrawFailed(
 }
 
 // ============================================
+// Get Academy Admin UserId
+// ============================================
+async function getAcademyAdminUserId(academyId: string): Promise<string | null> {
+  // 1. Try from academy document root fields
+  const academySnap = await adminDb.doc(`academies/${academyId}`).get();
+  if (!academySnap.exists) return null;
+
+  const academyData = academySnap.data();
+  const ownerId = academyData?.ownerId || academyData?.adminUserId;
+  if (ownerId) return ownerId;
+
+  // 2. Fallback: search in users subcollection for admin role
+  const adminsSnapshot = await adminDb
+    .collection(`academies/${academyId}/users`)
+    .where('role', '==', 'admin')
+    .limit(1)
+    .get();
+
+  if (!adminsSnapshot.empty) {
+    const adminUserId = adminsSnapshot.docs[0].id;
+    console.log(`[ASAAS-WEBHOOK] Found admin ${adminUserId} in users subcollection for academy ${academyId}`);
+    return adminUserId;
+  }
+
+  return null;
+}
+
+// ============================================
 // Notify Admin
 // ============================================
 async function notifyAdmin(
@@ -534,15 +562,10 @@ async function notifyAdmin(
   }
 ): Promise<void> {
   try {
-    const academySnap = await adminDb.doc(`academies/${academyId}`).get();
-
-    if (!academySnap.exists) return;
-
-    const ownerId =
-      academySnap.data()?.ownerId || academySnap.data()?.adminUserId;
+    const ownerId = await getAcademyAdminUserId(academyId);
     if (!ownerId) {
       console.error(
-        `[ASAAS-WEBHOOK] notifyAdmin: No ownerId or adminUserId found for academy ${academyId}`
+        `[ASAAS-WEBHOOK] notifyAdmin: No admin found for academy ${academyId}`
       );
       return;
     }

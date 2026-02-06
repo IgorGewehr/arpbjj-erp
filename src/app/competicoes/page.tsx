@@ -283,7 +283,7 @@ export default function CompetitionsPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Competições">
+      <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
           <FadeInView direction="down" delay={0}>

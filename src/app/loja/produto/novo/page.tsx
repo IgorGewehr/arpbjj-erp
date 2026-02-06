@@ -187,7 +187,7 @@ export default function NovoProdutoPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Novo Produto">
+      <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 800, mx: 'auto' }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>

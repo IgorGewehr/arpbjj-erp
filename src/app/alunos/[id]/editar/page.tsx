@@ -368,7 +368,7 @@ export default function StudentEditPage() {
   if (isLoading || !formData) {
     return (
       <ProtectedRoute>
-        <AppLayout title="Editar Aluno">
+        <AppLayout>
           <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 900, mx: 'auto' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
               <Skeleton variant="circular" width={40} height={40} />
@@ -385,7 +385,7 @@ export default function StudentEditPage() {
   if (!student) {
     return (
       <ProtectedRoute>
-        <AppLayout title="Aluno não encontrado">
+        <AppLayout>
           <Box sx={{ p: { xs: 2, sm: 3 } }}>
             <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
             <User size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
@@ -404,7 +404,7 @@ export default function StudentEditPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Editar Aluno">
+      <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 900, mx: 'auto' }}>
           {/* Header */}
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>

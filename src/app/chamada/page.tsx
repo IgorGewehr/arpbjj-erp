@@ -7,7 +7,7 @@ import { AttendanceGrid } from '@/components/features/attendance';
 export default function ChamadaPage() {
   return (
     <ProtectedRoute>
-      <AppLayout title="Chamada">
+      <AppLayout>
         <AttendanceGrid />
       </AppLayout>
     </ProtectedRoute>

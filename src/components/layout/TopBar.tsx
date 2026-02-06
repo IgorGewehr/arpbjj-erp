@@ -74,13 +74,13 @@ const SlideTransition = forwardRef(function Transition(
 // ============================================
 interface TopBarProps {
   onMenuClick?: () => void;
-  title?: string;
+  sidebarWidth?: number;
 }
 
 // ============================================
 // TopBar Component
 // ============================================
-export function TopBar({ onMenuClick, title }: TopBarProps) {
+export function TopBar({ onMenuClick, sidebarWidth = 0 }: TopBarProps) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const router = useRouter();
@@ -276,7 +276,13 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
         bgcolor: 'background.paper',
         borderBottom: '1px solid',
         borderColor: 'divider',
-        zIndex: (theme) => theme.zIndex.drawer + 1,
+        // Position to the right of sidebar on desktop
+        left: { xs: 0, md: sidebarWidth },
+        width: { xs: '100%', md: `calc(100% - ${sidebarWidth}px)` },
+        transition: (theme) => theme.transitions.create(['left', 'width'], {
+          easing: theme.transitions.easing.sharp,
+          duration: theme.transitions.duration.enteringScreen,
+        }),
       }}
     >
       <Toolbar sx={{ gap: { xs: 0.5, sm: 1, md: 2 }, px: { xs: 1, sm: 2 }, minHeight: { xs: 56, sm: 64 } }}>
@@ -285,21 +291,6 @@ export function TopBar({ onMenuClick, title }: TopBarProps) {
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <AcademySwitcher variant="compact" />
           </Box>
-        )}
-
-        {/* Title */}
-        {title && (
-          <Typography
-            variant="h6"
-            sx={{
-              fontWeight: 600,
-              color: 'text.primary',
-              display: { xs: 'none', sm: 'block' },
-              fontSize: { sm: '1rem', md: '1.25rem' },
-            }}
-          >
-            {title}
-          </Typography>
         )}
 
         {/* Search Bar - Only on Desktop */}

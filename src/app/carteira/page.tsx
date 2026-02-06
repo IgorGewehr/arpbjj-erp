@@ -345,7 +345,7 @@ export default function CarteiraPage() {
   if (!settingsLoading && !paymentEnabled) {
     return (
       <ProtectedRoute>
-        <AppLayout title="Carteira">
+        <AppLayout>
           <Box
             sx={{
               display: 'flex',
@@ -389,7 +389,7 @@ export default function CarteiraPage() {
 
   return (
     <ProtectedRoute>
-      <AppLayout title="Carteira">
+      <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 }, maxWidth: 1400, mx: 'auto' }}>
           {/* Main Balance Card */}
           <Paper
@@ -530,12 +530,10 @@ export default function CarteiraPage() {
             }}
           >
             <Typography variant="body2" fontWeight={500}>
-              Informação sobre Taxas
+              Taxas
             </Typography>
             <Typography variant="body2" sx={{ mt: 0.5 }}>
-              Uma taxa de <strong>R$ 0,80</strong> é cobrada pelo gateway de pagamento (AbacatePay)
-              em cada transação de pagamento recebido e em cada saque realizado. Esta taxa é
-              automaticamente deduzida do valor total.
+              Taxa de <strong>R$ 0,80</strong> por transação (pagamentos e saques), deduzida automaticamente.
             </Typography>
           </Alert>
 

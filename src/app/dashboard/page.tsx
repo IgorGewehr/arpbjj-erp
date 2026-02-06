@@ -7,7 +7,7 @@ import { DashboardView } from '@/components/features/dashboard';
 export default function DashboardPage() {
   return (
     <ProtectedRoute>
-      <AppLayout title="Dashboard">
+      <AppLayout>
         <DashboardView />
       </AppLayout>
     </ProtectedRoute>

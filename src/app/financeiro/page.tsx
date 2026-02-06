@@ -7,7 +7,7 @@ import { FinancialDashboard } from '@/components/features/financial';
 export default function FinanceiroPage() {
   return (
     <ProtectedRoute>
-      <AppLayout title="Financeiro">
+      <AppLayout>
         <FinancialDashboard />
       </AppLayout>
     </ProtectedRoute>

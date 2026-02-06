@@ -208,132 +208,95 @@ export function Sidebar({
         }),
       }}
     >
-      {/* Logo/Brand */}
+      {/* Logo/Brand Header with Collapse Toggle */}
       <Box
         sx={{
-          p: 2,
+          p: collapsed ? 1.5 : 2,
           display: 'flex',
           alignItems: 'center',
-          justifyContent: collapsed ? 'center' : 'flex-start',
+          justifyContent: collapsed ? 'center' : 'space-between',
           minHeight: 64,
-          gap: 1.5,
+          gap: 1,
         }}
       >
-        <Box
-          sx={{
-            width: 40,
-            height: 40,
-            borderRadius: '50%',
-            overflow: 'hidden',
-            position: 'relative',
-            flexShrink: 0,
-          }}
-        >
-          <Image
-            src={academy?.sidebarLogoUrl || academy?.logoUrl || '/logo_conteudo.png'}
-            alt={academy?.name || 'Academia'}
-            fill
-            style={{ objectFit: 'cover' }}
-          />
-        </Box>
-        {!collapsed && (
-          <Box sx={{ minWidth: 0, flex: 1 }}>
-            <Typography
-              variant="subtitle2"
-              sx={{
-                fontWeight: 700,
-                color: 'text.primary',
-                lineHeight: 1.3,
-                fontSize: '0.85rem',
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {academy?.name || 'Academia'}
-            </Typography>
-            {academy?.portalSlogan && (
-              <Typography
-                variant="caption"
+        {collapsed ? (
+          /* Collapsed state: only show expand arrow */
+          !isMobile && onCollapseToggle && (
+            <Tooltip title="Expandir menu" placement="right">
+              <IconButton
+                size="small"
+                onClick={onCollapseToggle}
                 sx={{
-                  fontWeight: 500,
+                  width: 36,
+                  height: 36,
                   color: 'text.secondary',
-                  lineHeight: 1.2,
-                  fontSize: '0.75rem',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  whiteSpace: 'nowrap',
-                  display: 'block',
+                  '&:hover': {
+                    bgcolor: 'action.hover',
+                    color: 'primary.main',
+                  },
                 }}
               >
-                {academy.portalSlogan}
+                <ChevronRight size={20} />
+              </IconButton>
+            </Tooltip>
+          )
+        ) : (
+          /* Expanded state: logo + text + collapse arrow */
+          <>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, minWidth: 0, flex: 1 }}>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 1.5,
+                  overflow: 'hidden',
+                  position: 'relative',
+                  flexShrink: 0,
+                }}
+              >
+                <Image
+                  src="/bjjeasy_logo.png"
+                  alt="BJJEasy"
+                  fill
+                  style={{ objectFit: 'contain' }}
+                />
+              </Box>
+              <Typography
+                variant="subtitle1"
+                sx={{
+                  fontWeight: 700,
+                  color: 'text.primary',
+                  lineHeight: 1.2,
+                  fontSize: '1rem',
+                }}
+              >
+                BJJEasy
               </Typography>
+            </Box>
+            {!isMobile && onCollapseToggle && (
+              <Tooltip title="Recolher menu" placement="right">
+                <IconButton
+                  size="small"
+                  onClick={onCollapseToggle}
+                  sx={{
+                    width: 32,
+                    height: 32,
+                    color: 'text.secondary',
+                    '&:hover': {
+                      bgcolor: 'action.hover',
+                      color: 'primary.main',
+                    },
+                  }}
+                >
+                  <ChevronLeft size={18} />
+                </IconButton>
+              </Tooltip>
             )}
-          </Box>
+          </>
         )}
       </Box>
 
-      {/* Floating Collapse Toggle - positioned at the edge of sidebar */}
-      {!isMobile && !collapsed && onCollapseToggle && (
-        <Tooltip title="Recolher menu" placement="right">
-          <IconButton
-            size="small"
-            onClick={onCollapseToggle}
-            sx={{
-              position: 'absolute',
-              right: -14,
-              top: 72,
-              width: 28,
-              height: 28,
-              bgcolor: 'background.paper',
-              color: 'text.secondary',
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              zIndex: 1,
-              '&:hover': {
-                bgcolor: 'primary.main',
-                borderColor: 'primary.main',
-                color: 'white',
-              },
-            }}
-          >
-            <ChevronLeft size={16} />
-          </IconButton>
-        </Tooltip>
-      )}
-
       <Divider />
-
-      {/* Floating Expand Toggle - positioned at the edge when collapsed */}
-      {!isMobile && collapsed && onCollapseToggle && (
-        <Tooltip title="Expandir menu" placement="right">
-          <IconButton
-            size="small"
-            onClick={onCollapseToggle}
-            sx={{
-              position: 'absolute',
-              right: -14,
-              top: 72,
-              width: 28,
-              height: 28,
-              bgcolor: 'background.paper',
-              color: 'text.secondary',
-              border: '1px solid',
-              borderColor: 'divider',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-              zIndex: 1,
-              '&:hover': {
-                bgcolor: 'primary.main',
-                borderColor: 'primary.main',
-                color: 'white',
-              },
-            }}
-          >
-            <ChevronRight size={16} />
-          </IconButton>
-        </Tooltip>
-      )}
 
       {/* Main Navigation */}
       <Box sx={{ flex: 1, py: 1, overflowY: 'auto' }}>

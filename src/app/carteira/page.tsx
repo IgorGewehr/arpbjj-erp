@@ -712,7 +712,10 @@ export default function CarteiraPage() {
                       } else if (transactionFilter === 'withdrawal') {
                         filteredTransactions = transactions.filter(t => t.type === 'withdrawal');
                       } else if (transactionFilter === 'store') {
-                        filteredTransactions = transactions.filter(t => t.description?.toLowerCase().includes('loja') || t.description?.toLowerCase().includes('store'));
+                        filteredTransactions = transactions.filter(t =>
+                          t.financialId?.startsWith('order_') ||
+                          t.description?.toLowerCase().includes('pedido')
+                        );
                       }
 
                       const displayTransactions = showAllTransactions ? filteredTransactions : filteredTransactions.slice(0, 6);

@@ -842,8 +842,8 @@ function FinancialReport({ classFilter, categoryFilter, classes, selectedMonth }
 
     for (const order of monthOrders) {
       const isPaid = order.status === 'paid' || order.status === 'preparing' || order.status === 'ready' || order.status === 'delivered';
-      // totalAmount is in cents in Next.js
-      const amount = (order.totalAmount || 0) / 100;
+      // totalAmount is already in reais (not cents)
+      const amount = order.totalAmount || 0;
       if (isPaid) {
         revenue += amount;
         paidCount++;

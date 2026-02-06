@@ -15,7 +15,8 @@ import {
   Divider,
 } from '@mui/material';
 import { Eye, EyeOff, Key, User, Mail, Lock, CheckCircle, ArrowLeft, GraduationCap, ArrowRight, FileText } from 'lucide-react';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { createUserWithEmailAndPassword, updateProfile, AuthError } from 'firebase/auth';
+import { FirebaseError } from 'firebase/app';
 import { doc, setDoc, updateDoc, serverTimestamp, collectionGroup, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { LinkCode } from '@/types';
@@ -121,9 +122,16 @@ export default function CreateAccountPage() {
         return;
       }
 
-      // Extract academyId from document path: academies/{academyId}/linkCodes/{docId}
-      const pathSegments = codeDoc.ref.path.split('/');
-      const academyId = pathSegments[1]; // academies/{academyId}/linkCodes/{docId}
+      // Extract academyId safely using Firestore API
+      // Path structure: academies/{academyId}/linkCodes/{docId}
+      // codeDoc.ref.parent = linkCodes collection
+      // codeDoc.ref.parent.parent = academies/{academyId} document
+      const academyDocRef = codeDoc.ref.parent.parent;
+      if (!academyDocRef) {
+        setError('Erro ao identificar a academia do código');
+        return;
+      }
+      const academyId = academyDocRef.id;
 
       const createdAt = data.createdAt instanceof Timestamp
         ? data.createdAt.toDate()
@@ -184,6 +192,14 @@ export default function CreateAccountPage() {
     }
     if (password !== confirmPassword) {
       setError('As senhas nao coincidem');
+      return;
+    }
+
+    // Re-validate code expiration before creating account
+    // (code could have expired while user was filling the form)
+    if (linkCode.expiresAt && new Date() > linkCode.expiresAt) {
+      setError('Este codigo expirou. Solicite um novo codigo.');
+      setStep('code');
       return;
     }
 
@@ -248,35 +264,63 @@ export default function CreateAccountPage() {
         console.warn('Failed to mark code as used (non-critical):', linkErr);
       }
 
-      try {
-        // Update student record with linked user ID and CPF (correct multi-tenant path)
-        await updateDoc(doc(db, 'academies', academyId, 'students', linkCode.studentId), {
-          linkedUserId: user.uid,
-          cpf: cpfDigits,
-          updatedAt: serverTimestamp(),
-        });
-      } catch (studentErr) {
-        console.warn('Failed to update student record (non-critical):', studentErr);
+      // Update student record with linked user ID and CPF (with retry)
+      let cpfSaved = false;
+      for (let attempt = 0; attempt < 3 && !cpfSaved; attempt++) {
+        try {
+          await updateDoc(doc(db, 'academies', academyId, 'students', linkCode.studentId), {
+            linkedUserId: user.uid,
+            cpf: cpfDigits,
+            updatedAt: serverTimestamp(),
+          });
+          cpfSaved = true;
+        } catch (studentErr) {
+          console.warn(`CPF save attempt ${attempt + 1} failed:`, studentErr);
+          if (attempt < 2) {
+            await new Promise(resolve => setTimeout(resolve, 500));
+          }
+        }
+      }
+      if (!cpfSaved) {
+        console.warn('WARNING: CPF not saved after 3 attempts. User can update later.');
       }
 
       // Success - account is created and functional
       setStep('success');
     } catch (err: unknown) {
       console.error('Account creation error:', err);
-      if (err instanceof Error) {
-        const errorMessage = err.message.toLowerCase();
-        if (errorMessage.includes('email-already-in-use')) {
-          setError('Este email ja esta sendo utilizado');
-        } else if (errorMessage.includes('invalid-email')) {
-          setError('Email invalido');
-        } else if (errorMessage.includes('weak-password')) {
-          setError('Senha muito fraca');
-        } else if (errorMessage.includes('permission-denied') || errorMessage.includes('permission denied')) {
-          setError('Erro de permissao ao criar documento. Verifique as regras do Firestore.');
-        } else if (errorMessage.includes('network')) {
+
+      // Handle Firebase errors with proper error codes
+      if (err instanceof FirebaseError) {
+        switch (err.code) {
+          case 'auth/email-already-in-use':
+            setError('Este email ja esta sendo utilizado');
+            break;
+          case 'auth/invalid-email':
+            setError('Email invalido');
+            break;
+          case 'auth/weak-password':
+            setError('Senha muito fraca. Use pelo menos 6 caracteres.');
+            break;
+          case 'auth/operation-not-allowed':
+            setError('Operacao nao permitida. Contate o suporte.');
+            break;
+          case 'auth/network-request-failed':
+            setError('Erro de conexao. Verifique sua internet.');
+            break;
+          case 'permission-denied':
+            setError('Erro de permissao. O codigo pode ter expirado. Tente novamente.');
+            break;
+          default:
+            console.error('Unhandled Firebase error:', err.code, err.message);
+            setError('Erro ao criar conta. Tente novamente.');
+        }
+      } else if (err instanceof Error) {
+        // Handle network or other errors
+        if (err.message.includes('network') || err.message.includes('Network')) {
           setError('Erro de conexao. Verifique sua internet.');
         } else {
-          setError(`Erro ao criar conta: ${err.message}`);
+          setError('Erro ao criar conta. Tente novamente.');
         }
       } else {
         setError('Erro ao criar conta. Tente novamente.');

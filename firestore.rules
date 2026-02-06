@@ -539,6 +539,19 @@ service cloud.firestore {
     }
 
     // ============================================
+    // COLLECTION GROUP QUERIES (Cross-Academy)
+    // ============================================
+
+    // Link Codes - Allow reading UNUSED codes across all academies
+    // This is required for student registration via link codes
+    // Security: Only allows reading codes that haven't been used yet
+    match /{path=**}/linkCodes/{codeId} {
+      // Allow reading unused codes for registration flow
+      // Once a code is used (usedAt != null), it becomes invisible to prevent enumeration
+      allow read: if resource.data.usedAt == null;
+    }
+
+    // ============================================
     // DENY ALL OTHER PATHS
     // ============================================
     match /{document=**} {

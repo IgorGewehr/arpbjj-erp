@@ -253,6 +253,7 @@ export default function CarteiraPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [withdrawalOpen, setWithdrawalOpen] = useState(false);
   const [showAllTransactions, setShowAllTransactions] = useState(false);
+  const [transactionFilter, setTransactionFilter] = useState<'all' | 'payment' | 'withdrawal' | 'store'>('all');
 
   const paymentEnabled = settings?.asaasEnabled || settings?.abacatePayEnabled;
 
@@ -638,9 +639,48 @@ export default function CarteiraPage() {
               }}
             >
               <Box sx={{ p: 2.5, borderBottom: '1px solid', borderColor: 'divider' }}>
-                <Typography variant="h6" fontWeight={600}>
+                <Typography variant="h6" fontWeight={600} sx={{ mb: 2 }}>
                   Últimas Transações
                 </Typography>
+
+                {/* Transaction Filters */}
+                <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                  <Chip
+                    label="Todas"
+                    onClick={() => setTransactionFilter('all')}
+                    color={transactionFilter === 'all' ? 'primary' : 'default'}
+                    variant={transactionFilter === 'all' ? 'filled' : 'outlined'}
+                    size="small"
+                    sx={{ borderRadius: 2 }}
+                  />
+                  <Chip
+                    label="Mensalidades"
+                    onClick={() => setTransactionFilter('payment')}
+                    color={transactionFilter === 'payment' ? 'primary' : 'default'}
+                    variant={transactionFilter === 'payment' ? 'filled' : 'outlined'}
+                    size="small"
+                    icon={<ArrowDownRight size={14} />}
+                    sx={{ borderRadius: 2 }}
+                  />
+                  <Chip
+                    label="Saques"
+                    onClick={() => setTransactionFilter('withdrawal')}
+                    color={transactionFilter === 'withdrawal' ? 'primary' : 'default'}
+                    variant={transactionFilter === 'withdrawal' ? 'filled' : 'outlined'}
+                    size="small"
+                    icon={<ArrowUpRight size={14} />}
+                    sx={{ borderRadius: 2 }}
+                  />
+                  <Chip
+                    label="Loja"
+                    onClick={() => setTransactionFilter('store')}
+                    color={transactionFilter === 'store' ? 'primary' : 'default'}
+                    variant={transactionFilter === 'store' ? 'filled' : 'outlined'}
+                    size="small"
+                    icon={<Banknote size={14} />}
+                    sx={{ borderRadius: 2 }}
+                  />
+                </Box>
               </Box>
 
               <Box sx={{ flex: 1, overflow: 'auto' }}>
@@ -666,7 +706,31 @@ export default function CarteiraPage() {
                   </Box>
                 ) : (
                   <Box sx={{ p: 1 }}>
-                    {(showAllTransactions ? transactions : transactions.slice(0, 6)).map((t) => {
+                    {(() => {
+                      // Filter transactions based on selected filter
+                      let filteredTransactions = transactions;
+                      if (transactionFilter === 'payment') {
+                        filteredTransactions = transactions.filter(t => t.type === 'payment');
+                      } else if (transactionFilter === 'withdrawal') {
+                        filteredTransactions = transactions.filter(t => t.type === 'withdrawal');
+                      } else if (transactionFilter === 'store') {
+                        filteredTransactions = transactions.filter(t => t.description?.toLowerCase().includes('loja') || t.description?.toLowerCase().includes('store'));
+                      }
+
+                      const displayTransactions = showAllTransactions ? filteredTransactions : filteredTransactions.slice(0, 6);
+
+                      if (displayTransactions.length === 0) {
+                        return (
+                          <Box sx={{ p: 4, textAlign: 'center' }}>
+                            <Wallet size={32} color={theme.palette.text.disabled} style={{ marginBottom: 8 }} />
+                            <Typography color="text.secondary" variant="body2">
+                              Nenhuma transação encontrada
+                            </Typography>
+                          </Box>
+                        );
+                      }
+
+                      return displayTransactions.map((t) => {
                       const isCredit = t.type === 'payment';
                       const status = statusConfig[t.status];
 
@@ -730,27 +794,39 @@ export default function CarteiraPage() {
                           </Typography>
                         </Box>
                       );
-                    })}
+                    })})()}
                   </Box>
                 )}
               </Box>
 
-              {transactions.length > 6 && (
-                <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
-                  <Button
-                    fullWidth
-                    endIcon={<ArrowRight size={16} style={{ transform: showAllTransactions ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />}
-                    onClick={() => setShowAllTransactions(!showAllTransactions)}
-                    sx={{
-                      borderRadius: 2,
-                      color: 'text.secondary',
-                      '&:hover': { bgcolor: 'action.hover' },
-                    }}
-                  >
-                    {showAllTransactions ? 'Mostrar menos' : 'Ver extrato completo'}
-                  </Button>
-                </Box>
-              )}
+              {(() => {
+                // Calculate filtered transactions count
+                let filteredCount = transactions.length;
+                if (transactionFilter === 'payment') {
+                  filteredCount = transactions.filter(t => t.type === 'payment').length;
+                } else if (transactionFilter === 'withdrawal') {
+                  filteredCount = transactions.filter(t => t.type === 'withdrawal').length;
+                } else if (transactionFilter === 'store') {
+                  filteredCount = transactions.filter(t => t.description?.toLowerCase().includes('loja') || t.description?.toLowerCase().includes('store')).length;
+                }
+
+                return filteredCount > 6 && (
+                  <Box sx={{ p: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+                    <Button
+                      fullWidth
+                      endIcon={<ArrowRight size={16} style={{ transform: showAllTransactions ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }} />}
+                      onClick={() => setShowAllTransactions(!showAllTransactions)}
+                      sx={{
+                        borderRadius: 2,
+                        color: 'text.secondary',
+                        '&:hover': { bgcolor: 'action.hover' },
+                      }}
+                    >
+                      {showAllTransactions ? 'Mostrar menos' : 'Ver extrato completo'}
+                    </Button>
+                  </Box>
+                );
+              })()}
             </Paper>
           </Box>
 

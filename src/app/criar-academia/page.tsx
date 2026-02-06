@@ -33,7 +33,7 @@ import {
   FileText,
 } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -94,6 +94,26 @@ function generateSlug(name: string): string {
   // Add timestamp for uniqueness
   const timestamp = Date.now().toString().substring(6);
   return `${slug}-${timestamp}`;
+}
+
+// ============================================
+// Check if Academy Name Already Exists
+// ============================================
+async function checkAcademyNameExists(name: string): Promise<boolean> {
+  const normalizedName = name.trim().toLowerCase();
+
+  // Query academies collection looking for similar names
+  const academiesRef = collection(db, 'academies');
+  const snapshot = await getDocs(academiesRef);
+
+  for (const doc of snapshot.docs) {
+    const academyName = doc.data().name;
+    if (academyName && academyName.toLowerCase().trim() === normalizedName) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 // ============================================
@@ -379,6 +399,14 @@ export default function CreateAcademyPage() {
     try {
       setLoading(true);
       setError('');
+
+      // Step 0: Check if academy name already exists
+      const nameExists = await checkAcademyNameExists(academyName.trim());
+      if (nameExists) {
+        setError('Ja existe uma academia com este nome. Escolha outro nome.');
+        setLoading(false);
+        return;
+      }
 
       // Generate slug automatically from academy name
       const academySlug = generateSlug(academyName.trim());

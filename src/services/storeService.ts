@@ -348,6 +348,35 @@ class StoreService {
       throw new Error('Order not found');
     }
 
+    // If changing to "paid" status, validate and decrement stock
+    if (status === 'paid' && order.status === 'pending_payment') {
+      // SECURITY: Validate stock before payment (prevent race conditions)
+      for (const item of order.items) {
+        const product = await this.getProductById(item.productId);
+        if (!product) {
+          throw new Error(`Produto não encontrado: ${item.productName}`);
+        }
+
+        if (product.stockType === 'in_stock') {
+          const availableStock = product.stockQuantity ?? 0;
+          if (availableStock < item.quantity) {
+            throw new Error(
+              `Estoque insuficiente para "${product.name}".\n` +
+              `Disponível: ${availableStock}, Solicitado: ${item.quantity}`
+            );
+          }
+        }
+      }
+
+      // Decrement stock for in_stock items (only after validation)
+      for (const item of order.items) {
+        const product = await this.getProductById(item.productId);
+        if (product && product.stockType === 'in_stock') {
+          await this.decrementStock(item.productId, item.quantity);
+        }
+      }
+    }
+
     const updateData: Record<string, unknown> = {
       status,
       updatedAt: serverTimestamp(),
@@ -505,6 +534,35 @@ class StoreService {
       return;
     }
 
+    // SECURITY: Validate stock before payment (prevent race conditions)
+    // This prevents two customers from buying the same last item
+    for (const item of order.items) {
+      const product = await this.getProductById(item.productId);
+      if (!product) {
+        throw new Error(`Produto não encontrado: ${item.productName}`);
+      }
+
+      if (product.stockType === 'in_stock') {
+        const availableStock = product.stockQuantity ?? 0;
+        if (availableStock < item.quantity) {
+          throw new Error(
+            `Estoque insuficiente para "${product.name}".\n` +
+            `O produto foi vendido enquanto seu pedido estava pendente.\n` +
+            `Disponível: ${availableStock}, Solicitado: ${item.quantity}\n\n` +
+            `Por favor, ajuste a quantidade ou remova o item do pedido.`
+          );
+        }
+      }
+    }
+
+    // Deduct stock for in_stock products (only after validation)
+    for (const item of order.items) {
+      const product = await this.getProductById(item.productId);
+      if (product && product.stockType === 'in_stock') {
+        await this.decrementStock(item.productId, item.quantity);
+      }
+    }
+
     // Update order status to paid
     const docRef = collections.storeOrder(this.academyId, orderId);
     await updateDoc(docRef, {
@@ -513,14 +571,6 @@ class StoreService {
       paidAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
-
-    // Deduct stock for in_stock products
-    for (const item of order.items) {
-      const product = await this.getProductById(item.productId);
-      if (product && product.stockType === 'in_stock') {
-        await this.decrementStock(item.productId, item.quantity);
-      }
-    }
 
     // Notify admin
     await this.notifyAdmin(

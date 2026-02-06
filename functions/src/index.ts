@@ -1366,9 +1366,31 @@ export const createCardPayment = functions.https.onCall(async (data, context) =>
 
         // Decrement stock for in_stock products
         const items = orderSnap.data()?.items as Array<{
-          productId: string; quantity: number;
+          productId: string;
+          productName: string;
+          quantity: number;
         }> | undefined;
         if (items) {
+          // SECURITY: Validate stock before payment (prevent race conditions)
+          for (const item of items) {
+            const productRef = db.doc(
+              `academies/${academyId}/storeProducts/${item.productId}`
+            );
+            const productSnap = await productRef.get();
+            if (productSnap.exists &&
+              productSnap.data()?.stockType === 'in_stock') {
+              const availableStock = productSnap.data()?.stockQuantity ?? 0;
+              if (availableStock < item.quantity) {
+                throw new Error(
+                  `Estoque insuficiente para "${item.productName}".\n` +
+                  `O produto foi vendido enquanto seu pedido estava pendente.\n` +
+                  `Disponível: ${availableStock}, Solicitado: ${item.quantity}`
+                );
+              }
+            }
+          }
+
+          // Decrement stock (only after validation)
           for (const item of items) {
             const productRef = db.doc(
               `academies/${academyId}/storeProducts/${item.productId}`

@@ -60,6 +60,7 @@ import { PaymentCard } from './PaymentCard';
 import { MarkPaidDialog } from './MarkPaidDialog';
 import { RevenueChart } from './RevenueChart';
 import { GenerateTuitionsDialog } from './GenerateTuitionsDialog';
+import { PayingStudentsDialog } from './PayingStudentsDialog';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import { getBeltChipColor } from '@/lib/theme';
 import { Financial, PaymentStatus, Plan, Student } from '@/types';
@@ -107,14 +108,24 @@ interface KPICardProps {
 
 function KPICard({ title, value, subtitle, icon, color, bgColor, compact }: KPICardProps) {
   return (
-    <Paper sx={{ p: compact ? 2 : 3, borderRadius: 3 }}>
-      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1 }}>
-        <Box sx={{ minWidth: 0, flex: 1 }}>
+    <Paper
+      sx={{
+        p: compact ? 2 : 3,
+        borderRadius: 3,
+        height: '100%',
+        display: 'flex',
+        flexDirection: 'column',
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, flex: 1 }}>
+        <Box sx={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
           <Typography
             variant="body2"
             color="text.secondary"
-            gutterBottom
-            sx={{ fontSize: compact ? '0.7rem' : '0.875rem' }}
+            sx={{
+              fontSize: compact ? '0.7rem' : '0.875rem',
+              lineHeight: 1.3,
+            }}
           >
             {title}
           </Typography>
@@ -123,9 +134,12 @@ function KPICard({ title, value, subtitle, icon, color, bgColor, compact }: KPIC
             fontWeight={700}
             sx={{
               color,
-              fontSize: compact ? '1.1rem' : '2rem',
+              fontSize: { xs: '1.1rem', sm: '1.5rem', md: '1.75rem', lg: '2rem' },
               lineHeight: 1.2,
-              wordBreak: 'break-word',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              mt: 0.5,
             }}
           >
             {value}
@@ -133,7 +147,10 @@ function KPICard({ title, value, subtitle, icon, color, bgColor, compact }: KPIC
           <Typography
             variant="caption"
             color="text.secondary"
-            sx={{ fontSize: compact ? '0.6rem' : '0.75rem' }}
+            sx={{
+              fontSize: compact ? '0.6rem' : '0.75rem',
+              lineHeight: 1.3,
+            }}
           >
             {subtitle}
           </Typography>
@@ -145,6 +162,9 @@ function KPICard({ title, value, subtitle, icon, color, bgColor, compact }: KPIC
             bgcolor: bgColor,
             color,
             flexShrink: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
         >
           {icon}
@@ -740,6 +760,7 @@ export function FinancialDashboard() {
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [managingPlan, setManagingPlan] = useState<Plan | null>(null);
+  const [payingStudentsDialogOpen, setPayingStudentsDialogOpen] = useState(false);
 
   // ============================================
   // Current Month Navigation
@@ -1074,6 +1095,15 @@ export function FinancialDashboard() {
             {isMobile ? <RefreshCw size={16} /> : 'Atualizar'}
           </Button>
           <Button
+            variant="outlined"
+            startIcon={!isMobile && <Users size={18} />}
+            onClick={() => setPayingStudentsDialogOpen(true)}
+            size="small"
+            sx={{ flex: { xs: 1, sm: 'none' } }}
+          >
+            {isMobile ? 'Pagantes' : 'Alunos Pagantes'}
+          </Button>
+          <Button
             variant="contained"
             startIcon={!isMobile && <Plus size={18} />}
             onClick={() => setGenerateDialogOpen(true)}
@@ -1111,7 +1141,7 @@ export function FinancialDashboard() {
 
       {/* KPI Cards */}
       <Grid container spacing={{ xs: 1, sm: 2, md: 3 }} sx={{ mb: { xs: 2, sm: 4 } }}>
-        <Grid size={{ xs: 6, sm: 6, lg: 3 }}>
+        <Grid size={{ xs: 6, sm: 6, lg: 3 }} sx={{ display: 'flex' }}>
           <KPICard
             title="Recebido"
             value={formatCurrency(monthlySummary?.paidAmount || 0)}
@@ -1122,7 +1152,7 @@ export function FinancialDashboard() {
             compact={isMobile}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 6, lg: 3 }}>
+        <Grid size={{ xs: 6, sm: 6, lg: 3 }} sx={{ display: 'flex' }}>
           <KPICard
             title="A Receber"
             value={formatCurrency(monthlySummary?.pendingAmount || 0)}
@@ -1133,7 +1163,7 @@ export function FinancialDashboard() {
             compact={isMobile}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 6, lg: 3 }}>
+        <Grid size={{ xs: 6, sm: 6, lg: 3 }} sx={{ display: 'flex' }}>
           <KPICard
             title="Atrasados"
             value={formatCurrency(monthlySummary?.overdueAmount || 0)}
@@ -1144,7 +1174,7 @@ export function FinancialDashboard() {
             compact={isMobile}
           />
         </Grid>
-        <Grid size={{ xs: 6, sm: 6, lg: 3 }}>
+        <Grid size={{ xs: 6, sm: 6, lg: 3 }} sx={{ display: 'flex' }}>
           <KPICard
             title={isMobile ? "Taxa" : "Taxa de Recebimento"}
             value={
@@ -1546,6 +1576,14 @@ export function FinancialDashboard() {
         onClose={() => setManagingPlan(null)}
         onToggleStudent={handleToggleStudentInPlan}
         isToggling={isTogglingStudent}
+      />
+
+      {/* Paying Students Dialog */}
+      <PayingStudentsDialog
+        open={payingStudentsDialogOpen}
+        onClose={() => setPayingStudentsDialogOpen(false)}
+        students={students}
+        plans={plans}
       />
     </Box>
   );

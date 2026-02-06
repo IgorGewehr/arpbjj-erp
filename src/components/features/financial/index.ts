@@ -3,3 +3,5 @@ export { PaymentCard } from './PaymentCard';
 export { MarkPaidDialog } from './MarkPaidDialog';
 export { RevenueChart } from './RevenueChart';
 export { GenerateTuitionsDialog } from './GenerateTuitionsDialog';
+export { PayingStudentsDialog } from './PayingStudentsDialog';
+export { StudentPlansModal } from './StudentPlansModal';

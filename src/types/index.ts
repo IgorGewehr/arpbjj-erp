@@ -325,6 +325,9 @@ export interface Plan {
   // Custom values per student (only students with overrides)
   customValues?: Record<string, number>;
 
+  // Custom due days per student (only students with overrides)
+  customDueDays?: Record<string, number>;
+
   // Status
   isActive: boolean;
 

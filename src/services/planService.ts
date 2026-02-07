@@ -19,6 +19,10 @@ export function getStudentValue(plan: Plan, studentId: string): number {
   return plan.customValues?.[studentId] ?? plan.monthlyValue;
 }
 
+export function getStudentDueDay(plan: Plan, studentId: string): number {
+  return plan.customDueDays?.[studentId] ?? plan.defaultDueDay;
+}
+
 // Default academy for backwards compatibility
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
@@ -38,6 +42,7 @@ const docToPlan = (doc: DocumentSnapshot): Plan => {
     classesPerWeek: data.classesPerWeek,
     studentIds: data.studentIds || [],
     customValues: data.customValues ?? {},
+    customDueDays: data.customDueDays ?? {},
     isActive: data.isActive,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
@@ -190,6 +195,7 @@ export class PlanService {
     await updateDoc(docRef, {
       studentIds: plan.studentIds.filter((id) => id !== studentId),
       [`customValues.${studentId}`]: deleteField(),
+      [`customDueDays.${studentId}`]: deleteField(),
       updatedAt: Timestamp.fromDate(new Date()),
     });
 
@@ -243,6 +249,32 @@ export class PlanService {
   }
 
   // ============================================
+  // Set Custom Due Day for Student
+  // ============================================
+  async setCustomDueDay(planId: string, studentId: string, day: number): Promise<Plan> {
+    const docRef = collections.plan(this.academyId, planId);
+    await updateDoc(docRef, {
+      [`customDueDays.${studentId}`]: day,
+      updatedAt: Timestamp.fromDate(new Date()),
+    });
+    const updatedDoc = await getDoc(docRef);
+    return docToPlan(updatedDoc);
+  }
+
+  // ============================================
+  // Remove Custom Due Day (restore plan default)
+  // ============================================
+  async removeCustomDueDay(planId: string, studentId: string): Promise<Plan> {
+    const docRef = collections.plan(this.academyId, planId);
+    await updateDoc(docRef, {
+      [`customDueDays.${studentId}`]: deleteField(),
+      updatedAt: Timestamp.fromDate(new Date()),
+    });
+    const updatedDoc = await getDoc(docRef);
+    return docToPlan(updatedDoc);
+  }
+
+  // ============================================
   // Get Students by Plan
   // ============================================
   async getStudentsByPlan(planId: string): Promise<string[]> {
@@ -287,6 +319,8 @@ export const planService = {
   toggleStudent: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).toggleStudent(planId, studentId),
   setCustomValue: (planId: string, studentId: string, value: number) => new PlanService(DEFAULT_ACADEMY_ID).setCustomValue(planId, studentId, value),
   removeCustomValue: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).removeCustomValue(planId, studentId),
+  setCustomDueDay: (planId: string, studentId: string, day: number) => new PlanService(DEFAULT_ACADEMY_ID).setCustomDueDay(planId, studentId, day),
+  removeCustomDueDay: (planId: string, studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).removeCustomDueDay(planId, studentId),
   getStudentsByPlan: (planId: string) => new PlanService(DEFAULT_ACADEMY_ID).getStudentsByPlan(planId),
   getPlansForStudent: (studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).getPlansForStudent(studentId),
   getPlanForStudent: (studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).getPlanForStudent(studentId),

@@ -23,7 +23,7 @@ import { Edit2, History } from 'lucide-react';
 import { Student, Plan } from '@/types';
 import { getBeltChipColor } from '@/lib/theme';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
-import { getStudentValue } from '@/services/planService';
+import { getStudentValue, getStudentDueDay } from '@/services/planService';
 import { usePlans } from '@/hooks';
 
 // ============================================
@@ -40,10 +40,11 @@ interface StudentPlansModalProps {
 // StudentPlansModal Component
 // ============================================
 export function StudentPlansModal({ open, student, plans, onClose }: StudentPlansModalProps) {
-  const { setCustomValue, removeCustomValue, isSettingCustomValue } = usePlans();
+  const { setCustomValue, removeCustomValue, isSettingCustomValue, setCustomDueDay, removeCustomDueDay } = usePlans();
 
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [customValueInput, setCustomValueInput] = useState('');
+  const [customDueDayInput, setCustomDueDayInput] = useState('');
 
   // ============================================
   // Get Initials
@@ -64,6 +65,8 @@ export function StudentPlansModal({ open, student, plans, onClose }: StudentPlan
     setEditingPlan(plan);
     const currentValue = getStudentValue(plan, student.id);
     setCustomValueInput(currentValue.toString());
+    const currentDueDay = getStudentDueDay(plan, student.id);
+    setCustomDueDayInput(currentDueDay.toString());
   };
 
   // ============================================
@@ -74,14 +77,23 @@ export function StudentPlansModal({ open, student, plans, onClose }: StudentPlan
 
     const value = parseFloat(customValueInput);
     if (isNaN(value) || value <= 0) return;
+    const dueDay = parseInt(customDueDayInput);
+    if (isNaN(dueDay) || dueDay < 1 || dueDay > 31) return;
 
     setEditingPlan(null);
 
-    // If value equals plan default, remove custom value, otherwise set it
+    // Save value
     if (value === editingPlan.monthlyValue) {
       await removeCustomValue({ planId: editingPlan.id, studentId: student.id });
     } else {
       await setCustomValue({ planId: editingPlan.id, studentId: student.id, value });
+    }
+
+    // Save due day
+    if (dueDay === editingPlan.defaultDueDay) {
+      await removeCustomDueDay({ planId: editingPlan.id, studentId: student.id });
+    } else {
+      await setCustomDueDay({ planId: editingPlan.id, studentId: student.id, day: dueDay });
     }
   };
 
@@ -92,6 +104,7 @@ export function StudentPlansModal({ open, student, plans, onClose }: StudentPlan
     if (!editingPlan || !student) return;
     setEditingPlan(null);
     await removeCustomValue({ planId: editingPlan.id, studentId: student.id });
+    await removeCustomDueDay({ planId: editingPlan.id, studentId: student.id });
   };
 
   // ============================================
@@ -164,6 +177,8 @@ export function StudentPlansModal({ open, student, plans, onClose }: StudentPlan
             {plans.map((plan, index) => {
               const studentValue = getStudentValue(plan, student.id);
               const hasCustomValue = plan.customValues?.[student.id] !== undefined;
+              const studentDueDay = getStudentDueDay(plan, student.id);
+              const hasCustomDueDay = plan.customDueDays?.[student.id] !== undefined;
 
               return (
                 <Box key={plan.id}>
@@ -208,6 +223,20 @@ export function StudentPlansModal({ open, student, plans, onClose }: StudentPlan
                           />
                         )}
                       </Box>
+
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                        <Typography variant="body2" fontWeight={600} color={hasCustomDueDay ? 'success.main' : 'text.primary'}>
+                          Vencimento: dia {studentDueDay}
+                        </Typography>
+                        {hasCustomDueDay && (
+                          <Chip
+                            label="Personalizado"
+                            size="small"
+                            color="success"
+                            sx={{ height: 22, fontSize: '0.7rem' }}
+                          />
+                        )}
+                      </Box>
                     </CardContent>
                   </Card>
                 </Box>
@@ -236,7 +265,7 @@ export function StudentPlansModal({ open, student, plans, onClose }: StudentPlan
         maxWidth="xs"
         fullWidth
       >
-        <DialogTitle>Valor - {editingPlan?.name}</DialogTitle>
+        <DialogTitle>Valor e Vencimento - {editingPlan?.name}</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             Valor padrão do plano: R$ {editingPlan?.monthlyValue.toLocaleString('pt-BR')}
@@ -265,7 +294,33 @@ export function StudentPlansModal({ open, student, plans, onClose }: StudentPlan
               onClick={handleRestoreValue}
               disabled={isSettingCustomValue}
             >
-              Restaurar valor do plano
+              Restaurar tudo ao padrão do plano
+            </Button>
+          )}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 2, mb: 2 }}>
+            Vencimento padrão do plano: dia {editingPlan?.defaultDueDay}
+          </Typography>
+          <TextField
+            fullWidth
+            label="Dia de vencimento"
+            type="number"
+            value={customDueDayInput}
+            onChange={(e) => setCustomDueDayInput(e.target.value)}
+            inputProps={{ min: 1, max: 31 }}
+            sx={{ mb: 1 }}
+          />
+          {editingPlan?.customDueDays?.[student.id] !== undefined && (
+            <Button
+              size="small"
+              startIcon={<History size={14} />}
+              onClick={async () => {
+                if (!editingPlan || !student) return;
+                setEditingPlan(null);
+                await removeCustomDueDay({ planId: editingPlan.id, studentId: student.id });
+              }}
+              disabled={isSettingCustomValue}
+            >
+              Restaurar vencimento do plano
             </Button>
           )}
         </DialogContent>

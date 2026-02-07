@@ -162,6 +162,44 @@ export function usePlans() {
   });
 
   // ============================================
+  // Set Custom Due Day Mutation
+  // ============================================
+  const setCustomDueDayMutation = useMutation({
+    mutationFn: async ({ planId, studentId, day }: { planId: string; studentId: string; day: number }) => {
+      return planService.setCustomDueDay(planId, studentId, day);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.plans] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activePlans] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['student'] });
+      success('Dia de vencimento personalizado definido!');
+    },
+    onError: () => {
+      showError('Erro ao definir dia de vencimento');
+    },
+  });
+
+  // ============================================
+  // Remove Custom Due Day Mutation
+  // ============================================
+  const removeCustomDueDayMutation = useMutation({
+    mutationFn: async ({ planId, studentId }: { planId: string; studentId: string }) => {
+      return planService.removeCustomDueDay(planId, studentId);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.plans] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activePlans] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['student'] });
+      success('Vencimento restaurado ao padrão do plano!');
+    },
+    onError: () => {
+      showError('Erro ao restaurar vencimento do plano');
+    },
+  });
+
+  // ============================================
   // Get Plan by ID
   // ============================================
   const getPlan = useCallback(async (id: string): Promise<Plan | null> => {
@@ -200,6 +238,8 @@ export function usePlans() {
     toggleStudent: toggleStudentMutation.mutateAsync,
     setCustomValue: setCustomValueMutation.mutateAsync,
     removeCustomValue: removeCustomValueMutation.mutateAsync,
+    setCustomDueDay: setCustomDueDayMutation.mutateAsync,
+    removeCustomDueDay: removeCustomDueDayMutation.mutateAsync,
 
     // Loading states
     isLoading,
@@ -208,6 +248,7 @@ export function usePlans() {
     isDeleting: deleteMutation.isPending,
     isTogglingStudent: toggleStudentMutation.isPending,
     isSettingCustomValue: setCustomValueMutation.isPending,
+    isSettingCustomDueDay: setCustomDueDayMutation.isPending,
     error,
 
     // Refresh

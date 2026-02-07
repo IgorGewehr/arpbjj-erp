@@ -14,7 +14,7 @@ import {
   IconButton,
   Divider,
 } from '@mui/material';
-import { Eye, EyeOff, Key, User, Mail, Lock, CheckCircle, ArrowLeft, GraduationCap, ArrowRight, FileText } from 'lucide-react';
+import { Eye, EyeOff, Key, User, Mail, Lock, CheckCircle, ArrowLeft, GraduationCap, ArrowRight, FileText, Phone } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile, AuthError } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
 import { doc, setDoc, updateDoc, serverTimestamp, collectionGroup, query, where, getDocs, Timestamp } from 'firebase/firestore';
@@ -71,6 +71,7 @@ export default function CreateAccountPage() {
 
   // Registration form
   const [cpf, setCpf] = useState('');
+  const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -178,6 +179,15 @@ export default function CreateAccountPage() {
       setError('CPF invalido');
       return;
     }
+    const phoneDigits = phone.replace(/\D/g, '');
+    if (!phoneDigits) {
+      setError('Digite seu WhatsApp');
+      return;
+    }
+    if (phoneDigits.length < 10) {
+      setError('WhatsApp deve ter pelo menos 10 digitos');
+      return;
+    }
     if (!email.trim()) {
       setError('Digite seu email');
       return;
@@ -271,6 +281,7 @@ export default function CreateAccountPage() {
           await updateDoc(doc(db, 'academies', academyId, 'students', linkCode.studentId), {
             linkedUserId: user.uid,
             cpf: cpfDigits,
+            phone: phoneDigits,
             updatedAt: serverTimestamp(),
           });
           cpfSaved = true;
@@ -328,7 +339,7 @@ export default function CreateAccountPage() {
     } finally {
       setLoading(false);
     }
-  }, [linkCode, cpf, email, password, confirmPassword]);
+  }, [linkCode, cpf, phone, email, password, confirmPassword]);
 
   // ============================================
   // Render Code Step
@@ -504,6 +515,23 @@ export default function CreateAccountPage() {
           startAdornment: (
             <InputAdornment position="start">
               <FileText size={20} color="#666" />
+            </InputAdornment>
+          ),
+        }}
+      />
+
+      <TextField
+        label="WhatsApp"
+        value={phone}
+        onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+        fullWidth
+        placeholder="11999999999"
+        inputProps={{ maxLength: 11 }}
+        sx={{ mb: 2 }}
+        InputProps={{
+          startAdornment: (
+            <InputAdornment position="start">
+              <Phone size={20} color="#666" />
             </InputAdornment>
           ),
         }}

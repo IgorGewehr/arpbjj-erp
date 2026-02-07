@@ -67,6 +67,7 @@ import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode, FinancialPaymentLink, Plan } from '@/types';
 import { createFinancialService, createAttendanceService, createStudentService } from '@/services';
+import { getStudentDueDay } from '@/services/planService';
 import { createAbacatePayService } from '@/services/abacatePayService';
 import { Attendance } from '@/types';
 import { createLinkCodeService } from '@/services/linkCodeService';
@@ -281,7 +282,7 @@ export default function StudentProfilePage() {
   const { student, isLoading, refresh: refreshStudent } = useStudent(studentId);
   const { updateBelt } = useStudents({ autoLoad: false });
   const { markAsPaid, isMarkingPaid } = useFinancial({ autoLoad: false });
-  const { plans, setCustomValue, removeCustomValue, isSettingCustomValue } = usePlans();
+  const { plans, setCustomValue, removeCustomValue, isSettingCustomValue, setCustomDueDay, removeCustomDueDay } = usePlans();
 
   // Check if AbacatePay is enabled
   const [abacatePayEnabled, setAbacatePayEnabled] = useState(false);
@@ -346,6 +347,7 @@ export default function StudentProfilePage() {
   const [customValueDialogOpen, setCustomValueDialogOpen] = useState(false);
   const [customValuePlan, setCustomValuePlan] = useState<Plan | null>(null);
   const [customValueInput, setCustomValueInput] = useState('');
+  const [customDueDayInput, setCustomDueDayInput] = useState('');
 
   // Student plans
   const studentPlans = useMemo(() => {
@@ -1189,6 +1191,8 @@ export default function StudentProfilePage() {
                         {studentPlans.map((plan) => {
                           const studentValue = plan.customValues?.[studentId] ?? plan.monthlyValue;
                           const hasCustomValue = plan.customValues?.[studentId] !== undefined;
+                          const studentDueDay = getStudentDueDay(plan, studentId);
+                          const hasCustomDueDay = plan.customDueDays?.[studentId] !== undefined;
                           return (
                             <Card key={plan.id} sx={{ mt: 1, mb: 1, borderRadius: 2 }} variant="outlined">
                               <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
@@ -1211,12 +1215,26 @@ export default function StudentProfilePage() {
                                         />
                                       )}
                                     </Box>
+                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                      <Typography variant="body2" fontWeight={700} color={hasCustomDueDay ? 'success.main' : 'text.primary'}>
+                                        Vencimento: dia {studentDueDay}
+                                      </Typography>
+                                      {hasCustomDueDay && (
+                                        <Chip
+                                          label="Personalizado"
+                                          size="small"
+                                          color="success"
+                                          sx={{ height: 20, fontSize: '0.6rem' }}
+                                        />
+                                      )}
+                                    </Box>
                                   </Box>
                                   <IconButton
                                     size="small"
                                     onClick={() => {
                                       setCustomValuePlan(plan);
                                       setCustomValueInput(studentValue.toString());
+                                      setCustomDueDayInput(studentDueDay.toString());
                                       setCustomValueDialogOpen(true);
                                     }}
                                   >
@@ -1973,7 +1991,7 @@ export default function StudentProfilePage() {
           fullWidth
         >
           <DialogTitle>
-            Valor - {customValuePlan?.name}
+            Valor e Vencimento - {customValuePlan?.name}
           </DialogTitle>
           <DialogContent>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -2004,6 +2022,32 @@ export default function StudentProfilePage() {
                 Restaurar valor do plano
               </Button>
             )}
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 2, mb: 2 }}>
+              Vencimento padrão do plano: dia {customValuePlan?.defaultDueDay}
+            </Typography>
+            <TextField
+              fullWidth
+              label="Dia de vencimento"
+              type="number"
+              value={customDueDayInput}
+              onChange={(e) => setCustomDueDayInput(e.target.value)}
+              inputProps={{ min: 1, max: 31 }}
+              sx={{ mb: 1 }}
+            />
+            {customValuePlan?.customDueDays?.[studentId] !== undefined && (
+              <Button
+                size="small"
+                startIcon={<History size={14} />}
+                onClick={async () => {
+                  if (!customValuePlan) return;
+                  setCustomValueDialogOpen(false);
+                  await removeCustomDueDay({ planId: customValuePlan.id, studentId });
+                }}
+                disabled={isSettingCustomValue}
+              >
+                Restaurar vencimento do plano
+              </Button>
+            )}
           </DialogContent>
           <DialogActions sx={{ px: 3, py: 2 }}>
             <Button onClick={() => setCustomValueDialogOpen(false)}>
@@ -2015,11 +2059,20 @@ export default function StudentProfilePage() {
                 if (!customValuePlan) return;
                 const value = parseFloat(customValueInput);
                 if (isNaN(value) || value <= 0) return;
+                const dueDay = parseInt(customDueDayInput);
+                if (isNaN(dueDay) || dueDay < 1 || dueDay > 31) return;
                 setCustomValueDialogOpen(false);
+                // Save value
                 if (value === customValuePlan.monthlyValue) {
                   await removeCustomValue({ planId: customValuePlan.id, studentId });
                 } else {
                   await setCustomValue({ planId: customValuePlan.id, studentId, value });
+                }
+                // Save due day
+                if (dueDay === customValuePlan.defaultDueDay) {
+                  await removeCustomDueDay({ planId: customValuePlan.id, studentId });
+                } else {
+                  await setCustomDueDay({ planId: customValuePlan.id, studentId, day: dueDay });
                 }
               }}
               disabled={isSettingCustomValue}

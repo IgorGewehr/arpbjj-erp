@@ -262,6 +262,7 @@ export function StudentList() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [classFilter, setClassFilter] = useState<string>('');
   const [planFilter, setPlanFilter] = useState<string>('');
+  const [accountFilter, setAccountFilter] = useState<string>('');
   const [sortBy, setSortBy] = useState<SortOption>('alphabetical');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const initialViewModeSet = useRef(false);
@@ -310,6 +311,13 @@ export function StudentList() {
       result = result.filter(s => s.planId === planFilter);
     }
 
+    // Filter by account link status
+    if (accountFilter === 'linked') {
+      result = result.filter(s => !!s.linkedUserId);
+    } else if (accountFilter === 'unlinked') {
+      result = result.filter(s => !s.linkedUserId);
+    }
+
     // Sort students
     result = [...result].sort((a, b) => {
       switch (sortBy) {
@@ -338,7 +346,7 @@ export function StudentList() {
     });
 
     return result;
-  }, [students, classFilter, classes, planFilter, sortBy]);
+  }, [students, classFilter, classes, planFilter, accountFilter, sortBy]);
 
   // Handle student click
   const handleStudentClick = useCallback(
@@ -405,6 +413,13 @@ export function StudentList() {
     []
   );
 
+  const handleAccountChange = useCallback(
+    (e: SelectChangeEvent<string>) => {
+      setAccountFilter(e.target.value);
+    },
+    []
+  );
+
   const handleSortChange = useCallback(
     (e: SelectChangeEvent<string>) => {
       setSortBy(e.target.value as SortOption);
@@ -429,8 +444,8 @@ export function StudentList() {
   // Active filters count
   const activeFiltersCount = useMemo(() => {
     const filterCount = Object.values(filters).filter((v) => v !== undefined && v !== '').length;
-    return filterCount + (classFilter ? 1 : 0) + (planFilter ? 1 : 0);
-  }, [filters, classFilter, planFilter]);
+    return filterCount + (classFilter ? 1 : 0) + (planFilter ? 1 : 0) + (accountFilter ? 1 : 0);
+  }, [filters, classFilter, planFilter, accountFilter]);
 
   // Clear all filters including class, plan filter and search
   const handleClearFilters = useCallback(() => {
@@ -438,6 +453,7 @@ export function StudentList() {
     clearSearch();
     setClassFilter('');
     setPlanFilter('');
+    setAccountFilter('');
   }, [clearFilters, clearSearch]);
 
   // MenuProps for Selects inside BottomSheet (needs higher z-index)
@@ -530,6 +546,21 @@ export function StudentList() {
               {plan.name}
             </MenuItem>
           ))}
+        </Select>
+      </FormControl>
+
+      {/* Account Link Filter */}
+      <FormControl size="small" sx={{ minWidth: isMobile ? '100%' : 150 }}>
+        <InputLabel>Conta</InputLabel>
+        <Select
+          value={accountFilter}
+          onChange={handleAccountChange}
+          label="Conta"
+          MenuProps={selectMenuProps}
+        >
+          <MenuItem value="">Todas</MenuItem>
+          <MenuItem value="linked">Com conta</MenuItem>
+          <MenuItem value="unlinked">Sem conta</MenuItem>
         </Select>
       </FormControl>
 

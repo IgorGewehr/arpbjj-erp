@@ -42,6 +42,22 @@ interface Academy {
   adminUserId: string;
   ownerId?: string;
   abacatePayEnabled?: boolean;
+  name?: string;
+}
+
+interface BillingNotificationSettings {
+  whatsappEnabled?: boolean;
+  emailEnabled?: boolean;
+  enabled?: boolean;
+}
+
+interface StudentContactInfo {
+  phone?: string;
+  email?: string;
+  guardianPhone?: string;
+  guardianEmail?: string;
+  category?: string;
+  fullName?: string;
 }
 
 type PixKeyType = 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
@@ -284,6 +300,297 @@ async function notifyAdminCF(
 }
 
 // ============================================
+// WhatsApp & Email Notification Helpers
+// ============================================
+
+async function getBillingNotificationSettings(
+  academyId: string
+): Promise<BillingNotificationSettings | null> {
+  try {
+    const settingsDoc = await db
+      .doc(`academies/${academyId}/settings/billingReminders`)
+      .get();
+    if (!settingsDoc.exists) return null;
+    return settingsDoc.data() as BillingNotificationSettings;
+  } catch (error) {
+    console.error(`Error fetching billing settings for academy ${academyId}:`, error);
+    return null;
+  }
+}
+
+async function getStudentContactInfo(
+  academyId: string,
+  studentId: string
+): Promise<StudentContactInfo | null> {
+  try {
+    const studentDoc = await db
+      .doc(`academies/${academyId}/students/${studentId}`)
+      .get();
+    if (!studentDoc.exists) return null;
+    const data = studentDoc.data()!;
+    return {
+      phone: data.phone || undefined,
+      email: data.email || undefined,
+      guardianPhone: data.guardian?.phone || undefined,
+      guardianEmail: data.guardian?.email || undefined,
+      category: data.category || 'adult',
+      fullName: data.fullName || data.name || undefined,
+    };
+  } catch (error) {
+    console.error(`Error fetching student contact for ${studentId}:`, error);
+    return null;
+  }
+}
+
+function normalizePhone(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (digits.startsWith('55')) return digits;
+  return `55${digits}`;
+}
+
+function getEffectivePhone(contact: StudentContactInfo): string | null {
+  const isKid = contact.category === 'kids' || contact.category === 'child';
+  const phone = isKid
+    ? contact.guardianPhone || contact.phone
+    : contact.phone || contact.guardianPhone;
+  return phone ? normalizePhone(phone) : null;
+}
+
+function getEffectiveEmail(contact: StudentContactInfo): string | null {
+  const isKid = contact.category === 'kids' || contact.category === 'child';
+  return isKid
+    ? contact.guardianEmail || contact.email || null
+    : contact.email || contact.guardianEmail || null;
+}
+
+// Default WhatsApp templates with placeholders: {nome}, {valor}, {vencimento}, {dias}, {academia}
+const DEFAULT_WA_TEMPLATES: Record<string, string> = {
+  'D+1': 'Ola {nome}, sua mensalidade de R$ {valor} da {academia} venceu ontem ({vencimento}). Por favor, regularize o pagamento para continuar treinando normalmente.',
+  'D+3': '{nome}, sua mensalidade de R$ {valor} da {academia} esta atrasada ha {dias} dias (vencimento: {vencimento}). Regularize para evitar pendencias. Caso ja tenha pago, desconsidere.',
+  'D+7': '{nome}, URGENTE: sua mensalidade de R$ {valor} da {academia} esta atrasada ha {dias} dias. Vencimento: {vencimento}. Entre em contato conosco para regularizar sua situacao.',
+  'D+15': '{nome}, sua mensalidade de R$ {valor} da {academia} esta atrasada ha {dias} dias (vencimento: {vencimento}). Seu acesso pode ser suspenso em breve. Regularize o quanto antes.',
+  'D+30': '{nome}, AVISO FINAL: sua mensalidade de R$ {valor} da {academia} esta atrasada ha {dias} dias. Sem regularizacao, sua matricula podera ser cancelada. Entre em contato urgente.',
+};
+
+const DEFAULT_EMAIL_SUBJECTS: Record<string, string> = {
+  'D+1': '{academia} - Mensalidade Vencida',
+  'D+3': '{academia} - Mensalidade Atrasada - {dias} dias',
+  'D+7': '{academia} - URGENTE: Mensalidade Atrasada',
+  'D+15': '{academia} - Aviso de Suspensao - Mensalidade Atrasada',
+  'D+30': '{academia} - AVISO FINAL: Regularize sua Mensalidade',
+};
+
+function applyBillingTemplate(
+  template: string,
+  studentName: string,
+  amountFormatted: string,
+  dueDateFormatted: string,
+  daysOverdue: number,
+  academyName: string
+): string {
+  const firstName = studentName.split(' ')[0];
+  return template
+    .replace(/\{nome\}/g, firstName)
+    .replace(/\{valor\}/g, amountFormatted)
+    .replace(/\{vencimento\}/g, dueDateFormatted)
+    .replace(/\{dias\}/g, String(daysOverdue))
+    .replace(/\{academia\}/g, academyName);
+}
+
+function generateBillingMessage(
+  studentName: string,
+  amountFormatted: string,
+  dueDateFormatted: string,
+  daysOverdue: number,
+  stage: string,
+  academyName: string,
+  customTemplates?: Record<string, Record<string, string>>
+): string {
+  if (daysOverdue < 0) {
+    const daysUntil = Math.abs(daysOverdue);
+    return `Ola ${studentName.split(' ')[0]}! Sua mensalidade de R$ ${amountFormatted} da ${academyName} vence em ${daysUntil} dia(s), no dia ${dueDateFormatted}. Efetue o pagamento para evitar atrasos.`;
+  }
+
+  const template = customTemplates?.whatsapp?.[stage] || DEFAULT_WA_TEMPLATES[stage]
+    || DEFAULT_WA_TEMPLATES['D+1'];
+
+  return applyBillingTemplate(template, studentName, amountFormatted, dueDateFormatted, daysOverdue, academyName);
+}
+
+function generateEmailSubject(
+  stage: string,
+  daysOverdue: number,
+  academyName: string,
+  customTemplates?: Record<string, Record<string, string>>
+): string {
+  if (daysOverdue < 0) return `${academyName} - Lembrete de Vencimento Proximo`;
+
+  const template = customTemplates?.emailSubject?.[stage] || DEFAULT_EMAIL_SUBJECTS[stage]
+    || DEFAULT_EMAIL_SUBJECTS['D+1'];
+
+  return applyBillingTemplate(template, '', '', '', daysOverdue, academyName);
+}
+
+async function sendWhatsAppNotification(
+  apiUrl: string,
+  payload: Record<string, unknown>
+): Promise<boolean> {
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      console.error(`WhatsApp API error: ${response.status} ${response.statusText}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('WhatsApp API call failed:', error);
+    return false;
+  }
+}
+
+async function sendEmailNotification(
+  apiUrl: string,
+  payload: Record<string, unknown>
+): Promise<boolean> {
+  try {
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      console.error(`Email API error: ${response.status} ${response.statusText}`);
+      return false;
+    }
+    return true;
+  } catch (error) {
+    console.error('Email API call failed:', error);
+    return false;
+  }
+}
+
+/**
+ * Send WhatsApp + Email billing notifications for a financial record.
+ * Used by all Cloud Functions that need to notify students about payments.
+ */
+async function sendBillingNotifications(
+  academyId: string,
+  academyName: string,
+  financialId: string,
+  studentId: string,
+  studentName: string,
+  amount: number,
+  dueDate: Date,
+  daysOverdue: number,
+  stage: string,
+  notifType: 'new_payment' | 'due_soon' | 'billing_reminder'
+): Promise<void> {
+  // Read API URLs from environment variables
+  const whatsappApiUrl = process.env.WHATSAPP_API_URL;
+  const emailApiUrl = process.env.EMAIL_API_URL;
+
+  // Read toggles from Firestore settings
+  const settings = await getBillingNotificationSettings(academyId);
+
+  // Check if at least one channel is available
+  const whatsappActive = !!whatsappApiUrl && (settings?.whatsappEnabled !== false);
+  const emailActive = !!emailApiUrl && (settings?.emailEnabled !== false);
+
+  if (!whatsappActive && !emailActive) return;
+
+  const contact = await getStudentContactInfo(academyId, studentId);
+  if (!contact) return;
+
+  // Load custom message templates from settings
+  const settingsDoc = await db.doc(`academies/${academyId}/settings/billingReminders`).get();
+  const customTemplates = settingsDoc.exists ? settingsDoc.data()?.messageTemplates : undefined;
+
+  const amountFormatted = (amount / 100).toFixed(2);
+  const dueDateFormatted = dueDate.toLocaleDateString('pt-BR');
+  const message = generateBillingMessage(
+    studentName, amountFormatted, dueDateFormatted, daysOverdue, stage, academyName, customTemplates
+  );
+
+  const basePayload = {
+    studentName,
+    studentId,
+    financialId,
+    academyId,
+    academyName,
+    amount,
+    amountFormatted: `R$ ${amountFormatted}`,
+    dueDate: dueDate.toISOString(),
+    dueDateFormatted,
+    daysOverdue,
+    stage,
+    type: notifType,
+  };
+
+  // Send WhatsApp
+  if (whatsappActive) {
+    const phone = getEffectivePhone(contact);
+    if (phone) {
+      const sent = await sendWhatsAppNotification(whatsappApiUrl!, {
+        ...basePayload,
+        phone,
+        message,
+      });
+      if (sent) {
+        console.log(`WhatsApp sent to ${studentName} (${phone}) for ${stage}`);
+        // Log in billingContactLog
+        await db.collection(`academies/${academyId}/billingContactLog`).add({
+          financialId,
+          studentId,
+          studentName,
+          type: 'whatsapp',
+          notes: `Cobranca automatica via WhatsApp (${stage}): ${message.substring(0, 100)}...`,
+          stage,
+          daysOverdue,
+          contactedBy: 'system',
+          contactedByName: 'Sistema Automatico',
+          academyId,
+          createdAt: admin.firestore.Timestamp.now(),
+        });
+      }
+    }
+  }
+
+  // Send Email
+  if (emailActive) {
+    const email = getEffectiveEmail(contact);
+    if (email) {
+      const subject = generateEmailSubject(stage, daysOverdue, academyName, customTemplates);
+      const sent = await sendEmailNotification(emailApiUrl!, {
+        ...basePayload,
+        email,
+        subject,
+        message,
+      });
+      if (sent) {
+        console.log(`Email sent to ${studentName} (${email}) for ${stage}`);
+        await db.collection(`academies/${academyId}/billingContactLog`).add({
+          financialId,
+          studentId,
+          studentName,
+          type: 'email',
+          notes: `Cobranca automatica via Email (${stage}): ${subject}`,
+          stage,
+          daysOverdue,
+          contactedBy: 'system',
+          contactedByName: 'Sistema Automatico',
+          academyId,
+          createdAt: admin.firestore.Timestamp.now(),
+        });
+      }
+    }
+  }
+}
+
+// ============================================
 // Cloud Functions - Firestore Triggers
 // ============================================
 
@@ -328,6 +635,19 @@ export const onFinancialCreated = functions.firestore
       'Nova Mensalidade',
       `Sua mensalidade de R$ ${formattedAmount} vence em ${formattedDate}.`,
       { actionUrl: '/portal/financeiro', actionLabel: 'Ver detalhes', financialId, expiresInDays: 30 }
+    );
+
+    // WhatsApp + Email notifications
+    const academyDoc = await db.doc(`academies/${academyId}`).get();
+    const academyName = academyDoc.data()?.name || 'Academia';
+    const daysUntilDue = Math.ceil(
+      (dueDate.getTime() - new Date().getTime()) / (1000 * 60 * 60 * 24)
+    );
+    await sendBillingNotifications(
+      academyId, academyName, financialId, financial.studentId,
+      financial.studentName, financial.amount, dueDate,
+      -daysUntilDue, // negative = pre-due
+      'pre-vencimento', 'new_payment'
     );
 
     console.log(`Notification sent to user ${userId} for financial ${financialId}`);
@@ -508,13 +828,17 @@ export const scheduledOverdueCheck = functions.pubsub
   .schedule('0 9 * * *')
   .timeZone('America/Sao_Paulo')
   .onRun(async () => {
-    console.log('Running scheduled overdue payment check');
+    console.log('Running scheduled overdue payment check with escalated billing');
 
     const now = new Date();
     const academiesSnapshot = await db.collection('academies').get();
 
+    // Billing stages: only send reminders on exact day thresholds
+    const BILLING_STAGE_DAYS = [1, 3, 7, 15, 30];
+
     for (const academyDoc of academiesSnapshot.docs) {
       const academyId = academyDoc.id;
+      const academyName = academyDoc.data()?.name || 'Academia';
 
       // Get admin user for this academy
       const adminId = await getAcademyAdminUserId(academyId);
@@ -523,58 +847,118 @@ export const scheduledOverdueCheck = functions.pubsub
         continue;
       }
 
-      // Find overdue financials
+      // Find pending/overdue financials
       const financialsSnapshot = await db
         .collection('academies')
         .doc(academyId)
         .collection('financials')
-        .where('status', '==', 'pending')
+        .where('status', 'in', ['pending', 'overdue'])
         .get();
 
       let overdueCount = 0;
       let totalOverdueAmount = 0;
+      let notifyAdminStages: string[] = [];
 
       for (const financialDoc of financialsSnapshot.docs) {
         const financial = financialDoc.data() as Financial;
         const dueDate = financial.dueDate.toDate();
 
         // Check if overdue
-        if (dueDate < now) {
-          overdueCount++;
-          totalOverdueAmount += financial.amount;
+        if (dueDate >= now) continue;
 
-          // Update status to overdue if not already
-          if (financial.status !== 'overdue') {
-            await financialDoc.ref.update({ status: 'overdue' });
+        overdueCount++;
+        totalOverdueAmount += financial.amount;
+
+        // Update status to overdue if still pending
+        if (financial.status !== 'overdue') {
+          await financialDoc.ref.update({ status: 'overdue' });
+        }
+
+        // Calculate days overdue
+        const daysOverdue = Math.floor(
+          (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
+        );
+
+        // Determine billing stage
+        const stage = daysOverdue >= 30 ? 'D+30' :
+          daysOverdue >= 15 ? 'D+15' :
+          daysOverdue >= 7 ? 'D+7' :
+          daysOverdue >= 3 ? 'D+3' : 'D+1';
+
+        // Only send escalated reminders on exact stage days (or D+30 daily)
+        const isStageDay = BILLING_STAGE_DAYS.includes(daysOverdue) || daysOverdue >= 30;
+        if (!isStageDay) continue;
+
+        const amountFormatted = (financial.amount / 100).toFixed(2);
+        const userId = await getStudentUserId(financial.studentId, academyId);
+
+        // Escalated student notifications
+        if (userId) {
+          let title = 'Pagamento Atrasado';
+          let message = '';
+          let priority: 'medium' | 'high' = 'high';
+
+          if (daysOverdue <= 1) {
+            title = 'Lembrete de Pagamento';
+            message = `Sua mensalidade de R$ ${amountFormatted} venceu ontem. Regularize para evitar pendencias.`;
+            priority = 'medium';
+          } else if (daysOverdue <= 3) {
+            message = `Sua mensalidade de R$ ${amountFormatted} esta atrasada ha ${daysOverdue} dias. Por favor, regularize.`;
+          } else if (daysOverdue <= 7) {
+            title = 'Pagamento Urgente';
+            message = `Sua mensalidade de R$ ${amountFormatted} esta atrasada ha ${daysOverdue} dias. Entre em contato para regularizar.`;
+          } else if (daysOverdue <= 15) {
+            title = 'Aviso de Bloqueio';
+            message = `Sua mensalidade de R$ ${amountFormatted} esta atrasada ha ${daysOverdue} dias. Seu acesso pode ser bloqueado em breve.`;
+          } else {
+            title = 'Situacao Critica';
+            message = `Sua mensalidade de R$ ${amountFormatted} esta atrasada ha ${daysOverdue} dias. Entre em contato urgente para evitar inativacao.`;
           }
 
-          // Calculate days overdue
-          const daysOverdue = Math.floor(
-            (now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24)
+          await sendToUser(userId, title, message, {
+            type: 'financial',
+            id: financialDoc.id,
+            academyId,
+          });
+
+          await createInternalNotification(academyId, userId, 'financial', priority,
+            title, message,
+            {
+              actionUrl: '/portal/financeiro', actionLabel: 'Regularizar',
+              financialId: financialDoc.id, expiresInDays: 30,
+            }
           );
 
-          // Notify student about overdue payment (push + internal)
-          const userId = await getStudentUserId(financial.studentId, academyId);
-          if (userId) {
-            await sendToUser(
-              userId,
-              'Pagamento Atrasado',
-              `Sua mensalidade de R$ ${(financial.amount / 100).toFixed(2)} esta atrasada ha ${daysOverdue} dias.`,
-              {
-                type: 'financial',
-                id: financialDoc.id,
-                academyId,
-              }
-            );
-            await createInternalNotification(academyId, userId, 'financial', 'high',
-              'Pagamento Atrasado',
-              `Sua mensalidade de R$ ${(financial.amount / 100).toFixed(2)} está atrasada há ${daysOverdue} dias.`,
-              {
-                actionUrl: '/portal/financeiro', actionLabel: 'Regularizar',
-                financialId: financialDoc.id, expiresInDays: 30,
-              }
-            );
-          }
+          // Log system contact in billingContactLog
+          await db
+            .collection('academies')
+            .doc(academyId)
+            .collection('billingContactLog')
+            .add({
+              financialId: financialDoc.id,
+              studentId: financial.studentId,
+              studentName: financial.studentName,
+              type: 'system',
+              notes: `Lembrete automatico ${stage} enviado (${daysOverdue} dias de atraso)`,
+              stage,
+              daysOverdue,
+              contactedBy: 'system',
+              contactedByName: 'Sistema',
+              academyId,
+              createdAt: admin.firestore.Timestamp.now(),
+            });
+
+          // WhatsApp + Email notifications
+          await sendBillingNotifications(
+            academyId, academyName, financialDoc.id, financial.studentId,
+            financial.studentName, financial.amount, dueDate,
+            daysOverdue, stage, 'billing_reminder'
+          );
+        }
+
+        // Notify admin on stages D+3, D+7, D+15, D+30
+        if (daysOverdue >= 3 && !notifyAdminStages.includes(stage)) {
+          notifyAdminStages.push(stage);
         }
       }
 
@@ -594,7 +978,7 @@ export const scheduledOverdueCheck = functions.pubsub
         await createInternalNotification(academyId, adminId, 'financial', 'high',
           'Resumo de Pagamentos Atrasados',
           summaryMsg,
-          { actionUrl: '/financeiro', actionLabel: 'Ver financeiro', expiresInDays: 7 }
+          { actionUrl: '/cobranca', actionLabel: 'Ver cobranca', expiresInDays: 7 }
         );
         console.log(`Notified admin of academy ${academyId} about ${overdueCount} overdue payments`);
       }
@@ -621,6 +1005,7 @@ export const scheduledDueSoonReminder = functions.pubsub
 
     for (const academyDoc of academiesSnapshot.docs) {
       const academyId = academyDoc.id;
+      const academyName = academyDoc.data()?.name || 'Academia';
 
       // Find pending financials due within 3 days
       const financialsSnapshot = await db
@@ -636,12 +1021,12 @@ export const scheduledDueSoonReminder = functions.pubsub
 
         // Check if due within 3 days (but not overdue)
         if (dueDate > now && dueDate <= threeDaysFromNow) {
+          const daysUntilDue = Math.ceil(
+            (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
+          );
+
           const userId = await getStudentUserId(financial.studentId, academyId);
           if (userId) {
-            const daysUntilDue = Math.ceil(
-              (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)
-            );
-
             const amtFormatted = (financial.amount / 100).toFixed(2);
             const reminderMsg = `Sua mensalidade de R$ ${amtFormatted} vence em ${daysUntilDue} dia(s).`;
             await sendToUser(
@@ -664,6 +1049,14 @@ export const scheduledDueSoonReminder = functions.pubsub
             );
             console.log(`Sent due soon reminder to user ${userId} for financial ${financialDoc.id}`);
           }
+
+          // WhatsApp + Email notifications (pre-due)
+          await sendBillingNotifications(
+            academyId, academyName, financialDoc.id, financial.studentId,
+            financial.studentName, financial.amount, dueDate,
+            -daysUntilDue, // negative = pre-due
+            'pre-vencimento', 'due_soon'
+          );
         }
       }
     }

@@ -1002,3 +1002,218 @@ export interface Checkin {
 
   createdAt: Date;
 }
+
+// ============================================
+// Billing Reminder Types
+// ============================================
+export type BillingStage = 'D+1' | 'D+3' | 'D+7' | 'D+15' | 'D+30';
+
+export const BILLING_STAGES: { key: BillingStage; days: number; label: string }[] = [
+  { key: 'D+1', days: 1, label: '1 dia de atraso' },
+  { key: 'D+3', days: 3, label: '3 dias de atraso' },
+  { key: 'D+7', days: 7, label: '7 dias de atraso' },
+  { key: 'D+15', days: 15, label: '15 dias de atraso' },
+  { key: 'D+30', days: 30, label: '30+ dias de atraso' },
+];
+
+export type ContactType = 'whatsapp' | 'phone' | 'email' | 'in_person' | 'system';
+
+export interface BillingContactLog {
+  id: string;
+  financialId: string;
+  studentId: string;
+  studentName: string;
+  type: ContactType;
+  notes: string;
+  stage: BillingStage;
+  daysOverdue: number;
+  contactedBy: string;
+  contactedByName: string;
+  academyId: string;
+  createdAt: Date;
+}
+
+export interface CollectionStats {
+  totalOverdue: number;
+  totalOverdueAmount: number;
+  totalStudentsOverdue: number;
+  recoveryRate: number;
+  averageDaysOverdue: number;
+  byStage: Record<BillingStage, { count: number; amount: number }>;
+}
+
+export interface BillingStageConfig {
+  stage: BillingStage;
+  days: number;
+  enabled: boolean;
+  notifyAdmin: boolean;
+  notifyStudent: boolean;
+}
+
+export interface BillingMessageTemplates {
+  whatsapp?: Partial<Record<BillingStage, string>>;
+  emailSubject?: Partial<Record<BillingStage, string>>;
+  emailBody?: Partial<Record<BillingStage, string>>;
+}
+
+export interface BillingReminderSettings {
+  enabled: boolean;
+  stages: BillingStageConfig[];
+  whatsappEnabled?: boolean;
+  emailEnabled?: boolean;
+  academyName?: string;
+  messageTemplates?: BillingMessageTemplates;
+}
+
+// ============================================
+// Billing Notification Types
+// ============================================
+export interface StudentContact {
+  studentId: string;
+  studentName: string;
+  phone?: string;
+  email?: string;
+  guardianPhone?: string;
+  guardianEmail?: string;
+  category?: StudentCategory;
+}
+
+export interface WhatsAppBillingPayload {
+  phone: string;
+  studentName: string;
+  studentId: string;
+  financialId: string;
+  academyId: string;
+  academyName: string;
+  amount: number;
+  amountFormatted: string;
+  dueDate: string;
+  dueDateFormatted: string;
+  daysOverdue: number;
+  stage: BillingStage;
+  message: string;
+  type: 'billing_reminder';
+}
+
+export interface EmailBillingPayload {
+  email: string;
+  studentName: string;
+  studentId: string;
+  financialId: string;
+  academyId: string;
+  academyName: string;
+  amount: number;
+  amountFormatted: string;
+  dueDate: string;
+  dueDateFormatted: string;
+  daysOverdue: number;
+  stage: BillingStage;
+  subject: string;
+  message: string;
+  type: 'billing_reminder';
+}
+
+export interface BillingNotificationResult {
+  success: boolean;
+  studentName: string;
+  studentId: string;
+  channel: 'whatsapp' | 'email';
+  error?: string;
+}
+
+export interface BulkNotificationResult {
+  total: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  results: BillingNotificationResult[];
+}
+
+// ============================================
+// Retention & Risk Types
+// ============================================
+export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
+
+export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
+  low: 'Baixo',
+  medium: 'Medio',
+  high: 'Alto',
+  critical: 'Critico',
+};
+
+export const RISK_LEVEL_COLORS: Record<RiskLevel, 'success' | 'warning' | 'error' | 'error'> = {
+  low: 'success',
+  medium: 'warning',
+  high: 'error',
+  critical: 'error',
+};
+
+export interface RiskFactor {
+  name: string;
+  description: string;
+  weight: number;
+  score: number;
+  details: string;
+}
+
+export interface StudentRiskScore {
+  studentId: string;
+  studentName: string;
+  score: number;
+  level: RiskLevel;
+  factors: RiskFactor[];
+  lastAttendance?: Date;
+  daysSinceLastAttendance: number;
+  overduePayments: number;
+  attendanceTrend: number;
+  monthsAtAcademy: number;
+}
+
+export interface RetentionMetrics {
+  totalAtRisk: number;
+  atRiskPercentage: number;
+  averageFrequency: number;
+  paymentComplianceRate: number;
+  distributionByRisk: Record<RiskLevel, number>;
+  distributionByBelt: Record<string, number>;
+  distributionByCategory: Record<string, number>;
+}
+
+// ============================================
+// Financial Report Types
+// ============================================
+export interface MonthlyReport {
+  month: string;
+  confirmedRevenue: number;
+  pendingRevenue: number;
+  overdueRevenue: number;
+  totalExpected: number;
+  collectionRate: number;
+  growthMoM: number;
+  totalPayments: number;
+  paidCount: number;
+  pendingCount: number;
+  overdueCount: number;
+}
+
+export interface RevenueProjection {
+  month: string;
+  projected: number;
+  confidence: 'high' | 'medium' | 'low';
+  basis: string;
+}
+
+export interface RevenueByPlan {
+  planId: string;
+  planName: string;
+  studentCount: number;
+  totalRevenue: number;
+  percentage: number;
+}
+
+export interface FinancialRecommendation {
+  type: 'success' | 'warning' | 'info' | 'error';
+  title: string;
+  description: string;
+  metric: string;
+}

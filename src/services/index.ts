@@ -17,6 +17,10 @@ export { createCheckinService } from './checkinService';
 export { createNotificationService } from './notificationService';
 export { createAbacatePayService } from './abacatePayService';
 export { createAsaasService } from './asaasService';
+export { createBillingReminderService } from './billingReminderService';
+export { createBillingNotificationService } from './billingNotificationService';
+export { createRetentionService } from './retentionService';
+export { createFinancialReportService } from './financialReportService';
 
 // Global services (ROOT level, not per-academy)
 export { globalUserService } from './globalUserService';

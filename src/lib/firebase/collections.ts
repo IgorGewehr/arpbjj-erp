@@ -78,6 +78,7 @@ export const collections = {
   storeProducts: (academyId: string) => getCollection(academyId, 'storeProducts'),
   storeOrders: (academyId: string) => getCollection(academyId, 'storeOrders'),
   checkins: (academyId: string) => getCollection(academyId, 'checkins'),
+  billingContactLog: (academyId: string) => getCollection(academyId, 'billingContactLog'),
 
   // Document references
   user: (academyId: string, userId: string) => getDocRef(academyId, 'users', userId),
@@ -99,6 +100,7 @@ export const collections = {
   storeProduct: (academyId: string, productId: string) => getDocRef(academyId, 'storeProducts', productId),
   storeOrder: (academyId: string, orderId: string) => getDocRef(academyId, 'storeOrders', orderId),
   checkin: (academyId: string, checkinId: string) => getDocRef(academyId, 'checkins', checkinId),
+  billingContact: (academyId: string, contactId: string) => getDocRef(academyId, 'billingContactLog', contactId),
 };
 
 // ============================================

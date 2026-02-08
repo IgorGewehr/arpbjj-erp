@@ -53,6 +53,7 @@ interface AcademyContextType {
   setPrimaryAcademy: (academyId: string) => Promise<void>;
   refreshAcademy: () => Promise<void>;
   refreshAcademiesInfo: () => Promise<void>;
+  reloadUserMapping: () => Promise<AcademyUser | null>;
 }
 
 const AcademyContext = createContext<AcademyContextType | undefined>(undefined);
@@ -349,6 +350,115 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
   }, [firebaseUser, userAcademyMapping, loadAcademiesInfo]);
 
   // ============================================
+  // Reload User Mapping (force re-read from Firestore)
+  // Returns the loaded AcademyUser or null
+  // ============================================
+  const reloadUserMapping = useCallback(async (): Promise<AcademyUser | null> => {
+    if (!firebaseUser) return null;
+
+    try {
+      const mappingRef = doc(db, 'userAcademyMapping', firebaseUser.uid);
+      const mappingSnap = await getDoc(mappingRef);
+
+      if (!mappingSnap.exists()) return null;
+
+      const mapping = mappingSnap.data() as UserAcademyMapping;
+      setUserAcademyMapping(mapping);
+      setUserAcademies(mapping.academyIds || []);
+
+      const primaryId = mapping.primaryAcademyId || mapping.academyIds?.[0];
+      setPrimaryAcademyIdState(primaryId || null);
+
+      if (mapping.academyIds?.length > 0) {
+        await loadAcademiesInfo(mapping.academyIds, mapping);
+      }
+
+      if (primaryId) {
+        // Load academy
+        const academyRef = doc(db, 'academies', primaryId);
+        const academySnap = await getDoc(academyRef);
+
+        if (academySnap.exists()) {
+          const data = academySnap.data();
+          setAcademy({
+            id: academySnap.id,
+            name: data.name || '',
+            slug: data.slug || '',
+            logoUrl: data.logoUrl,
+            portalSlogan: data.portalSlogan,
+            sidebarLogoUrl: data.sidebarLogoUrl,
+            portalBackgroundUrl: data.portalBackgroundUrl,
+            adminBackgroundUrl: data.adminBackgroundUrl,
+            sidebarBackgroundUrl: data.sidebarBackgroundUrl,
+            cnpj: data.cnpj,
+            email: data.email,
+            phone: data.phone,
+            address: data.address,
+            city: data.city,
+            state: data.state,
+            zipCode: data.zipCode,
+            responsibleBirthDate: data.responsibleBirthDate,
+            pixKey: data.pixKey,
+            pixKeyType: data.pixKeyType,
+            abacatePayEnabled: data.abacatePayEnabled || false,
+            autoGraduationEnabled: data.autoGraduationEnabled || false,
+            autoGraduationAttendances: data.autoGraduationAttendances,
+            storeEnabled: data.storeEnabled || false,
+            storePublished: data.storePublished || false,
+            storeCreditCardEnabled: data.storeCreditCardEnabled || false,
+            storeWelcomeMessage: data.storeWelcomeMessage,
+            storeMinOrderAmount: data.storeMinOrderAmount,
+            studentCheckinEnabled: data.studentCheckinEnabled || false,
+            monitorIds: data.monitorIds || [],
+            asaasEnabled: data.asaasEnabled || false,
+            asaasSubAccountId: data.asaasSubAccountId,
+            asaasOnboardingStatus: data.asaasOnboardingStatus,
+            asaasKycStatus: data.asaasKycStatus,
+            subscription: data.subscription,
+            createdAt: data.createdAt?.toDate() || new Date(),
+            updatedAt: data.updatedAt?.toDate() || new Date(),
+            ownerId: data.ownerId,
+          });
+          setAcademyId(primaryId);
+        }
+
+        // Load academy user
+        const userRef = doc(db, `academies/${primaryId}/users`, firebaseUser.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (userSnap.exists()) {
+          const userData = userSnap.data();
+          const loadedUser: AcademyUser = {
+            id: userSnap.id,
+            email: userData.email || firebaseUser.email || '',
+            displayName: userData.displayName || firebaseUser.displayName || '',
+            photoUrl: userData.photoUrl,
+            role: userData.role || 'student',
+            phone: userData.phone,
+            studentId: userData.studentId,
+            linkedStudentIds: userData.linkedStudentIds,
+            instructorId: userData.instructorId,
+            pendingStudentLink: userData.pendingStudentLink,
+            approvedAt: userData.approvedAt?.toDate(),
+            createdAt: userData.createdAt?.toDate() || new Date(),
+            updatedAt: userData.updatedAt?.toDate() || new Date(),
+          };
+          setAcademyUser(loadedUser);
+          setIsLoading(false);
+          return loadedUser;
+        }
+      }
+
+      setIsLoading(false);
+      return null;
+    } catch (err) {
+      console.error('Error reloading user mapping:', err);
+      setIsLoading(false);
+      return null;
+    }
+  }, [firebaseUser, loadAcademiesInfo]);
+
+  // ============================================
   // Real-time Academy Updates
   // ============================================
   useEffect(() => {
@@ -442,6 +552,7 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
     setPrimaryAcademy: setPrimaryAcademyAction,
     refreshAcademy,
     refreshAcademiesInfo,
+    reloadUserMapping,
   }), [
     academyId,
     academy,
@@ -458,6 +569,7 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
     setPrimaryAcademyAction,
     refreshAcademy,
     refreshAcademiesInfo,
+    reloadUserMapping,
   ]);
 
   return (

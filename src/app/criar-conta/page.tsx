@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Box,
@@ -20,6 +20,7 @@ import { FirebaseError } from 'firebase/app';
 import { doc, setDoc, updateDoc, serverTimestamp, collectionGroup, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { LinkCode } from '@/types';
+import { useAcademy } from '@/contexts/AcademyContext';
 
 // ============================================
 // CPF Helpers
@@ -55,19 +56,21 @@ const validateCpf = (cpf: string): boolean => {
 // ============================================
 // Step Types
 // ============================================
-type Step = 'code' | 'register' | 'success';
+type Step = 'code' | 'register' | 'redirecting' | 'success';
 
 // ============================================
 // Main Component
 // ============================================
 export default function CreateAccountPage() {
   const router = useRouter();
+  const { reloadUserMapping } = useAcademy();
 
   const [step, setStep] = useState<Step>('code');
   const [code, setCode] = useState('');
   const [linkCode, setLinkCode] = useState<LinkCode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const redirectingRef = useRef(false);
 
   // Registration form
   const [cpf, setCpf] = useState('');
@@ -77,6 +80,30 @@ export default function CreateAccountPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  // ============================================
+  // Poll AcademyContext until user data is loaded
+  // ============================================
+  useEffect(() => {
+    if (step !== 'redirecting' || redirectingRef.current) return;
+    redirectingRef.current = true;
+
+    const pollUntilReady = async () => {
+      // Poll every 500ms for up to 10 seconds (20 attempts)
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const loadedUser = await reloadUserMapping();
+        if (loadedUser && loadedUser.role) {
+          router.replace('/portal');
+          return;
+        }
+      }
+      // Fallback: redirect anyway after 10s
+      router.replace('/portal');
+    };
+
+    pollUntilReady();
+  }, [step, reloadUserMapping, router]);
 
   // ============================================
   // Validate Code (collectionGroup query - multi-tenant)
@@ -297,8 +324,8 @@ export default function CreateAccountPage() {
         console.warn('WARNING: CPF not saved after 3 attempts. User can update later.');
       }
 
-      // Success - account is created and functional
-      setStep('success');
+      // Account created - wait for AcademyContext to load data before redirecting
+      setStep('redirecting');
     } catch (err: unknown) {
       console.error('Account creation error:', err);
 
@@ -627,10 +654,10 @@ export default function CreateAccountPage() {
   );
 
   // ============================================
-  // Render Success Step
+  // Render Redirecting Step (loading while AcademyContext loads)
   // ============================================
-  const renderSuccessStep = () => (
-    <Box sx={{ textAlign: 'center' }}>
+  const renderRedirectingStep = () => (
+    <Box sx={{ textAlign: 'center', py: 4 }}>
       <Box
         sx={{
           width: 100,
@@ -650,19 +677,11 @@ export default function CreateAccountPage() {
         Conta criada com sucesso!
       </Typography>
 
-      <Typography variant="body1" color="text.secondary" sx={{ mb: 4 }}>
-        Sua conta foi vinculada ao seu perfil de aluno.
-        Agora voce pode acessar o portal do aluno.
+      <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+        Preparando seu portal...
       </Typography>
 
-      <Button
-        variant="contained"
-        size="large"
-        onClick={() => router.push('/portal')}
-        sx={{ minWidth: 200 }}
-      >
-        Acessar Portal
-      </Button>
+      <CircularProgress size={32} />
     </Box>
   );
 
@@ -687,7 +706,7 @@ export default function CreateAccountPage() {
       >
         {step === 'code' && renderCodeStep()}
         {step === 'register' && renderRegisterStep()}
-        {step === 'success' && renderSuccessStep()}
+        {step === 'redirecting' && renderRedirectingStep()}
       </Paper>
     </Box>
   );

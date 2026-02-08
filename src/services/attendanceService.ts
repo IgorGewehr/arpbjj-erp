@@ -1,6 +1,5 @@
 import {
   getDocs,
-  getDoc,
   addDoc,
   deleteDoc,
   query,
@@ -15,7 +14,7 @@ import {
 import { db } from '@/lib/firebase';
 import { collections } from '@/lib/firebase/collections';
 import { Attendance, AttendanceFilters } from '@/types';
-import { startOfDay, endOfDay, format, differenceInYears, addYears } from 'date-fns';
+import { startOfDay, endOfDay, format } from 'date-fns';
 import { createAchievementService } from './achievementService';
 import { createStudentService } from './studentService';
 
@@ -25,8 +24,6 @@ const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'defaul
 // Attendance milestones for achievements
 const ATTENDANCE_MILESTONES = [50, 100, 200, 500, 1000];
 
-// Anniversary milestones (years of training)
-const ANNIVERSARY_MILESTONES = [1, 2, 3, 5, 10];
 
 // ============================================
 // Helper: Convert Firestore document to Attendance
@@ -248,11 +245,6 @@ export class AttendanceService {
       // Silently ignore errors - don't break attendance flow
     });
 
-    // Check for anniversary milestones (async, don't block)
-    this.checkAnniversaryMilestone(studentId, studentName, verifiedBy).catch(() => {
-      // Silently ignore errors - don't break attendance flow
-    });
-
     return attendance;
   }
 
@@ -310,44 +302,6 @@ export class AttendanceService {
           studentName,
           totalCount,
           milestoneDate,
-          createdBy
-        );
-      }
-    }
-  }
-
-  // ============================================
-  // Check Anniversary Milestone
-  // ============================================
-  async checkAnniversaryMilestone(
-    studentId: string,
-    studentName: string,
-    createdBy: string
-  ): Promise<void> {
-    // Get student to access startDate
-    const student = await this.studentService.getById(studentId);
-    if (!student?.startDate) return;
-
-    const startDate = new Date(student.startDate);
-    const yearsTraining = differenceInYears(new Date(), startDate);
-
-    // Check if current years matches any anniversary milestone
-    if (ANNIVERSARY_MILESTONES.includes(yearsTraining)) {
-      // Check if achievement already exists
-      const existingAchievements = await this.achievementService.getByStudent(studentId);
-      const alreadyHasMilestone = existingAchievements.some(
-        (a) => a.type === 'milestone' && a.milestone === `${yearsTraining}_anos_treino`
-      );
-
-      if (!alreadyHasMilestone) {
-        // Calculate the actual anniversary date (startDate + years of training)
-        const anniversaryDate = addYears(startDate, yearsTraining);
-
-        await this.achievementService.createAnniversaryMilestone(
-          studentId,
-          studentName,
-          yearsTraining,
-          anniversaryDate,
           createdBy
         );
       }
@@ -539,8 +493,8 @@ export class AttendanceService {
 
   // ============================================
   // Recalculate All Achievements for a Student
-  // (Only anniversary milestones - attendance milestones are only created
-  // when reached through system attendance records, not initial counts)
+  // (Attendance milestones are only created when reached through
+  // system attendance records, not initial counts)
   // ============================================
   async recalculateAchievementsForStudent(
     studentId: string,
@@ -551,50 +505,6 @@ export class AttendanceService {
       anniversaryCreated: [] as string[],
       attendanceCreated: [] as string[],
     };
-
-    // Get student data
-    const student = await this.studentService.getById(studentId);
-    if (!student) return result;
-
-    // Get existing achievements to avoid duplicates
-    const existingAchievements = await this.achievementService.getByStudent(studentId);
-
-    // ========== ANNIVERSARY MILESTONES ONLY ==========
-    // Attendance milestones are NOT created here because:
-    // - initialAttendanceCount doesn't have exact dates
-    // - They will be created automatically when the student reaches the milestone
-    //   through actual attendance records in the system
-    if (student.startDate) {
-      const startDate = new Date(student.startDate);
-      const now = new Date();
-      const yearsTraining = differenceInYears(now, startDate);
-
-      for (const yearMilestone of ANNIVERSARY_MILESTONES) {
-        if (yearsTraining >= yearMilestone) {
-          // Check if already exists
-          const alreadyExists = existingAchievements.some(
-            (a) => a.type === 'milestone' && a.milestone === `${yearMilestone}_anos_treino`
-          );
-
-          if (!alreadyExists) {
-            // Calculate the exact anniversary date
-            const anniversaryDate = addYears(startDate, yearMilestone);
-
-            const created = await this.achievementService.createAnniversaryMilestone(
-              studentId,
-              studentName,
-              yearMilestone,
-              anniversaryDate,
-              createdBy
-            );
-
-            if (created) {
-              result.anniversaryCreated.push(`${yearMilestone} ano(s)`);
-            }
-          }
-        }
-      }
-    }
 
     return result;
   }
@@ -673,7 +583,6 @@ export const attendanceService = {
   getPresentStudentIds: (classId: string, date: Date = new Date()) => new AttendanceService(DEFAULT_ACADEMY_ID).getPresentStudentIds(classId, date),
   markPresent: (studentId: string, studentName: string, classId: string, className: string, verifiedBy: string, verifiedByName: string, date: Date = new Date(), notes?: string) => new AttendanceService(DEFAULT_ACADEMY_ID).markPresent(studentId, studentName, classId, className, verifiedBy, verifiedByName, date, notes),
   checkAttendanceMilestone: (studentId: string, studentName: string, createdBy: string) => new AttendanceService(DEFAULT_ACADEMY_ID).checkAttendanceMilestone(studentId, studentName, createdBy),
-  checkAnniversaryMilestone: (studentId: string, studentName: string, createdBy: string) => new AttendanceService(DEFAULT_ACADEMY_ID).checkAnniversaryMilestone(studentId, studentName, createdBy),
   unmarkPresent: (studentId: string, classId: string, date: Date) => new AttendanceService(DEFAULT_ACADEMY_ID).unmarkPresent(studentId, classId, date),
   bulkMarkPresent: (students: Array<{ id: string; name: string }>, classId: string, className: string, verifiedBy: string, verifiedByName: string, date: Date = new Date()) => new AttendanceService(DEFAULT_ACADEMY_ID).bulkMarkPresent(students, classId, className, verifiedBy, verifiedByName, date),
   getStudentAttendanceCount: (studentId: string) => new AttendanceService(DEFAULT_ACADEMY_ID).getStudentAttendanceCount(studentId),

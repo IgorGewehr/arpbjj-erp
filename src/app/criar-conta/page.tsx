@@ -280,6 +280,7 @@ export default function CreateAccountPage() {
         try {
           await updateDoc(doc(db, 'academies', academyId, 'students', linkCode.studentId), {
             linkedUserId: user.uid,
+            email: email.trim(),
             cpf: cpfDigits,
             phone: phoneDigits,
             updatedAt: serverTimestamp(),

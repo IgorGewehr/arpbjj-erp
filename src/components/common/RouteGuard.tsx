@@ -6,6 +6,7 @@ import { Box, CircularProgress, Typography, Paper, Button, useTheme, useMediaQue
 import { ShieldAlert, Home, LogIn } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { usePermissions } from '@/components/providers/PermissionProvider';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { Permission, UserRole } from '@/types';
 
 // ============================================
@@ -159,13 +160,14 @@ export function RouteGuard({
   const pathname = usePathname();
   const { isAuthenticated, loading: authLoading, user } = useAuth();
   const { can, canAny, canAll, canAccessRoute, defaultRoute, role } = usePermissions();
+  const { isLoading: academyLoading } = useAcademy();
 
   const [isChecking, setIsChecking] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
 
   useEffect(() => {
-    // Wait for auth to load
-    if (authLoading) return;
+    // Wait for auth and academy context to load
+    if (authLoading || academyLoading) return;
 
     // Public routes
     if (allowUnauthenticated) {
@@ -223,6 +225,7 @@ export function RouteGuard({
     setIsChecking(false);
   }, [
     authLoading,
+    academyLoading,
     isAuthenticated,
     pathname,
     router,
@@ -240,7 +243,7 @@ export function RouteGuard({
   ]);
 
   // Still loading
-  if (authLoading || isChecking) {
+  if (authLoading || academyLoading || isChecking) {
     return <LoadingScreen />;
   }
 

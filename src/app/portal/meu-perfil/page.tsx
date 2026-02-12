@@ -225,7 +225,7 @@ export default function StudentProfilePage() {
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
           <ProfilePhotoUpload
-            academyId={academyId}
+            academyId={academyId ?? ''}
             studentId={studentId}
             photoUrl={student.photoUrl}
             fullName={student.fullName}

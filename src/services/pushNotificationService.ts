@@ -173,24 +173,6 @@ class PushNotificationService {
     });
   }
 
-  // Notify student about new competition
-  async notifyNewCompetition(
-    userId: string,
-    competitionName: string,
-    competitionDate: Date,
-    competitionId: string
-  ): Promise<boolean> {
-    return this.sendToUser({
-      userId,
-      title: 'Novo Campeonato Criado',
-      body: `${competitionName} foi adicionado! Data: ${competitionDate.toLocaleDateString('pt-BR')}.`,
-      data: {
-        type: 'competition',
-        id: competitionId,
-      },
-    });
-  }
-
   // Notify student about new achievement
   async notifyNewAchievement(
     userId: string,

@@ -364,25 +364,6 @@ class NotificationService {
     });
   }
 
-  async notifyCompetitionReminder(
-    userId: string,
-    competitionName: string,
-    daysUntil: number,
-    competitionId: string
-  ): Promise<Notification> {
-    return this.create({
-      userId,
-      type: 'competition_reminder',
-      priority: daysUntil <= 3 ? 'high' : 'normal',
-      title: 'Competição se Aproximando',
-      message: `${competitionName} acontecerá em ${daysUntil} dias.`,
-      competitionId,
-      actionUrl: `/portal/competicoes`,
-      actionLabel: 'Ver detalhes',
-      expiresInDays: daysUntil,
-    });
-  }
-
   // ============================================
   // New Tuition Created (For Students)
   // ============================================
@@ -406,27 +387,6 @@ class NotificationService {
     });
   }
 
-  // ============================================
-  // New Competition Created (For Students)
-  // ============================================
-  async notifyNewCompetitionCreated(
-    userId: string,
-    competitionName: string,
-    date: Date,
-    competitionId: string
-  ): Promise<Notification> {
-    return this.create({
-      userId,
-      type: 'competition_reminder',
-      priority: 'normal',
-      title: 'Novo Campeonato!',
-      message: `${competitionName} será realizado em ${date.toLocaleDateString('pt-BR')}. Inscreva-se!`,
-      competitionId,
-      actionUrl: `/portal/competicoes`,
-      actionLabel: 'Ver campeonato',
-      expiresInDays: 60,
-    });
-  }
 
   // ============================================
   // New Achievement (For Students)

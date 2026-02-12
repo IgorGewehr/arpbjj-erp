@@ -19,12 +19,6 @@ interface Financial {
   academyId: string;
 }
 
-interface Competition {
-  name: string;
-  date: admin.firestore.Timestamp;
-  academyId: string;
-}
-
 interface TimelineEvent {
   studentId: string;
   type: string;
@@ -689,63 +683,6 @@ export const onFinancialCreated = functions.firestore
     );
 
     console.log(`Notification sent to user ${userId} for financial ${financialId}`);
-  });
-
-/**
- * Trigger: New competition created
- * Action: Notify all students in the academy
- */
-export const onCompetitionCreated = functions.firestore
-  .document('academies/{academyId}/competitions/{competitionId}')
-  .onCreate(async (snapshot, context) => {
-    const { academyId, competitionId } = context.params;
-    const competition = snapshot.data() as Competition;
-
-    console.log(`New competition created: ${competitionId} in academy ${academyId}`);
-
-    // Send notification to all students via topic
-    const competitionDate = competition.date.toDate();
-    const formattedDate = competitionDate.toLocaleDateString('pt-BR');
-
-    await sendToTopic(
-      `academy_${academyId}`,
-      'Novo Campeonato Criado',
-      `${competition.name} foi adicionado! Data: ${formattedDate}. Faca sua inscricao.`,
-      {
-        type: 'competition',
-        id: competitionId,
-        academyId,
-      }
-    );
-
-    // Create in-app notifications for all active students
-    const studentsSnapshot = await db
-      .collection('academies')
-      .doc(academyId)
-      .collection('students')
-      .where('status', '==', 'active')
-      .get();
-
-    const notificationPromises: Promise<void>[] = [];
-    for (const studentDoc of studentsSnapshot.docs) {
-      const student = studentDoc.data() as Student;
-      if (student.userId) {
-        notificationPromises.push(
-          createInternalNotification(
-            academyId,
-            student.userId,
-            'competition_reminder',
-            'normal',
-            'Novo Campeonato Criado',
-            `${competition.name} foi adicionado! Data: ${formattedDate}. Faca sua inscricao.`,
-            { competitionId, expiresInDays: 30 }
-          )
-        );
-      }
-    }
-    await Promise.all(notificationPromises);
-
-    console.log(`Notification sent to topic academy_${academyId} for competition ${competitionId}`);
   });
 
 /**

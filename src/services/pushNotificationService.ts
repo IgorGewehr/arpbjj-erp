@@ -147,7 +147,7 @@ class PushNotificationService {
     return this.sendToUser({
       userId,
       title: 'Mensalidade Pendente',
-      body: `Você tem uma mensalidade de R$ ${(amount / 100).toFixed(2)} com vencimento em ${dueDate.toLocaleDateString('pt-BR')}.`,
+      body: `Você tem uma mensalidade de R$ ${amount.toFixed(2)} com vencimento em ${dueDate.toLocaleDateString('pt-BR')}.`,
       data: {
         type: 'financial',
         id: financialId,
@@ -165,7 +165,7 @@ class PushNotificationService {
     return this.sendToUser({
       userId,
       title: 'Nova Mensalidade Disponível',
-      body: `Uma nova mensalidade de R$ ${(amount / 100).toFixed(2)} foi gerada. Vencimento: ${dueDate.toLocaleDateString('pt-BR')}.`,
+      body: `Uma nova mensalidade de R$ ${amount.toFixed(2)} foi gerada. Vencimento: ${dueDate.toLocaleDateString('pt-BR')}.`,
       data: {
         type: 'financial',
         id: financialId,
@@ -236,7 +236,7 @@ class PushNotificationService {
     return this.sendToUser({
       userId: adminUserId,
       title: 'Pagamento Recebido',
-      body: `${studentName} pagou R$ ${(amount / 100).toFixed(2)} via plataforma.`,
+      body: `${studentName} pagou R$ ${amount.toFixed(2)} via plataforma.`,
       data: {
         type: 'financial',
         id: financialId,
@@ -255,7 +255,7 @@ class PushNotificationService {
     return this.sendToUser({
       userId: adminUserId,
       title: 'Pagamento Atrasado',
-      body: `${studentName} tem um pagamento de R$ ${(amount / 100).toFixed(2)} atrasado há ${daysOverdue} dias.`,
+      body: `${studentName} tem um pagamento de R$ ${amount.toFixed(2)} atrasado há ${daysOverdue} dias.`,
       data: {
         type: 'financial',
         id: financialId,

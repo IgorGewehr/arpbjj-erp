@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 
 export async function POST(request: NextRequest) {
   const apiUrl = process.env.EMAIL_API_URL;
-  if (!apiUrl) {
+  const apiKey = process.env.EMAIL_API_KEY;
+
+  if (!apiUrl || !apiKey) {
     return NextResponse.json(
-      { error: 'EMAIL_API_URL not configured' },
+      { error: 'API de Email nao configurada', code: 'NOT_CONFIGURED', retryable: false },
       { status: 503 }
     );
   }
@@ -12,26 +14,56 @@ export async function POST(request: NextRequest) {
   try {
     const payload = await request.json();
 
-    const response = await fetch(apiUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
+    // Validate required fields
+    if (!payload.email || !payload.subject || !payload.message) {
       return NextResponse.json(
-        { error: `Upstream error: ${response.status} ${errorText}` },
-        { status: response.status }
+        { error: 'Campos obrigatorios ausentes: email, subject, message', code: 'VALIDATION_ERROR', retryable: false },
+        { status: 400 }
       );
     }
 
-    const data = await response.json().catch(() => ({ success: true }));
-    return NextResponse.json(data);
+    // 30-second timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        const retryable = response.status >= 500 || response.status === 429;
+        return NextResponse.json(
+          { error: `Upstream error: ${response.status} ${errorText}`, code: 'UPSTREAM_ERROR', retryable },
+          { status: response.status }
+        );
+      }
+
+      const data = await response.json().catch(() => ({ success: true }));
+      return NextResponse.json(data);
+    } catch (fetchErr) {
+      clearTimeout(timeoutId);
+      if (fetchErr instanceof DOMException && fetchErr.name === 'AbortError') {
+        return NextResponse.json(
+          { error: 'Timeout: API demorou mais de 30 segundos', code: 'TIMEOUT', retryable: true },
+          { status: 504 }
+        );
+      }
+      throw fetchErr;
+    }
   } catch (err) {
     console.error('Email proxy error:', err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Internal error' },
+      { error: err instanceof Error ? err.message : 'Erro interno', code: 'INTERNAL_ERROR', retryable: true },
       { status: 500 }
     );
   }

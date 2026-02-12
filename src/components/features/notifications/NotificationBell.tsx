@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import {
   IconButton,
   Badge,
@@ -30,6 +30,7 @@ import {
   Clock,
   ShoppingBag,
   Wallet,
+  Trash2,
 } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -96,14 +97,54 @@ interface NotificationItemProps {
   notification: Notification;
   onRead: () => void;
   onNavigate: () => void;
+  onDelete: () => void;
 }
 
-function NotificationItem({ notification, onRead, onNavigate }: NotificationItemProps) {
+function NotificationItem({ notification, onRead, onNavigate, onDelete }: NotificationItemProps) {
   const theme = useTheme();
   const Icon = getNotificationIcon(notification.type);
   const color = getNotificationColor(notification.type, theme);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const startXRef = useRef(0);
+  const currentXRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  const [offsetX, setOffsetX] = useState(0);
+  const [dismissed, setDismissed] = useState(false);
+
+  const DISMISS_THRESHOLD = 80;
+
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    startXRef.current = e.clientX;
+    currentXRef.current = 0;
+    isDraggingRef.current = false;
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+  }, []);
+
+  const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    const deltaX = e.clientX - startXRef.current;
+    // Only allow swipe left (negative)
+    if (deltaX < -5) {
+      isDraggingRef.current = true;
+      const clamped = Math.max(deltaX, -160);
+      currentXRef.current = clamped;
+      setOffsetX(clamped);
+    }
+  }, []);
+
+  const handlePointerUp = useCallback(() => {
+    if (currentXRef.current < -DISMISS_THRESHOLD) {
+      setDismissed(true);
+      setOffsetX(-400);
+      setTimeout(() => onDelete(), 200);
+    } else {
+      setOffsetX(0);
+    }
+    isDraggingRef.current = false;
+  }, [onDelete]);
+
   const handleClick = () => {
+    if (isDraggingRef.current) return;
     if (!notification.read) {
       onRead();
     }
@@ -112,16 +153,48 @@ function NotificationItem({ notification, onRead, onNavigate }: NotificationItem
     }
   };
 
+  if (dismissed) return null;
+
   return (
-    <ListItem disablePadding>
+    <ListItem disablePadding sx={{ position: 'relative', overflow: 'hidden' }}>
+      {/* Delete background revealed on swipe */}
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 0,
+          right: 0,
+          bottom: 0,
+          width: 80,
+          bgcolor: theme.palette.error.main + '15',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          opacity: offsetX < -20 ? 1 : 0,
+          transition: offsetX === 0 ? 'opacity 0.2s' : 'none',
+        }}
+      >
+        <Trash2 size={18} color={theme.palette.error.main} />
+      </Box>
+
       <ListItemButton
+        ref={containerRef}
         onClick={handleClick}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
         sx={{
           py: 1.5,
           px: 2,
           bgcolor: notification.read ? 'transparent' : 'action.hover',
+          transform: `translateX(${offsetX}px)`,
+          transition: isDraggingRef.current ? 'none' : 'transform 0.2s ease-out',
+          touchAction: 'pan-y',
           '&:hover': {
             bgcolor: 'action.selected',
+          },
+          '&:hover .notification-delete-btn': {
+            opacity: 1,
           },
         }}
       >
@@ -179,17 +252,39 @@ function NotificationItem({ notification, onRead, onNavigate }: NotificationItem
             </Box>
           }
         />
-        {!notification.read && (
-          <Box
-            sx={{
-              width: 8,
-              height: 8,
-              borderRadius: '50%',
-              bgcolor: theme.palette.primary.main,
-              ml: 1,
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, ml: 0.5, flexShrink: 0 }}>
+          {!notification.read && (
+            <Box
+              sx={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                bgcolor: theme.palette.primary.main,
+              }}
+            />
+          )}
+          {/* Small delete button on hover (desktop) */}
+          <IconButton
+            className="notification-delete-btn"
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
             }}
-          />
-        )}
+            sx={{
+              opacity: 0,
+              transition: 'opacity 0.15s',
+              p: 0.5,
+              color: theme.palette.text.disabled,
+              '&:hover': {
+                color: theme.palette.error.main,
+                bgcolor: theme.palette.error.main + '10',
+              },
+            }}
+          >
+            <Trash2 size={14} />
+          </IconButton>
+        </Box>
       </ListItemButton>
     </ListItem>
   );
@@ -204,6 +299,7 @@ export function NotificationBell() {
     isLoading,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
   } = useNotifications();
 
   const [anchorEl, setAnchorEl] = useState<HTMLButtonElement | null>(null);
@@ -229,6 +325,14 @@ export function NotificationBell() {
     if (notification.actionUrl) {
       router.push(notification.actionUrl);
       handleClose();
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId: string) => {
+    try {
+      await deleteNotification(notificationId);
+    } catch (err) {
+      console.error('Failed to delete notification:', err);
     }
   };
 
@@ -350,6 +454,7 @@ export function NotificationBell() {
                     notification={notification}
                     onRead={() => handleNotificationRead(notification.id)}
                     onNavigate={() => handleNavigate(notification)}
+                    onDelete={() => handleDeleteNotification(notification.id)}
                   />
                   {index < notifications.length - 1 && (
                     <Divider component="li" />

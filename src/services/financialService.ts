@@ -289,7 +289,10 @@ export class FinancialService {
       }
 
       // Calculate due date based on student's tuition day
-      const dueDate = new Date(year, monthNum - 1, student.tuitionDay);
+      // Clamp to last day of month (e.g., day 31 in February → Feb 28/29)
+      const lastDayOfMonth = new Date(year, monthNum, 0).getDate();
+      const clampedDay = Math.min(student.tuitionDay, lastDayOfMonth);
+      const dueDate = new Date(year, monthNum - 1, clampedDay);
 
       const financial = await this.create(
         {

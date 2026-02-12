@@ -64,6 +64,7 @@ import { PayingStudentsDialog } from './PayingStudentsDialog';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import { getBeltChipColor } from '@/lib/theme';
 import { Financial, PaymentStatus, Plan, Student } from '@/types';
+import { getStudentDueDay } from '@/services/planService';
 
 // ============================================
 // Status Filter Options
@@ -655,7 +656,7 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
               onChange={(e) => setDefaultDueDay(e.target.value)}
               label="Dia de Vencimento"
             >
-              {Array.from({ length: 28 }, (_, i) => i + 1).map((day) => (
+              {Array.from({ length: 31 }, (_, i) => i + 1).map((day) => (
                 <MenuItem key={day} value={day.toString()}>
                   Dia {day}
                 </MenuItem>
@@ -933,7 +934,7 @@ export function FinancialDashboard() {
             studentId,
             planId: plan.id,
             value: plan.customValues?.[studentId] ?? plan.monthlyValue,
-            day: student.tuitionDay || plan.defaultDueDay || 10,
+            day: getStudentDueDay(plan, studentId) ?? student.tuitionDay ?? 10,
           });
         }
       }

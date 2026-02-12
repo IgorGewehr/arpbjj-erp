@@ -482,7 +482,7 @@ function AcademyTab() {
               type="file"
               ref={fileInputRef}
               onChange={(e) => handleImageUpload(e, 'logoUrl')}
-              accept="image/*"
+              accept="image/jpeg,image/jpg,image/png,image/webp"
               style={{ display: 'none' }}
             />
             <Button
@@ -723,7 +723,7 @@ function AppearanceTab() {
             type="file"
             id={`${field}-input`}
             onChange={(e) => handleImageUpload(e, field)}
-            accept="image/*"
+            accept="image/jpeg,image/jpg,image/png,image/webp"
             style={{ display: 'none' }}
           />
           <Button

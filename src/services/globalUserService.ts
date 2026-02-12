@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { rootCollections, collections } from '@/lib/firebase/collections';
+import { removeUndefinedDeep } from '@/lib/firestoreUtils';
 import {
   GlobalUser,
   AccountType,
@@ -166,7 +167,7 @@ export async function updateGlobalUser(
     updateData.jiujitsuStartDate = Timestamp.fromDate(data.jiujitsuStartDate);
   }
 
-  await updateDoc(userRef, updateData);
+  await updateDoc(userRef, removeUndefinedDeep(updateData));
 }
 
 // ============================================
@@ -478,20 +479,20 @@ export async function upsertAcademyUser(
 ): Promise<void> {
   const userRef = collections.user(academyId, userId);
 
-  const userData = {
+  const userData: Record<string, unknown> = {
     ...data,
     updatedAt: serverTimestamp(),
   };
 
   // Convert dates
   if (data.approvedAt) {
-    userData.approvedAt = Timestamp.fromDate(data.approvedAt) as unknown as Date;
+    userData.approvedAt = Timestamp.fromDate(data.approvedAt);
   }
   if (data.joinedAt) {
-    userData.joinedAt = Timestamp.fromDate(data.joinedAt) as unknown as Date;
+    userData.joinedAt = Timestamp.fromDate(data.joinedAt);
   }
 
-  await setDoc(userRef, userData, { merge: true });
+  await setDoc(userRef, removeUndefinedDeep(userData), { merge: true });
 }
 
 /**

@@ -350,26 +350,37 @@ function normalizePhone(phone: string): string {
 
 function getEffectivePhone(contact: StudentContactInfo): string | null {
   const isKid = contact.category === 'kids' || contact.category === 'child';
-  const phone = isKid
-    ? contact.guardianPhone || contact.phone
-    : contact.phone || contact.guardianPhone;
+  const phone = isKid ?
+    contact.guardianPhone || contact.phone :
+    contact.phone || contact.guardianPhone;
   return phone ? normalizePhone(phone) : null;
 }
 
 function getEffectiveEmail(contact: StudentContactInfo): string | null {
   const isKid = contact.category === 'kids' || contact.category === 'child';
-  return isKid
-    ? contact.guardianEmail || contact.email || null
-    : contact.email || contact.guardianEmail || null;
+  return isKid ?
+    contact.guardianEmail || contact.email || null :
+    contact.email || contact.guardianEmail || null;
 }
 
 // Default WhatsApp templates with placeholders: {nome}, {valor}, {vencimento}, {dias}, {academia}
 const DEFAULT_WA_TEMPLATES: Record<string, string> = {
-  'D+1': 'Ola {nome}, sua mensalidade de R$ {valor} da {academia} venceu ontem ({vencimento}). Por favor, regularize o pagamento para continuar treinando normalmente.',
-  'D+3': '{nome}, sua mensalidade de R$ {valor} da {academia} esta atrasada ha {dias} dias (vencimento: {vencimento}). Regularize para evitar pendencias. Caso ja tenha pago, desconsidere.',
-  'D+7': '{nome}, URGENTE: sua mensalidade de R$ {valor} da {academia} esta atrasada ha {dias} dias. Vencimento: {vencimento}. Entre em contato conosco para regularizar sua situacao.',
-  'D+15': '{nome}, sua mensalidade de R$ {valor} da {academia} esta atrasada ha {dias} dias (vencimento: {vencimento}). Seu acesso pode ser suspenso em breve. Regularize o quanto antes.',
-  'D+30': '{nome}, AVISO FINAL: sua mensalidade de R$ {valor} da {academia} esta atrasada ha {dias} dias. Sem regularizacao, sua matricula podera ser cancelada. Entre em contato urgente.',
+  'D+1': 'Ola {nome}, sua mensalidade de R$ {valor} da {academia} ' +
+    'venceu ontem ({vencimento}). Por favor, regularize o pagamento ' +
+    'para continuar treinando normalmente.',
+  'D+3': '{nome}, sua mensalidade de R$ {valor} da {academia} esta ' +
+    'atrasada ha {dias} dias (vencimento: {vencimento}). Regularize ' +
+    'para evitar pendencias. Caso ja tenha pago, desconsidere.',
+  'D+7': '{nome}, URGENTE: sua mensalidade de R$ {valor} da ' +
+    '{academia} esta atrasada ha {dias} dias. Vencimento: ' +
+    '{vencimento}. Entre em contato conosco para regularizar ' +
+    'sua situacao.',
+  'D+15': '{nome}, sua mensalidade de R$ {valor} da {academia} esta ' +
+    'atrasada ha {dias} dias (vencimento: {vencimento}). Seu acesso ' +
+    'pode ser suspenso em breve. Regularize o quanto antes.',
+  'D+30': '{nome}, AVISO FINAL: sua mensalidade de R$ {valor} da ' +
+    '{academia} esta atrasada ha {dias} dias. Sem regularizacao, ' +
+    'sua matricula podera ser cancelada. Entre em contato urgente.',
 };
 
 const DEFAULT_EMAIL_SUBJECTS: Record<string, string> = {
@@ -408,11 +419,16 @@ function generateBillingMessage(
 ): string {
   if (daysOverdue < 0) {
     const daysUntil = Math.abs(daysOverdue);
-    return `Ola ${studentName.split(' ')[0]}! Sua mensalidade de R$ ${amountFormatted} da ${academyName} vence em ${daysUntil} dia(s), no dia ${dueDateFormatted}. Efetue o pagamento para evitar atrasos.`;
+    const firstName = studentName.split(' ')[0];
+    return `Ola ${firstName}! Sua mensalidade de R$ ` +
+      `${amountFormatted} da ${academyName} vence em ` +
+      `${daysUntil} dia(s), no dia ${dueDateFormatted}. ` +
+      'Efetue o pagamento para evitar atrasos.';
   }
 
-  const template = customTemplates?.whatsapp?.[stage] || DEFAULT_WA_TEMPLATES[stage]
-    || DEFAULT_WA_TEMPLATES['D+1'];
+  const template = customTemplates?.whatsapp?.[stage] ||
+    DEFAULT_WA_TEMPLATES[stage] ||
+    DEFAULT_WA_TEMPLATES['D+1'];
 
   return applyBillingTemplate(template, studentName, amountFormatted, dueDateFormatted, daysOverdue, academyName);
 }
@@ -425,20 +441,25 @@ function generateEmailSubject(
 ): string {
   if (daysOverdue < 0) return `${academyName} - Lembrete de Vencimento Proximo`;
 
-  const template = customTemplates?.emailSubject?.[stage] || DEFAULT_EMAIL_SUBJECTS[stage]
-    || DEFAULT_EMAIL_SUBJECTS['D+1'];
+  const template = customTemplates?.emailSubject?.[stage] ||
+    DEFAULT_EMAIL_SUBJECTS[stage] ||
+    DEFAULT_EMAIL_SUBJECTS['D+1'];
 
   return applyBillingTemplate(template, '', '', '', daysOverdue, academyName);
 }
 
 async function sendWhatsAppNotification(
   apiUrl: string,
+  apiKey: string,
   payload: Record<string, unknown>
 ): Promise<boolean> {
   try {
     const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+      },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -454,12 +475,16 @@ async function sendWhatsAppNotification(
 
 async function sendEmailNotification(
   apiUrl: string,
+  apiKey: string,
   payload: Record<string, unknown>
 ): Promise<boolean> {
   try {
     const response = await fetch(apiUrl, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+      },
       body: JSON.stringify(payload),
     });
     if (!response.ok) {
@@ -476,6 +501,17 @@ async function sendEmailNotification(
 /**
  * Send WhatsApp + Email billing notifications for a financial record.
  * Used by all Cloud Functions that need to notify students about payments.
+ * @param {string} academyId - Academy ID
+ * @param {string} academyName - Academy name
+ * @param {string} financialId - Financial record ID
+ * @param {string} studentId - Student ID
+ * @param {string} studentName - Student name
+ * @param {number} amount - Amount in Reais
+ * @param {Date} dueDate - Due date
+ * @param {number} daysOverdue - Days overdue
+ * @param {string} stage - Billing stage (D+1, D+3, etc.)
+ * @param {string} notifType - Notification type
+ * @return {Promise<void>}
  */
 async function sendBillingNotifications(
   academyId: string,
@@ -489,16 +525,18 @@ async function sendBillingNotifications(
   stage: string,
   notifType: 'new_payment' | 'due_soon' | 'billing_reminder'
 ): Promise<void> {
-  // Read API URLs from environment variables
+  // Read API URLs and keys from environment variables
   const whatsappApiUrl = process.env.WHATSAPP_API_URL;
   const emailApiUrl = process.env.EMAIL_API_URL;
+  const whatsappApiKey = process.env.WHATSAPP_API_KEY;
+  const emailApiKey = process.env.EMAIL_API_KEY;
 
   // Read toggles from Firestore settings
   const settings = await getBillingNotificationSettings(academyId);
 
-  // Check if at least one channel is available
-  const whatsappActive = !!whatsappApiUrl && (settings?.whatsappEnabled !== false);
-  const emailActive = !!emailApiUrl && (settings?.emailEnabled !== false);
+  // Check if at least one channel is available (URL + API Key required)
+  const whatsappActive = !!whatsappApiUrl && !!whatsappApiKey && (settings?.whatsappEnabled !== false);
+  const emailActive = !!emailApiUrl && !!emailApiKey && (settings?.emailEnabled !== false);
 
   if (!whatsappActive && !emailActive) return;
 
@@ -509,7 +547,7 @@ async function sendBillingNotifications(
   const settingsDoc = await db.doc(`academies/${academyId}/settings/billingReminders`).get();
   const customTemplates = settingsDoc.exists ? settingsDoc.data()?.messageTemplates : undefined;
 
-  const amountFormatted = (amount / 100).toFixed(2);
+  const amountFormatted = amount.toFixed(2);
   const dueDateFormatted = dueDate.toLocaleDateString('pt-BR');
   const message = generateBillingMessage(
     studentName, amountFormatted, dueDateFormatted, daysOverdue, stage, academyName, customTemplates
@@ -534,7 +572,7 @@ async function sendBillingNotifications(
   if (whatsappActive) {
     const phone = getEffectivePhone(contact);
     if (phone) {
-      const sent = await sendWhatsAppNotification(whatsappApiUrl!, {
+      const sent = await sendWhatsAppNotification(whatsappApiUrl!, whatsappApiKey!, {
         ...basePayload,
         phone,
         message,
@@ -564,7 +602,7 @@ async function sendBillingNotifications(
     const email = getEffectiveEmail(contact);
     if (email) {
       const subject = generateEmailSubject(stage, daysOverdue, academyName, customTemplates);
-      const sent = await sendEmailNotification(emailApiUrl!, {
+      const sent = await sendEmailNotification(emailApiUrl!, emailApiKey!, {
         ...basePayload,
         email,
         subject,
@@ -616,7 +654,7 @@ export const onFinancialCreated = functions.firestore
     // Send notification to student
     const dueDate = financial.dueDate.toDate();
     const formattedDate = dueDate.toLocaleDateString('pt-BR');
-    const formattedAmount = (financial.amount / 100).toFixed(2);
+    const formattedAmount = financial.amount.toFixed(2);
 
     // Push notification
     await sendToUser(
@@ -857,7 +895,7 @@ export const scheduledOverdueCheck = functions.pubsub
 
       let overdueCount = 0;
       let totalOverdueAmount = 0;
-      let notifyAdminStages: string[] = [];
+      const notifyAdminStages: string[] = [];
 
       for (const financialDoc of financialsSnapshot.docs) {
         const financial = financialDoc.data() as Financial;
@@ -880,16 +918,17 @@ export const scheduledOverdueCheck = functions.pubsub
         );
 
         // Determine billing stage
-        const stage = daysOverdue >= 30 ? 'D+30' :
-          daysOverdue >= 15 ? 'D+15' :
-          daysOverdue >= 7 ? 'D+7' :
-          daysOverdue >= 3 ? 'D+3' : 'D+1';
+        let stage = 'D+1';
+        if (daysOverdue >= 30) stage = 'D+30';
+        else if (daysOverdue >= 15) stage = 'D+15';
+        else if (daysOverdue >= 7) stage = 'D+7';
+        else if (daysOverdue >= 3) stage = 'D+3';
 
         // Only send escalated reminders on exact stage days (or D+30 daily)
         const isStageDay = BILLING_STAGE_DAYS.includes(daysOverdue) || daysOverdue >= 30;
         if (!isStageDay) continue;
 
-        const amountFormatted = (financial.amount / 100).toFixed(2);
+        const amountFormatted = financial.amount.toFixed(2);
         const userId = await getStudentUserId(financial.studentId, academyId);
 
         // Escalated student notifications
@@ -900,19 +939,28 @@ export const scheduledOverdueCheck = functions.pubsub
 
           if (daysOverdue <= 1) {
             title = 'Lembrete de Pagamento';
-            message = `Sua mensalidade de R$ ${amountFormatted} venceu ontem. Regularize para evitar pendencias.`;
+            message = `Sua mensalidade de R$ ${amountFormatted}` +
+              ' venceu ontem. Regularize para evitar pendencias.';
             priority = 'medium';
           } else if (daysOverdue <= 3) {
-            message = `Sua mensalidade de R$ ${amountFormatted} esta atrasada ha ${daysOverdue} dias. Por favor, regularize.`;
+            message = `Sua mensalidade de R$ ${amountFormatted}` +
+              ` esta atrasada ha ${daysOverdue} dias.` +
+              ' Por favor, regularize.';
           } else if (daysOverdue <= 7) {
             title = 'Pagamento Urgente';
-            message = `Sua mensalidade de R$ ${amountFormatted} esta atrasada ha ${daysOverdue} dias. Entre em contato para regularizar.`;
+            message = `Sua mensalidade de R$ ${amountFormatted}` +
+              ` esta atrasada ha ${daysOverdue} dias.` +
+              ' Entre em contato para regularizar.';
           } else if (daysOverdue <= 15) {
             title = 'Aviso de Bloqueio';
-            message = `Sua mensalidade de R$ ${amountFormatted} esta atrasada ha ${daysOverdue} dias. Seu acesso pode ser bloqueado em breve.`;
+            message = `Sua mensalidade de R$ ${amountFormatted}` +
+              ` esta atrasada ha ${daysOverdue} dias.` +
+              ' Seu acesso pode ser bloqueado em breve.';
           } else {
             title = 'Situacao Critica';
-            message = `Sua mensalidade de R$ ${amountFormatted} esta atrasada ha ${daysOverdue} dias. Entre em contato urgente para evitar inativacao.`;
+            message = `Sua mensalidade de R$ ${amountFormatted}` +
+              ` esta atrasada ha ${daysOverdue} dias.` +
+              ' Entre em contato urgente para evitar inativacao.';
           }
 
           await sendToUser(userId, title, message, {
@@ -964,7 +1012,7 @@ export const scheduledOverdueCheck = functions.pubsub
 
       // Notify admin about overdue summary (push + internal)
       if (overdueCount > 0) {
-        const totalFormatted = (totalOverdueAmount / 100).toFixed(2);
+        const totalFormatted = totalOverdueAmount.toFixed(2);
         const summaryMsg = `Voce tem ${overdueCount} pagamento(s) atrasado(s) totalizando R$ ${totalFormatted}.`;
         await sendToUser(
           adminId,
@@ -1027,7 +1075,7 @@ export const scheduledDueSoonReminder = functions.pubsub
 
           const userId = await getStudentUserId(financial.studentId, academyId);
           if (userId) {
-            const amtFormatted = (financial.amount / 100).toFixed(2);
+            const amtFormatted = financial.amount.toFixed(2);
             const reminderMsg = `Sua mensalidade de R$ ${amtFormatted} vence em ${daysUntilDue} dia(s).`;
             await sendToUser(
               userId,
@@ -1775,9 +1823,12 @@ export const createCardPayment = functions.https.onCall(async (data, context) =>
               const availableStock = productSnap.data()?.stockQuantity ?? 0;
               if (availableStock < item.quantity) {
                 throw new Error(
-                  `Estoque insuficiente para "${item.productName}".\n` +
-                  `O produto foi vendido enquanto seu pedido estava pendente.\n` +
-                  `Disponível: ${availableStock}, Solicitado: ${item.quantity}`
+                  'Estoque insuficiente para "' +
+                  item.productName + '".\n' +
+                  'O produto foi vendido enquanto ' +
+                  'seu pedido estava pendente.\n' +
+                  'Disponivel: ' + availableStock +
+                  ', Solicitado: ' + item.quantity
                 );
               }
             }

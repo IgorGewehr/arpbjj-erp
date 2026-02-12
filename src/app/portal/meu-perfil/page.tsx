@@ -25,6 +25,7 @@ import { createAttendanceService } from '@/services/attendanceService';
 import { createPlanService } from '@/services/planService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
+import ProfilePhotoUpload from '@/components/features/students/ProfilePhotoUpload';
 import { Student, Plan } from '@/types';
 
 const BELT_LABELS: Record<string, string> = {
@@ -223,12 +224,16 @@ export default function StudentProfilePage() {
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-          <Avatar
-            src={student.photoUrl}
-            sx={{ width: { xs: 48, sm: 56 }, height: { xs: 48, sm: 56 }, bgcolor: '#111', fontSize: { xs: '1rem', sm: '1.25rem' }, fontWeight: 600 }}
-          >
-            {student.fullName.charAt(0)}
-          </Avatar>
+          <ProfilePhotoUpload
+            academyId={academyId}
+            studentId={studentId}
+            photoUrl={student.photoUrl}
+            fullName={student.fullName}
+            currentBelt={student.currentBelt}
+            editable={true}
+            size={isMobile ? 48 : 56}
+            onPhotoUpdated={(url) => setStudent({ ...student, photoUrl: url })}
+          />
           <Box sx={{ flex: 1, minWidth: 0 }}>
             <Typography variant="body1" fontWeight={600} noWrap sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
               {student.fullName}

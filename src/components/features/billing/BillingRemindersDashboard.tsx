@@ -43,6 +43,9 @@ import {
   ChevronRight,
   Search,
   Send,
+  RefreshCw,
+  CheckCircle,
+  XCircle,
 } from 'lucide-react';
 import { useTheme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
@@ -65,6 +68,8 @@ import {
   BillingContactLog,
   BillingReminderSettings,
   StudentContact,
+  BulkNotificationResult,
+  BulkServerResult,
 } from '@/types';
 
 // ============================================
@@ -204,6 +209,7 @@ export function BillingRemindersDashboard() {
     sendEmail,
     sendBulkWhatsApp,
     sendBulkEmail,
+    sendBulk,
     isLoadingOverdue,
     isLoadingStats,
     isLoadingSettings,
@@ -213,6 +219,7 @@ export function BillingRemindersDashboard() {
     isSendingEmail,
     isSendingBulkWhatsApp,
     isSendingBulkEmail,
+    isSendingBulk,
   } = useBillingReminders();
 
   // ============================================
@@ -234,6 +241,20 @@ export function BillingRemindersDashboard() {
   const [messageDialogFinancial, setMessageDialogFinancial] = useState<Financial | null>(null);
   const [messageText, setMessageText] = useState('');
   const [emailSubject, setEmailSubject] = useState('');
+
+  // Bulk send result dialog state (legacy individual channel)
+  const [bulkSendResult, setBulkSendResult] = useState<BulkNotificationResult | null>(null);
+  const [resultDialogOpen, setResultDialogOpen] = useState(false);
+  const [resultDialogMode, setResultDialogMode] = useState<'whatsapp' | 'email'>('whatsapp');
+
+  // Unified bulk dialog state
+  const [bulkDialogOpen, setBulkDialogOpen] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState('');
+  const [bulkSubject, setBulkSubject] = useState('');
+  const [bulkScheduleEnabled, setBulkScheduleEnabled] = useState(false);
+  const [bulkScheduledTime, setBulkScheduledTime] = useState('');
+  const [bulkServerResult, setBulkServerResult] = useState<BulkServerResult | null>(null);
+  const [bulkServerResultDialogOpen, setBulkServerResultDialogOpen] = useState(false);
 
   // Local settings state for editing
   const [localSettings, setLocalSettings] = useState<BillingReminderSettings | null>(null);
@@ -360,8 +381,8 @@ export function BillingRemindersDashboard() {
     const daysOverdue = getDaysOverdue(financial.dueDate);
     const stage = getStageFromDays(daysOverdue);
     const contact = getStudentContact(financial.studentId);
-    const phone = contact?.category === 'kids' && contact?.guardianPhone
-      ? contact.guardianPhone
+    const phone = contact?.category === 'kids'
+      ? contact?.guardianPhone
       : contact?.phone;
 
     if (!phone) {
@@ -387,8 +408,8 @@ export function BillingRemindersDashboard() {
     const daysOverdue = getDaysOverdue(financial.dueDate);
     const stage = getStageFromDays(daysOverdue);
     const contact = getStudentContact(financial.studentId);
-    const email = contact?.category === 'kids' && contact?.guardianEmail
-      ? contact.guardianEmail
+    const email = contact?.category === 'kids'
+      ? contact?.guardianEmail
       : contact?.email;
 
     if (!email) {
@@ -456,20 +477,26 @@ export function BillingRemindersDashboard() {
     try {
       if (messageDialogBulk) {
         // Bulk send
+        let result: BulkNotificationResult;
         if (messageDialogMode === 'whatsapp') {
-          await sendBulkWhatsApp({
+          result = await sendBulkWhatsApp({
             financials: currentStageFinancials,
             stage: currentStage,
             customMessage: messageText || undefined,
           });
         } else {
-          await sendBulkEmail({
+          result = await sendBulkEmail({
             financials: currentStageFinancials,
             stage: currentStage,
             customSubject: emailSubject || undefined,
             customMessage: messageText || undefined,
           });
         }
+        // Show result dialog instead of just closing
+        handleCloseMessageDialog();
+        setBulkSendResult(result);
+        setResultDialogMode(messageDialogMode);
+        setResultDialogOpen(true);
       } else if (messageDialogFinancial) {
         // Individual send
         const contact = getStudentContact(messageDialogFinancial.studentId);
@@ -496,8 +523,42 @@ export function BillingRemindersDashboard() {
             customMessage: messageText || undefined,
           });
         }
+        handleCloseMessageDialog();
       }
-      handleCloseMessageDialog();
+    } catch {
+      // Error handled by mutation
+    }
+  };
+
+  const handleRetryFailed = async () => {
+    if (!bulkSendResult) return;
+    const failedStudentIds = new Set(
+      bulkSendResult.results
+        .filter((r) => !r.success)
+        .map((r) => r.studentId)
+    );
+    const failedFinancials = currentStageFinancials.filter(
+      (f) => failedStudentIds.has(f.studentId)
+    );
+    if (failedFinancials.length === 0) return;
+
+    setResultDialogOpen(false);
+
+    try {
+      let result: BulkNotificationResult;
+      if (resultDialogMode === 'whatsapp') {
+        result = await sendBulkWhatsApp({
+          financials: failedFinancials,
+          stage: currentStage,
+        });
+      } else {
+        result = await sendBulkEmail({
+          financials: failedFinancials,
+          stage: currentStage,
+        });
+      }
+      setBulkSendResult(result);
+      setResultDialogOpen(true);
     } catch {
       // Error handled by mutation
     }
@@ -509,7 +570,7 @@ export function BillingRemindersDashboard() {
   const getStudentPhone = (studentId: string): string | undefined => {
     const contact = getStudentContact(studentId);
     if (!contact) return undefined;
-    return contact.category === 'kids' && contact.guardianPhone
+    return contact.category === 'kids'
       ? contact.guardianPhone
       : contact.phone;
   };
@@ -517,7 +578,7 @@ export function BillingRemindersDashboard() {
   const getStudentEmail = (studentId: string): string | undefined => {
     const contact = getStudentContact(studentId);
     if (!contact) return undefined;
-    return contact.category === 'kids' && contact.guardianEmail
+    return contact.category === 'kids'
       ? contact.guardianEmail
       : contact.email;
   };
@@ -672,37 +733,27 @@ export function BillingRemindersDashboard() {
           </Tooltip>
         </Box>
 
-        {/* Bulk Action Buttons */}
-        {stageCount > 0 && (
+        {/* Bulk Action Button - Unified */}
+        {stageCount > 0 && (whatsappEnabled || emailEnabled) && (
           <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-            <Tooltip title={!whatsappEnabled ? 'Habilite cobranca via WhatsApp nas configuracoes' : `Enviar WhatsApp para ${stageCount} aluno(s)`}>
-              <span>
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="success"
-                  startIcon={isSendingBulkWhatsApp ? <CircularProgress size={16} color="inherit" /> : <MessageSquare size={16} />}
-                  onClick={() => openBulkSend('whatsapp')}
-                  disabled={!whatsappEnabled || isSendingBulkWhatsApp}
-                >
-                  {isSendingBulkWhatsApp ? 'Enviando...' : `Cobrar todos via WhatsApp (${stageCount})`}
-                </Button>
-              </span>
-            </Tooltip>
-            <Tooltip title={!emailEnabled ? 'Habilite cobranca via Email nas configuracoes' : `Enviar Email para ${stageCount} aluno(s)`}>
-              <span>
-                <Button
-                  size="small"
-                  variant="contained"
-                  color="primary"
-                  startIcon={isSendingBulkEmail ? <CircularProgress size={16} color="inherit" /> : <Mail size={16} />}
-                  onClick={() => openBulkSend('email')}
-                  disabled={!emailEnabled || isSendingBulkEmail}
-                >
-                  {isSendingBulkEmail ? 'Enviando...' : `Cobrar todos via Email (${stageCount})`}
-                </Button>
-              </span>
-            </Tooltip>
+            <Button
+              size="small"
+              variant="contained"
+              color="success"
+              startIcon={isSendingBulk ? <CircularProgress size={16} color="inherit" /> : <Send size={16} />}
+              onClick={() => {
+                const msg = notificationService.generateGenericStageMessage(currentStage);
+                const subj = notificationService.generateGenericEmailSubject(currentStage);
+                setBulkMessage(msg);
+                setBulkSubject(subj);
+                setBulkScheduleEnabled(false);
+                setBulkScheduledTime('');
+                setBulkDialogOpen(true);
+              }}
+              disabled={isSendingBulk}
+            >
+              {isSendingBulk ? 'Enviando...' : `Cobrar todos (${stageCount})`}
+            </Button>
           </Box>
         )}
 
@@ -813,10 +864,15 @@ export function BillingRemindersDashboard() {
                     )}
                     {!studentPhone && !studentEmail && (
                       <Chip
-                        label="Sem contato"
+                        icon={<AlertTriangle size={12} />}
+                        label={
+                          getStudentContact(financial.studentId)?.category === 'kids'
+                            ? 'Sem contato do responsavel'
+                            : 'Sem contato'
+                        }
                         size="small"
                         variant="outlined"
-                        color="default"
+                        color="warning"
                         sx={{ fontSize: '0.7rem', height: 22 }}
                       />
                     )}
@@ -1359,6 +1415,131 @@ export function BillingRemindersDashboard() {
   };
 
   // ============================================
+  // Render: Bulk Send Result Dialog
+  // ============================================
+  const renderResultDialog = () => {
+    if (!bulkSendResult) return null;
+
+    const { sent, failed, skipped, total, results } = bulkSendResult;
+    const failedResults = results.filter((r) => !r.success);
+    const allSuccess = failed === 0;
+    const allFailed = sent === 0 && failed > 0;
+    const channelLabel = resultDialogMode === 'whatsapp' ? 'WhatsApp' : 'Email';
+
+    const severityColor = allSuccess
+      ? theme.palette.success.main
+      : allFailed
+        ? theme.palette.error.main
+        : theme.palette.warning.main;
+
+    return (
+      <Dialog
+        open={resultDialogOpen}
+        onClose={() => { setResultDialogOpen(false); setBulkSendResult(null); }}
+        maxWidth="sm"
+        fullWidth
+        fullScreen={isMobile}
+      >
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {allSuccess ? (
+            <CheckCircle size={22} color={theme.palette.success.main} />
+          ) : (
+            <AlertTriangle size={22} color={severityColor} />
+          )}
+          Resultado do Envio via {channelLabel}
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            {/* Summary */}
+            <Box
+              sx={{
+                display: 'flex',
+                gap: 2,
+                mb: 2,
+                p: 2,
+                borderRadius: 2,
+                bgcolor: severityColor + '10',
+                border: `1px solid ${severityColor}30`,
+              }}
+            >
+              <Box sx={{ textAlign: 'center', flex: 1 }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: theme.palette.success.main }}>
+                  {sent}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">Enviados</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', flex: 1 }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: theme.palette.error.main }}>
+                  {failed}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">Falharam</Typography>
+              </Box>
+              <Box sx={{ textAlign: 'center', flex: 1 }}>
+                <Typography variant="h5" sx={{ fontWeight: 700, color: theme.palette.text.disabled }}>
+                  {skipped}
+                </Typography>
+                <Typography variant="caption" color="text.secondary">Sem contato</Typography>
+              </Box>
+            </Box>
+
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Total processado: {total} aluno(s)
+            </Typography>
+
+            {/* Failed list */}
+            {failedResults.length > 0 && (
+              <Box>
+                <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: theme.palette.error.main }}>
+                  Falhas no envio:
+                </Typography>
+                {failedResults.map((r, i) => (
+                  <Box
+                    key={i}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 1,
+                      py: 0.5,
+                      borderBottom: i < failedResults.length - 1 ? '1px solid' : 'none',
+                      borderColor: 'divider',
+                    }}
+                  >
+                    <XCircle size={14} color={theme.palette.error.main} />
+                    <Typography variant="body2" sx={{ flex: 1 }}>
+                      {r.studentName}
+                    </Typography>
+                    <Typography variant="caption" color="error">
+                      {r.error || 'Erro desconhecido'}
+                    </Typography>
+                  </Box>
+                ))}
+              </Box>
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          {failedResults.length > 0 && (
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={<RefreshCw size={16} />}
+              onClick={handleRetryFailed}
+              disabled={isSendingBulkWhatsApp || isSendingBulkEmail}
+            >
+              Reenviar Falhos ({failedResults.length})
+            </Button>
+          )}
+          <Button
+            onClick={() => { setResultDialogOpen(false); setBulkSendResult(null); }}
+          >
+            Fechar
+          </Button>
+        </DialogActions>
+      </Dialog>
+    );
+  };
+
+  // ============================================
   // Main Render
   // ============================================
   return (
@@ -1389,6 +1570,232 @@ export function BillingRemindersDashboard() {
 
       {/* Message Send Dialog */}
       {renderMessageDialog()}
+
+      {/* Bulk Send Result Dialog (legacy) */}
+      {renderResultDialog()}
+
+      {/* Unified Bulk Send Dialog */}
+      <Dialog
+        open={bulkDialogOpen}
+        onClose={() => setBulkDialogOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        fullScreen={isMobile}
+      >
+        <DialogTitle>Cobranca em Massa</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            <Alert severity="info" sx={{ mb: 2 }}>
+              <Typography variant="body2">
+                <strong>{currentStageFinancials.length}</strong> aluno(s) em {STAGE_LABELS[currentStage]}
+              </Typography>
+              <Typography variant="caption" color="text.secondary">
+                Mesma mensagem sera enviada via WhatsApp e Email
+              </Typography>
+            </Alert>
+
+            {emailEnabled && (
+              <TextField
+                fullWidth
+                size="small"
+                label="Assunto do Email"
+                value={bulkSubject}
+                onChange={(e) => setBulkSubject(e.target.value)}
+                sx={{ mb: 2 }}
+              />
+            )}
+
+            <TextField
+              fullWidth
+              multiline
+              rows={8}
+              label="Mensagem"
+              value={bulkMessage}
+              onChange={(e) => setBulkMessage(e.target.value)}
+              helperText="Mesma mensagem sera enviada via WhatsApp e Email"
+              sx={{ mb: 2 }}
+            />
+
+            <Divider sx={{ my: 2 }} />
+
+            <FormControlLabel
+              control={
+                <Switch
+                  checked={bulkScheduleEnabled}
+                  onChange={(e) => setBulkScheduleEnabled(e.target.checked)}
+                  color="primary"
+                />
+              }
+              label={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Clock size={16} />
+                  <Typography variant="body2">Agendar envio</Typography>
+                </Box>
+              }
+            />
+
+            {bulkScheduleEnabled && (
+              <TextField
+                fullWidth
+                type="datetime-local"
+                label="Data e Hora (Horario de Brasilia)"
+                value={bulkScheduledTime}
+                onChange={(e) => setBulkScheduledTime(e.target.value)}
+                slotProps={{
+                  inputLabel: { shrink: true },
+                  htmlInput: { min: new Date().toISOString().slice(0, 16) },
+                }}
+                sx={{ mt: 2 }}
+              />
+            )}
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setBulkDialogOpen(false)} disabled={isSendingBulk}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            color={bulkScheduleEnabled ? 'primary' : 'success'}
+            onClick={async () => {
+              try {
+                const result = await sendBulk({
+                  financials: currentStageFinancials,
+                  stage: currentStage,
+                  message: bulkMessage,
+                  subject: bulkSubject,
+                  scheduledTime: bulkScheduleEnabled && bulkScheduledTime
+                    ? bulkScheduledTime.replace('T', ' ')
+                    : undefined,
+                });
+                setBulkDialogOpen(false);
+                setBulkServerResult(result);
+                setBulkServerResultDialogOpen(true);
+              } catch {
+                // Error handled by mutation
+              }
+            }}
+            disabled={isSendingBulk || !bulkMessage.trim() || (bulkScheduleEnabled && !bulkScheduledTime)}
+            startIcon={isSendingBulk
+              ? <CircularProgress size={16} color="inherit" />
+              : bulkScheduleEnabled ? <Clock size={16} /> : <Send size={16} />
+            }
+          >
+            {isSendingBulk
+              ? 'Enviando...'
+              : bulkScheduleEnabled ? 'Agendar Envio' : 'Enviar Agora'
+            }
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Bulk Server Result Dialog */}
+      {bulkServerResult && (
+        <Dialog
+          open={bulkServerResultDialogOpen}
+          onClose={() => { setBulkServerResultDialogOpen(false); setBulkServerResult(null); }}
+          maxWidth="sm"
+          fullWidth
+          fullScreen={isMobile}
+        >
+          <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            {bulkServerResult.scheduled ? (
+              <Clock size={22} color={theme.palette.info.main} />
+            ) : (
+              <CheckCircle size={22} color={theme.palette.success.main} />
+            )}
+            {bulkServerResult.scheduled ? 'Envio Agendado' : 'Resultado do Envio'}
+          </DialogTitle>
+          <DialogContent>
+            <Box sx={{ pt: 1 }}>
+              {bulkServerResult.scheduled ? (
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  <Typography variant="body2">
+                    Envio agendado para <strong>{bulkServerResult.scheduledTime}</strong>
+                  </Typography>
+                </Alert>
+              ) : null}
+
+              {/* Summary */}
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 2,
+                  mb: 2,
+                  p: 2,
+                  borderRadius: 2,
+                  bgcolor: theme.palette.grey[50],
+                  border: `1px solid ${theme.palette.divider}`,
+                }}
+              >
+                {/* WhatsApp summary */}
+                <Box sx={{ textAlign: 'center', flex: 1 }}>
+                  <MessageSquare size={18} style={{ marginBottom: 4 }} />
+                  <Typography variant="caption" display="block" color="text.secondary">WhatsApp</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    {bulkServerResult.summary.whatsapp.sent ?? bulkServerResult.summary.whatsapp.total}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    / {bulkServerResult.summary.whatsapp.total}
+                  </Typography>
+                </Box>
+
+                {/* Email summary */}
+                <Box sx={{ textAlign: 'center', flex: 1 }}>
+                  <Mail size={18} style={{ marginBottom: 4 }} />
+                  <Typography variant="caption" display="block" color="text.secondary">Email</Typography>
+                  <Typography variant="h6" sx={{ fontWeight: 700 }}>
+                    {bulkServerResult.summary.email.sent ?? bulkServerResult.summary.email.total}
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    / {bulkServerResult.summary.email.total}
+                  </Typography>
+                </Box>
+              </Box>
+
+              {/* Failures */}
+              {bulkServerResult.failures && bulkServerResult.failures.length > 0 && (
+                <Box>
+                  <Typography variant="subtitle2" sx={{ fontWeight: 600, mb: 1, color: theme.palette.error.main }}>
+                    Falhas no envio:
+                  </Typography>
+                  {bulkServerResult.failures.map((f, i) => (
+                    <Box
+                      key={i}
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 1,
+                        py: 0.5,
+                        borderBottom: i < (bulkServerResult.failures?.length ?? 0) - 1 ? '1px solid' : 'none',
+                        borderColor: 'divider',
+                      }}
+                    >
+                      <XCircle size={14} color={theme.palette.error.main} />
+                      <Chip
+                        label={f.type === 'whatsapp' ? 'WA' : 'Email'}
+                        size="small"
+                        sx={{ fontSize: '0.65rem', height: 18 }}
+                      />
+                      <Typography variant="body2" sx={{ flex: 1 }} noWrap>
+                        {f.recipient}
+                      </Typography>
+                      <Typography variant="caption" color="error">
+                        {f.error}
+                      </Typography>
+                    </Box>
+                  ))}
+                </Box>
+              )}
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => { setBulkServerResultDialogOpen(false); setBulkServerResult(null); }}>
+              Fechar
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </Box>
   );
 }

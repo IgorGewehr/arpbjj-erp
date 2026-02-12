@@ -13,6 +13,8 @@ import {
   Financial,
   StudentContact,
   BulkNotificationResult,
+  BulkSendPayload,
+  BulkServerResult,
 } from '@/types';
 
 // ============================================
@@ -318,12 +320,13 @@ export function useBillingReminders() {
       return result;
     },
     onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.overdueStages] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.contactLog] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.collectionStats] });
       success(`WhatsApp: ${result.sent} enviados, ${result.failed} falharam, ${result.skipped} sem telefone`);
     },
     onError: (err) => {
-      showError(err instanceof Error ? err.message : 'Erro no envio em massa');
+      showError(err instanceof Error ? err.message : 'Erro no envio em massa de WhatsApp');
     },
   });
 
@@ -376,9 +379,84 @@ export function useBillingReminders() {
       return result;
     },
     onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.overdueStages] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.contactLog] });
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.collectionStats] });
       success(`Email: ${result.sent} enviados, ${result.failed} falharam, ${result.skipped} sem email`);
+    },
+    onError: (err) => {
+      showError(err instanceof Error ? err.message : 'Erro no envio em massa de Email');
+    },
+  });
+
+  // ============================================
+  // Send Bulk (unified WhatsApp + Email) Mutation
+  // ============================================
+  const sendBulkMutation = useMutation({
+    mutationFn: async (data: {
+      financials: Financial[];
+      stage: BillingStage;
+      message: string;
+      subject: string;
+      scheduledTime?: string;
+    }): Promise<BulkServerResult> => {
+      if (!studentContactsMap) throw new Error('Contatos dos alunos nao carregados');
+
+      const { payload } = notificationService.buildBulkPayload(
+        data.financials,
+        studentContactsMap,
+        data.message,
+        data.subject,
+        data.scheduledTime
+      );
+
+      if (payload.phones.length === 0 && payload.emails.length === 0) {
+        throw new Error('Nenhum destinatario encontrado');
+      }
+
+      const result = await notificationService.sendBulk(payload);
+
+      // Auto-log contact for immediate sends
+      if (!result.scheduled && user) {
+        for (const financial of data.financials) {
+          const contact = studentContactsMap.get(financial.studentId);
+          if (!contact) continue;
+
+          const phone = contact.category === 'kids' ? contact.guardianPhone : contact.phone;
+          const email = contact.category === 'kids' ? contact.guardianEmail : contact.email;
+
+          if (phone || email) {
+            const daysOverdue = Math.floor(
+              (Date.now() - financial.dueDate.getTime()) / (1000 * 60 * 60 * 24)
+            );
+            await billingService.logContactAttempt(
+              financial.id,
+              financial.studentId,
+              financial.studentName || 'Aluno',
+              phone ? 'whatsapp' : 'email',
+              'Cobranca em massa (bulk)',
+              data.stage,
+              daysOverdue,
+              user.id,
+              user.displayName || 'Admin'
+            );
+          }
+        }
+      }
+
+      return result;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.overdueStages] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.contactLog] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.collectionStats] });
+      if (result.scheduled) {
+        success(`Envio agendado para ${result.scheduledTime}`);
+      } else {
+        const wa = result.summary.whatsapp;
+        const em = result.summary.email;
+        success(`WhatsApp: ${wa.sent ?? 0}/${wa.total} | Email: ${em.sent ?? 0}/${em.total}`);
+      }
     },
     onError: (err) => {
       showError(err instanceof Error ? err.message : 'Erro no envio em massa');
@@ -424,6 +502,7 @@ export function useBillingReminders() {
     sendEmail: sendEmailMutation.mutateAsync,
     sendBulkWhatsApp: sendBulkWhatsAppMutation.mutateAsync,
     sendBulkEmail: sendBulkEmailMutation.mutateAsync,
+    sendBulk: sendBulkMutation.mutateAsync,
 
     // Loading states
     isLoadingOverdue,
@@ -436,6 +515,7 @@ export function useBillingReminders() {
     isSendingEmail: sendEmailMutation.isPending,
     isSendingBulkWhatsApp: sendBulkWhatsAppMutation.isPending,
     isSendingBulkEmail: sendBulkEmailMutation.isPending,
+    isSendingBulk: sendBulkMutation.isPending,
 
     // Errors
     overdueError,

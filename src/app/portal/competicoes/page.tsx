@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import {
   Box,
   Typography,
@@ -37,7 +38,8 @@ import {
   X,
   Scale,
   Users,
-  Info,
+  Medal,
+  ChevronRight,
 } from 'lucide-react';
 import { format, isPast } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -53,8 +55,8 @@ import {
   CompetitionEnrollment,
   AgeCategory,
   StudentTransportPreference,
-  WEIGHT_CATEGORIES_CBJJ,
   AGE_CATEGORY_LABELS,
+  WEIGHT_CATEGORIES_CBJJ,
   TRANSPORT_STATUS_LABELS,
   TRANSPORT_PREFERENCE_LABELS,
 } from '@/types';
@@ -298,6 +300,7 @@ function EnrollmentDialog({ open, onClose, competition, existingEnrollment, onEn
 export default function StudentCompetitionsPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const router = useRouter();
   const { user } = useAuth();
   const { academy, academyUser } = useAcademy();
   const { success, error: showError } = useFeedback();
@@ -620,9 +623,9 @@ export default function StudentCompetitionsPage() {
               },
             }}
           >
-            <Tab label={`Próximas (${upcomingCompetitions.length})`} />
-            <Tab label={isMobile ? `Inscrições (${myEnrolledCompetitions.length})` : `Minhas Inscrições (${myEnrolledCompetitions.length})`} />
-            <Tab label={`Histórico (${pastCompetitions.length})`} />
+            <Tab label={`Proximas (${upcomingCompetitions.length})`} />
+            <Tab label={isMobile ? `Inscricoes (${myEnrolledCompetitions.length})` : `Minhas Inscricoes (${myEnrolledCompetitions.length})`} />
+            <Tab label={`Historico (${pastCompetitions.length})`} />
           </Tabs>
         </Box>
 
@@ -660,12 +663,16 @@ export default function StudentCompetitionsPage() {
                 return (
                   <ListItemAnimation key={competition.id} index={index}>
                       <Box
+                        onClick={() => router.push(`/portal/competicoes/${competition.id}`)}
                         sx={{
                           p: { xs: 2, sm: 2.5 },
                           bgcolor: '#fff',
                           borderRadius: 2,
                           border: '1px solid',
                           borderColor: 'grey.200',
+                          cursor: 'pointer',
+                          '&:hover': { borderColor: 'grey.400', bgcolor: 'grey.50' },
+                          transition: 'all 0.2s',
                         }}
                       >
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
@@ -680,12 +687,15 @@ export default function StudentCompetitionsPage() {
                               {competition.name}
                             </Typography>
                           </Box>
-                          <Chip
-                            size="small"
-                            label={statusConfig[competition.status].label}
-                            color={statusConfig[competition.status].color}
-                            sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, height: { xs: 22, sm: 24 } }}
-                          />
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              size="small"
+                              label={statusConfig[competition.status].label}
+                              color={statusConfig[competition.status].color}
+                              sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, height: { xs: 22, sm: 24 } }}
+                            />
+                            <ChevronRight size={16} color="#999" />
+                          </Box>
                         </Box>
 
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: 2 }}>
@@ -755,7 +765,7 @@ export default function StudentCompetitionsPage() {
                                     variant="outlined"
                                     fullWidth
                                     size={isMobile ? 'small' : 'medium'}
-                                    onClick={() => handleOpenEnrollment(competition)}
+                                    onClick={(e) => { e.stopPropagation(); handleOpenEnrollment(competition); }}
                                     sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
                                   >
                                     Editar
@@ -766,7 +776,7 @@ export default function StudentCompetitionsPage() {
                                     fullWidth
                                     size={isMobile ? 'small' : 'medium'}
                                     startIcon={<UserX size={16} />}
-                                    onClick={() => handleCancelEnrollment(competition.id)}
+                                    onClick={(e) => { e.stopPropagation(); handleCancelEnrollment(competition.id); }}
                                     disabled={canceling === competition.id}
                                     sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
                                   >
@@ -782,7 +792,7 @@ export default function StudentCompetitionsPage() {
                             fullWidth
                             size={isMobile ? 'small' : 'medium'}
                             startIcon={<UserCheck size={16} />}
-                            onClick={() => handleOpenEnrollment(competition)}
+                            onClick={(e) => { e.stopPropagation(); handleOpenEnrollment(competition); }}
                             disabled={deadlinePassed}
                             sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' }, bgcolor: '#111', '&:hover': { bgcolor: '#333' } }}
                           >
@@ -844,12 +854,16 @@ export default function StudentCompetitionsPage() {
                   return (
                     <ListItemAnimation key={competition.id} index={index}>
                       <Box
+                        onClick={() => router.push(`/portal/competicoes/${competition.id}`)}
                         sx={{
                           p: { xs: 2, sm: 2.5 },
                           bgcolor: '#fff',
                           borderRadius: 2,
                           border: '2px solid',
                           borderColor: 'success.main',
+                          cursor: 'pointer',
+                          '&:hover': { bgcolor: 'grey.50' },
+                          transition: 'all 0.2s',
                         }}
                       >
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
@@ -864,13 +878,16 @@ export default function StudentCompetitionsPage() {
                               {competition.name}
                             </Typography>
                           </Box>
-                          <Chip
-                            size="small"
-                            icon={<CheckCircle size={12} />}
-                            label="Inscrito"
-                            color="success"
-                            sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, height: { xs: 22, sm: 24 } }}
-                          />
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              size="small"
+                              icon={<CheckCircle size={12} />}
+                              label="Inscrito"
+                              color="success"
+                              sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, height: { xs: 22, sm: 24 } }}
+                            />
+                            <ChevronRight size={16} color="#999" />
+                          </Box>
                         </Box>
 
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: 2 }}>
@@ -942,7 +959,7 @@ export default function StudentCompetitionsPage() {
                               variant="outlined"
                               fullWidth
                               size={isMobile ? 'small' : 'medium'}
-                              onClick={() => handleOpenEnrollment(competition)}
+                              onClick={(e) => { e.stopPropagation(); handleOpenEnrollment(competition); }}
                               sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}
                             >
                               Editar Inscrição
@@ -998,12 +1015,16 @@ export default function StudentCompetitionsPage() {
                   return (
                     <ListItemAnimation key={competition.id} index={index}>
                       <Box
+                        onClick={() => router.push(`/portal/competicoes/${competition.id}`)}
                         sx={{
                           p: { xs: 2, sm: 2.5 },
                           bgcolor: '#fff',
                           borderRadius: 2,
                           border: '1px solid',
                           borderColor: 'grey.200',
+                          cursor: 'pointer',
+                          '&:hover': { borderColor: 'grey.400', bgcolor: 'grey.50' },
+                          transition: 'all 0.2s',
                         }}
                       >
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1.5 }}>
@@ -1018,14 +1039,17 @@ export default function StudentCompetitionsPage() {
                               {competition.name}
                             </Typography>
                           </Box>
-                          <Chip
-                            size="small"
-                            label="Concluída"
-                            sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, height: { xs: 22, sm: 24 } }}
-                          />
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                            <Chip
+                              size="small"
+                              label="Concluida"
+                              sx={{ fontSize: { xs: '0.65rem', sm: '0.75rem' }, height: { xs: 22, sm: 24 } }}
+                            />
+                            <ChevronRight size={16} color="#999" />
+                          </Box>
                         </Box>
 
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: result || enrollment ? 2 : 0 }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: result ? 1.5 : 0 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Calendar size={14} color="#666" />
                             <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
@@ -1040,7 +1064,8 @@ export default function StudentCompetitionsPage() {
                           </Box>
                         </Box>
 
-                        {result ? (
+                        {/* Result summary */}
+                        {result && (
                           <Box
                             sx={{
                               p: 1.5,
@@ -1054,7 +1079,7 @@ export default function StudentCompetitionsPage() {
                             <Typography sx={{ fontSize: { xs: '1.5rem', sm: '2rem' }, lineHeight: 1 }}>
                               {positionConfig[result.position].icon}
                             </Typography>
-                            <Box>
+                            <Box sx={{ flex: 1 }}>
                               <Typography variant="body2" fontWeight={600} sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' } }}>
                                 {positionConfig[result.position].label}
                               </Typography>
@@ -1065,7 +1090,10 @@ export default function StudentCompetitionsPage() {
                               )}
                             </Box>
                           </Box>
-                        ) : enrollment ? (
+                        )}
+
+                        {/* Enrolled but no result yet */}
+                        {!result && enrollment && (
                           <Box
                             sx={{
                               display: 'flex',
@@ -1077,16 +1105,11 @@ export default function StudentCompetitionsPage() {
                             }}
                           >
                             <AlertCircle size={16} color="#0284C7" />
-                            <Box>
-                              <Typography variant="body2" sx={{ color: '#0369A1', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                                Resultado pendente
-                              </Typography>
-                              <Typography variant="caption" sx={{ color: '#0369A1' }}>
-                                {AGE_CATEGORY_LABELS[enrollment.ageCategory]} • {enrollment.weightCategory}
-                              </Typography>
-                            </Box>
+                            <Typography variant="body2" sx={{ color: '#0369A1', fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+                              Resultado pendente - toque para registrar
+                            </Typography>
                           </Box>
-                        ) : null}
+                        )}
                       </Box>
                   </ListItemAnimation>
                   );

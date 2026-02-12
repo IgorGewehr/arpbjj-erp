@@ -64,26 +64,27 @@ class NotificationService {
         )
       : null;
 
-    const notificationData = {
+    const notificationData: Record<string, unknown> = {
       academyId: this.academyId,
       userId: data.userId,
       type: data.type,
       priority: data.priority || 'normal',
       title: data.title,
       message: data.message,
-      imageUrl: data.imageUrl,
-      actionUrl: data.actionUrl,
-      actionLabel: data.actionLabel,
-      studentId: data.studentId,
-      financialId: data.financialId,
-      competitionId: data.competitionId,
       read: false,
-      readAt: undefined,
       channels: data.channels || ['in_app'],
       sentVia: ['in_app'],
       createdAt: serverTimestamp(),
       expiresAt,
     };
+
+    // Only include optional fields if they have values (Firestore rejects undefined)
+    if (data.imageUrl) notificationData.imageUrl = data.imageUrl;
+    if (data.actionUrl) notificationData.actionUrl = data.actionUrl;
+    if (data.actionLabel) notificationData.actionLabel = data.actionLabel;
+    if (data.studentId) notificationData.studentId = data.studentId;
+    if (data.financialId) notificationData.financialId = data.financialId;
+    if (data.competitionId) notificationData.competitionId = data.competitionId;
 
     const docRef = await addDoc(this.notificationsRef, notificationData);
 
@@ -238,7 +239,7 @@ class NotificationService {
       type: 'payment_received',
       priority: 'high',
       title: 'Pagamento Recebido',
-      message: `${studentName} pagou R$ ${(amount / 100).toFixed(2)} via plataforma.`,
+      message: `${studentName} pagou R$ ${amount.toFixed(2)} via plataforma.`,
       studentId,
       financialId,
       actionUrl: `/financeiro?studentId=${studentId}`,
@@ -258,7 +259,7 @@ class NotificationService {
       type: 'payment_pending',
       priority: 'normal',
       title: 'Mensalidade Pendente',
-      message: `Você tem uma mensalidade de R$ ${(amount / 100).toFixed(2)} com vencimento em ${dueDate.toLocaleDateString('pt-BR')}.`,
+      message: `Você tem uma mensalidade de R$ ${amount.toFixed(2)} com vencimento em ${dueDate.toLocaleDateString('pt-BR')}.`,
       financialId,
       actionUrl: `/portal/financeiro`,
       actionLabel: 'Pagar agora',
@@ -277,7 +278,7 @@ class NotificationService {
       type: 'payment_overdue',
       priority: 'urgent',
       title: 'Pagamento Atrasado',
-      message: `Sua mensalidade de R$ ${(amount / 100).toFixed(2)} está atrasada há ${daysOverdue} dias.`,
+      message: `Sua mensalidade de R$ ${amount.toFixed(2)} está atrasada há ${daysOverdue} dias.`,
       financialId,
       actionUrl: `/portal/financeiro`,
       actionLabel: 'Regularizar',
@@ -397,7 +398,7 @@ class NotificationService {
       type: 'payment_pending',
       priority: 'normal',
       title: 'Nova Mensalidade',
-      message: `Sua mensalidade de R$ ${(amount / 100).toFixed(2)} vence em ${dueDate.toLocaleDateString('pt-BR')}.`,
+      message: `Sua mensalidade de R$ ${amount.toFixed(2)} vence em ${dueDate.toLocaleDateString('pt-BR')}.`,
       financialId,
       actionUrl: `/portal/financeiro`,
       actionLabel: 'Ver detalhes',

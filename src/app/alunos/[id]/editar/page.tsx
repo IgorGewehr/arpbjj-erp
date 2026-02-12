@@ -339,8 +339,8 @@ export default function StudentEditPage() {
         tuitionDay: parseInt(formData.tuitionDay) || 10,
         weight: formData.weight ? parseFloat(formData.weight) : undefined,
         initialAttendanceCount: formData.initialAttendanceCount ? parseInt(formData.initialAttendanceCount) : undefined,
-        beltHistory: formData.beltHistory.length > 0
-          ? formData.beltHistory.map(entry => ({
+        beltHistory: formData.beltHistory.filter(entry => entry.date).length > 0
+          ? formData.beltHistory.filter(entry => entry.date).map(entry => ({
               belt: entry.belt,
               stripes: entry.stripes,
               date: new Date(entry.date),
@@ -514,6 +514,66 @@ export default function StudentEditPage() {
                     />
                   </FormRow>
                 </FormSection>
+
+                {/* Guardian (for kids) */}
+                {formData.category === 'kids' && (
+                  <>
+                    <FormDivider label="Responsável" spacing="medium" />
+
+                    <FormSection
+                      title="Dados do Responsável"
+                      subtitle="Recomendado para alunos menores de idade"
+                    >
+                      <Grid container spacing={2.5}>
+                        <Grid size={{ xs: 12, md: 6 }}>
+                          <InputField
+                            label="Nome do Responsável"
+                            value={formData.guardianName}
+                            onChange={(e) => handleChange('guardianName', e.target.value)}
+                            startIcon={User}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 6 }}>
+                          <PhoneInput
+                            label="WhatsApp do Responsável"
+                            value={formData.guardianPhone}
+                            onChange={(e) => handleChange('guardianPhone', e.target.value)}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 4 }}>
+                          <InputField
+                            label="E-mail do Responsável"
+                            type="email"
+                            value={formData.guardianEmail}
+                            onChange={(e) => handleChange('guardianEmail', e.target.value)}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 4 }}>
+                          <CPFInput
+                            label="CPF do Responsável"
+                            value={formData.guardianCpf}
+                            onChange={(e) => handleChange('guardianCpf', e.target.value)}
+                          />
+                        </Grid>
+                        <Grid size={{ xs: 12, md: 4 }}>
+                          <Autocomplete
+                            value={formData.guardianRelationship}
+                            onChange={(_, value) => handleChange('guardianRelationship', value || '')}
+                            options={relationshipOptions}
+                            freeSolo
+                            renderInput={(params) => (
+                              <TextField
+                                {...params}
+                                label="Parentesco"
+                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
+                              />
+                            )}
+                          />
+                        </Grid>
+                      </Grid>
+                    </FormSection>
+                  </>
+                )}
               </FormTabPanel>
 
               {/* ====================================== */}
@@ -751,65 +811,6 @@ export default function StudentEditPage() {
                   </Button>
                 </Box>
 
-                {/* Guardian (for kids) */}
-                {formData.category === 'kids' && (
-                  <>
-                    <FormDivider label="Responsável" spacing="medium" />
-
-                    <FormSection
-                      title="Dados do Responsável"
-                      subtitle="Recomendado para alunos menores de idade"
-                    >
-                      <Grid container spacing={2.5}>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                          <InputField
-                            label="Nome do Responsável"
-                            value={formData.guardianName}
-                            onChange={(e) => handleChange('guardianName', e.target.value)}
-                            startIcon={User}
-                          />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 6 }}>
-                          <PhoneInput
-                            label="Telefone do Responsável"
-                            value={formData.guardianPhone}
-                            onChange={(e) => handleChange('guardianPhone', e.target.value)}
-                          />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 4 }}>
-                          <InputField
-                            label="E-mail do Responsável"
-                            type="email"
-                            value={formData.guardianEmail}
-                            onChange={(e) => handleChange('guardianEmail', e.target.value)}
-                          />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 4 }}>
-                          <CPFInput
-                            label="CPF do Responsável"
-                            value={formData.guardianCpf}
-                            onChange={(e) => handleChange('guardianCpf', e.target.value)}
-                          />
-                        </Grid>
-                        <Grid size={{ xs: 12, md: 4 }}>
-                          <Autocomplete
-                            value={formData.guardianRelationship}
-                            onChange={(_, value) => handleChange('guardianRelationship', value || '')}
-                            options={relationshipOptions}
-                            freeSolo
-                            renderInput={(params) => (
-                              <TextField
-                                {...params}
-                                label="Parentesco"
-                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
-                              />
-                            )}
-                          />
-                        </Grid>
-                      </Grid>
-                    </FormSection>
-                  </>
-                )}
               </FormTabPanel>
 
               {/* ====================================== */}

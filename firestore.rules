@@ -143,6 +143,17 @@ service cloud.firestore {
       return amount is number && amount > 0;
     }
 
+    // Check if user is enrolled in a competition
+    function isEnrolledInCompetition(academyId, competitionId) {
+      let mapping = getUserAcademyMapping();
+      let studentId = mapping.keys().hasAll(['academyDetails']) &&
+                      mapping.academyDetails.keys().hasAll([academyId])
+                      ? mapping.academyDetails[academyId].studentId
+                      : getAcademyUserData(academyId).studentId;
+      return studentId != null &&
+             exists(/databases/$(database)/documents/academies/$(academyId)/competitionEnrollments/$(studentId + '_' + competitionId));
+    }
+
     // ============================================
     // Root Users Collection
     // ============================================
@@ -289,13 +300,10 @@ service cloud.firestore {
                                    'currentBelt', 'currentStripes', 'status',
                                    'beltHistory', 'createdAt', 'createdBy']);
 
-        // Students can update only personal info
+        // Students can update only personal info (including photoUrl)
         allow update: if isOwnStudent(academyId, studentId)
-                      && !request.resource.data.diff(resource.data).affectedKeys()
-                          .hasAny(['currentBelt', 'currentStripes', 'status', 'startDate',
-                                   'tuitionValue', 'tuitionDay', 'planId', 'category',
-                                   'beltHistory', 'initialAttendanceCount', 'fullName',
-                                   'jiujitsuStartDate', 'createdAt', 'createdBy']);
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['photoUrl', 'updatedAt']);
 
         // Timeline subcollection
         match /timeline/{eventId} {
@@ -478,7 +486,54 @@ service cloud.firestore {
       // ============================================
       match /competitionResults/{resultId} {
         allow read: if belongsToAcademy(academyId);
-        allow write: if isAcademyStaff(academyId);
+        // Admin can manage all results; students can create/update their own
+        allow create: if isAcademyStaff(academyId) ||
+          (belongsToAcademy(academyId) && isOwnStudentRecord(academyId, request.resource.data.studentId));
+        allow update: if isAcademyStaff(academyId) ||
+          (belongsToAcademy(academyId) && isOwnStudentRecord(academyId, resource.data.studentId));
+        allow delete: if isAcademyStaff(academyId);
+      }
+
+      // ============================================
+      // Competition Photos
+      // ============================================
+      match /competitionPhotos/{photoId} {
+        // Anyone in the academy can read photos
+        allow read: if belongsToAcademy(academyId);
+
+        // Students can create if enrolled in competition
+        // Admins can create unlimited
+        allow create: if isAuthenticated()
+                      && belongsToAcademy(academyId)
+                      && request.resource.data.studentId != null
+                      && request.resource.data.url != null
+                      && request.resource.data.competitionId != null
+                      && request.resource.data.storagePath != null
+                      && (request.resource.data.caption == null || request.resource.data.caption.size() <= 200)
+                      && (
+                        // Admin can upload unlimited
+                        isAcademyStaff(academyId) ||
+                        // Student can upload if enrolled and own photo
+                        (isOwnStudentRecord(academyId, request.resource.data.studentId) &&
+                         isEnrolledInCompetition(academyId, request.resource.data.competitionId))
+                      );
+
+        // Can update own photos (caption only) or admin can update any
+        allow update: if isAuthenticated()
+                      && belongsToAcademy(academyId)
+                      && (
+                        // Admin can update any field
+                        isAcademyStaff(academyId) ||
+                        // Student can only update own photo's caption
+                        (resource.data.createdBy == request.auth.uid &&
+                         request.resource.data.diff(resource.data).affectedKeys().hasOnly(['caption', 'updatedAt']) &&
+                         (request.resource.data.caption == null || request.resource.data.caption.size() <= 200))
+                      );
+
+        // Can delete own photos or admin can delete any
+        allow delete: if isAuthenticated()
+                      && belongsToAcademy(academyId)
+                      && (isAcademyStaff(academyId) || resource.data.createdBy == request.auth.uid);
       }
 
       // ============================================

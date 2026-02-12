@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        amount,
+        amount: Math.round(amount * 100),
         description: sanitizeString(description) || 'Mensalidade',
         externalReference: `${academyId}_${financialId}`,
         expiresIn: 86400,

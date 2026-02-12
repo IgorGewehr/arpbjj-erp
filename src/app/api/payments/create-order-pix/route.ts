@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        amount: Math.round(amount),
+        amount: Math.round(amount * 100),
         description: sanitizeString(description) || 'Pedido da Loja',
         externalReference: `${academyId}_order_${orderId}`,
         expiresIn: 86400,
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
     await adminDb.collection(`academies/${academyId}/walletTransactions`).add({
       academyId,
       type: 'payment',
-      amount: Math.round(amount),
+      amount: Math.round(amount * 100),
       status: 'pending',
       financialId: `order_${orderId}`,
       studentId,

@@ -17,6 +17,7 @@ import {
   writeBatch,
 } from 'firebase/firestore';
 import { db, collections } from '@/lib/firebase';
+import { removeUndefinedDeep } from '@/lib/firestoreUtils';
 import { Student, StudentFilters, Pagination, PaginatedResponse } from '@/types';
 
 // ============================================
@@ -112,14 +113,8 @@ const studentToDoc = (student: Partial<Student>): Record<string, unknown> => {
   // Remove id from data (it's the document ID)
   delete data.id;
 
-  // Remove undefined values (Firebase doesn't accept undefined)
-  Object.keys(data).forEach(key => {
-    if (data[key] === undefined) {
-      delete data[key];
-    }
-  });
-
-  return data;
+  // Remove undefined values deeply (Firebase doesn't accept undefined at any level)
+  return removeUndefinedDeep(data);
 };
 
 // ============================================

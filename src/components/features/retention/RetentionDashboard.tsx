@@ -485,7 +485,7 @@ function StudentDetailDialog({ student, open, onClose }: StudentDetailDialogProp
 // ============================================
 // Retention Dashboard Component
 // ============================================
-export function RetentionDashboard() {
+export function RetentionDashboard({ embedded = false }: { embedded?: boolean }) {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const isTablet = useMediaQuery(theme.breakpoints.down('md'));
@@ -528,21 +528,23 @@ export function RetentionDashboard() {
   }
 
   return (
-    <Box sx={{ p: isMobile ? 2 : 3 }}>
+    <Box sx={{ p: embedded ? 0 : (isMobile ? 2 : 3) }}>
       {/* ============================================ */}
       {/* Header */}
       {/* ============================================ */}
-      <Box sx={{ mb: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
-          <Shield size={28} color={theme.palette.primary.main} />
-          <Typography variant={isMobile ? 'h5' : 'h4'} fontWeight="bold">
-            Dashboard de Retencao
+      {!embedded && (
+        <Box sx={{ mb: 3 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 1 }}>
+            <Shield size={28} color={theme.palette.primary.main} />
+            <Typography variant={isMobile ? 'h5' : 'h4'} fontWeight="bold">
+              Dashboard de Retencao
+            </Typography>
+          </Box>
+          <Typography variant="body2" color="text.secondary">
+            Acompanhe o risco de evasao dos alunos e tome acoes preventivas para manter sua base ativa.
           </Typography>
         </Box>
-        <Typography variant="body2" color="text.secondary">
-          Acompanhe o risco de evasao dos alunos e tome acoes preventivas para manter sua base ativa.
-        </Typography>
-      </Box>
+      )}
 
       {/* ============================================ */}
       {/* KPI Cards */}

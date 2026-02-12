@@ -1,15 +1,14 @@
 'use client';
 
-import { AppLayout } from '@/components/layout/AppLayout';
-import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
-import { RetentionDashboard } from '@/components/features/retention/RetentionDashboard';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 
 export default function RetencaoPage() {
-  return (
-    <ProtectedRoute>
-      <AppLayout>
-        <RetentionDashboard />
-      </AppLayout>
-    </ProtectedRoute>
-  );
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace('/relatorios?tab=retencao');
+  }, [router]);
+
+  return null;
 }

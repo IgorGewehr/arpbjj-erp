@@ -36,7 +36,6 @@ import {
   Store,
   Wallet,
   Receipt,
-  ShieldAlert,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers';
@@ -66,7 +65,6 @@ const baseNavItems: NavItem[] = [
   { label: 'Competições', icon: Trophy, path: '/competicoes' },
   { label: 'Financeiro', icon: DollarSign, path: '/financeiro' },
   { label: 'Cobranca', icon: Receipt, path: '/cobranca' },
-  { label: 'Retencao', icon: ShieldAlert, path: '/retencao' },
   { label: 'Relatorios', icon: BarChart3, path: '/relatorios' },
 ];
 
@@ -104,7 +102,7 @@ export function Sidebar({
   // Compute nav items based on academy settings
   const mainNavItems = useMemo(() => {
     const items = [...baseNavItems];
-    let insertIndex = 8; // After Retencao, before Relatorios
+    let insertIndex = 7; // Before Relatorios
 
     // Add Carteira after Financeiro if AbacatePay is enabled
     if (academy?.abacatePayEnabled) {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Box,
   Typography,
@@ -39,6 +40,7 @@ import {
   ChevronLeft,
   ChevronRight,
   ShoppingBag,
+  ShieldAlert,
 } from 'lucide-react';
 import {
   AreaChart,
@@ -53,6 +55,7 @@ import {
   Cell,
 } from 'recharts';
 import { AppLayout } from '@/components/layout/AppLayout';
+import { RetentionDashboard } from '@/components/features/retention/RetentionDashboard';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useAllStudents, useFinancial, useClasses, useStore } from '@/hooks';
 import { useAcademy } from '@/contexts/AcademyContext';
@@ -1344,8 +1347,11 @@ function StudentsReport({ classFilter, categoryFilter, classes, selectedMonth }:
 export default function RelatoriosPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const searchParams = useSearchParams();
 
-  const [tabValue, setTabValue] = useState(0);
+  const [tabValue, setTabValue] = useState(() => {
+    return searchParams.get('tab') === 'retencao' ? 3 : 0;
+  });
   const [classFilter, setClassFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<StudentCategory | ''>('');
   const [selectedMonth, setSelectedMonth] = useState(() => {
@@ -1388,73 +1394,77 @@ export default function RelatoriosPage() {
                 Relatorios
               </Typography>
               {/* Month navigation */}
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <IconButton size="small" onClick={handlePrevMonth} sx={{ p: 0.5 }}>
-                  <ChevronLeft size={18} />
-                </IconButton>
-                <Chip
-                  icon={<Calendar size={14} />}
-                  label={displayMonth}
-                  size="small"
-                  variant="outlined"
-                  sx={{
-                    textTransform: 'capitalize',
-                    fontWeight: 500,
-                    fontSize: '0.8rem',
-                    cursor: 'default',
-                  }}
-                />
-                <IconButton
-                  size="small"
-                  onClick={handleNextMonth}
-                  disabled={isCurrentMonth}
-                  sx={{ p: 0.5 }}
-                >
-                  <ChevronRight size={18} />
-                </IconButton>
-              </Box>
+              {tabValue !== 3 && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <IconButton size="small" onClick={handlePrevMonth} sx={{ p: 0.5 }}>
+                    <ChevronLeft size={18} />
+                  </IconButton>
+                  <Chip
+                    icon={<Calendar size={14} />}
+                    label={displayMonth}
+                    size="small"
+                    variant="outlined"
+                    sx={{
+                      textTransform: 'capitalize',
+                      fontWeight: 500,
+                      fontSize: '0.8rem',
+                      cursor: 'default',
+                    }}
+                  />
+                  <IconButton
+                    size="small"
+                    onClick={handleNextMonth}
+                    disabled={isCurrentMonth}
+                    sx={{ p: 0.5 }}
+                  >
+                    <ChevronRight size={18} />
+                  </IconButton>
+                </Box>
+              )}
             </Box>
 
             {/* Filters */}
-            <Box
-              sx={{
-                display: 'flex',
-                gap: 1,
-                flexWrap: 'wrap',
-                width: { xs: '100%', sm: 'auto' },
-              }}
-            >
-              <FormControl size="small" sx={{ minWidth: { xs: 'calc(50% - 4px)', sm: 150 } }}>
-                <InputLabel>Turma</InputLabel>
-                <Select
-                  value={classFilter}
-                  label="Turma"
-                  onChange={(e) => setClassFilter(e.target.value)}
-                  sx={{ borderRadius: 1.5, bgcolor: 'background.paper' }}
-                >
-                  <MenuItem value="">Todas</MenuItem>
-                  {classes.map((cls) => (
-                    <MenuItem key={cls.id} value={cls.id}>
-                      {cls.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+            {tabValue !== 3 && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  gap: 1,
+                  flexWrap: 'wrap',
+                  width: { xs: '100%', sm: 'auto' },
+                }}
+              >
+                <FormControl size="small" sx={{ minWidth: { xs: 'calc(50% - 4px)', sm: 150 } }}>
+                  <InputLabel>Turma</InputLabel>
+                  <Select
+                    value={classFilter}
+                    label="Turma"
+                    onChange={(e) => setClassFilter(e.target.value)}
+                    sx={{ borderRadius: 1.5, bgcolor: 'background.paper' }}
+                  >
+                    <MenuItem value="">Todas</MenuItem>
+                    {classes.map((cls) => (
+                      <MenuItem key={cls.id} value={cls.id}>
+                        {cls.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
 
-              <FormControl size="small" sx={{ minWidth: { xs: 'calc(50% - 4px)', sm: 130 } }}>
-                <InputLabel>Categoria</InputLabel>
-                <Select
-                  value={categoryFilter}
-                  label="Categoria"
-                  onChange={(e) => setCategoryFilter(e.target.value as StudentCategory | '')}
-                  sx={{ borderRadius: 1.5, bgcolor: 'background.paper' }}
-                >
-                  <MenuItem value="">Todas</MenuItem>
-                  <MenuItem value="adult">Adultos</MenuItem>
-                  <MenuItem value="kids">Kids</MenuItem>
-                </Select>
-              </FormControl>
-            </Box>
+                <FormControl size="small" sx={{ minWidth: { xs: 'calc(50% - 4px)', sm: 130 } }}>
+                  <InputLabel>Categoria</InputLabel>
+                  <Select
+                    value={categoryFilter}
+                    label="Categoria"
+                    onChange={(e) => setCategoryFilter(e.target.value as StudentCategory | '')}
+                    sx={{ borderRadius: 1.5, bgcolor: 'background.paper' }}
+                  >
+                    <MenuItem value="">Todas</MenuItem>
+                    <MenuItem value="adult">Adultos</MenuItem>
+                    <MenuItem value="kids">Kids</MenuItem>
+                  </Select>
+                </FormControl>
+              </Box>
+            )}
           </Box>
 
           {/* Tabs */}
@@ -1490,6 +1500,7 @@ export default function RelatoriosPage() {
               <Tab label="Presenca" icon={<ClipboardCheck size={18} />} iconPosition="start" />
               <Tab label="Financeiro" icon={<DollarSign size={18} />} iconPosition="start" />
               <Tab label="Alunos" icon={<Users size={18} />} iconPosition="start" />
+              <Tab label="Retencao" icon={<ShieldAlert size={18} />} iconPosition="start" />
             </Tabs>
           </Paper>
 
@@ -1504,6 +1515,7 @@ export default function RelatoriosPage() {
             {tabValue === 2 && (
               <StudentsReport classFilter={classFilter} categoryFilter={categoryFilter} classes={classes} selectedMonth={selectedMonth} />
             )}
+            {tabValue === 3 && <RetentionDashboard embedded />}
           </Box>
         </Box>
       </AppLayout>

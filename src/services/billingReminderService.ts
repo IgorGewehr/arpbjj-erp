@@ -13,6 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { collections } from '@/lib/firebase/collections';
+import { removeUndefinedDeep } from '@/lib/firestoreUtils';
 import {
   Financial,
   BillingStage,
@@ -295,7 +296,7 @@ export class BillingReminderService {
       stages: data.stages ?? DEFAULT_SETTINGS.stages,
       whatsappEnabled: data.whatsappEnabled ?? false,
       emailEnabled: data.emailEnabled ?? false,
-      messageTemplates: data.messageTemplates ?? undefined,
+      messageTemplates: data.messageTemplates,
     };
   }
 
@@ -330,10 +331,10 @@ export class BillingReminderService {
   // ============================================
   async saveBillingReminderSettings(settings: BillingReminderSettings): Promise<void> {
     const settingsRef = doc(db, `academies/${this.academyId}/settings`, 'billingReminders');
-    await setDoc(settingsRef, {
+    await setDoc(settingsRef, removeUndefinedDeep({
       ...settings,
       updatedAt: Timestamp.fromDate(new Date()),
-    });
+    }));
   }
 }
 

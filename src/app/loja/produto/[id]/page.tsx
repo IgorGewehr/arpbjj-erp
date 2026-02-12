@@ -579,7 +579,7 @@ export default function EditarProdutoPage() {
                   type="file"
                   ref={fileInputRef}
                   onChange={handleImageUpload}
-                  accept="image/*"
+                  accept="image/jpeg,image/jpg,image/png,image/webp"
                   multiple
                   style={{ display: 'none' }}
                 />

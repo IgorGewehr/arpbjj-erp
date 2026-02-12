@@ -145,6 +145,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, RolePermissions> = {
       '/portal/meu-perfil',
       '/portal/horarios',
       '/portal/competicoes',
+      '/portal/competicoes/[id]',
       '/portal/linha-do-tempo',
       '/portal/comportamento',
       // Monitor routes (access controlled by isMonitor check in page components)

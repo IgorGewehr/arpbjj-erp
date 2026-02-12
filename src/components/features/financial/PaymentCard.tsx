@@ -75,7 +75,10 @@ export function PaymentCard({
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const { academyId } = useAcademy();
 
-  const status = statusConfig[payment.status];
+  const isOverdue = payment.status === 'overdue' ||
+    (payment.status === 'pending' && new Date(payment.dueDate) < new Date());
+
+  const status = statusConfig[isOverdue ? 'overdue' : payment.status];
 
   // Format currency
   const formatCurrency = (value: number) => {
@@ -131,7 +134,7 @@ export function PaymentCard({
         borderColor:
           payment.status === 'paid'
             ? 'success.main'
-            : payment.status === 'overdue'
+            : isOverdue
             ? 'error.main'
             : payment.status === 'pending'
             ? 'warning.main'
@@ -182,7 +185,7 @@ export function PaymentCard({
               color:
                 payment.status === 'paid'
                   ? 'success.main'
-                  : payment.status === 'overdue'
+                  : isOverdue
                   ? 'error.main'
                   : 'text.primary',
             }}

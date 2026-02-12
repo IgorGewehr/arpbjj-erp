@@ -18,6 +18,7 @@ import {
   onSnapshot,
   doc,
   updateDoc,
+  deleteDoc,
   serverTimestamp,
   Timestamp,
 } from 'firebase/firestore';
@@ -41,6 +42,7 @@ interface NotificationContextType {
   // Actions
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
   refreshNotifications: () => void;
 }
 
@@ -188,6 +190,26 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
   }, [academyId, notifications]);
 
   // ============================================
+  // Delete Notification
+  // ============================================
+  const deleteNotification = useCallback(async (notificationId: string) => {
+    if (!academyId) return;
+
+    try {
+      const notificationRef = doc(
+        db,
+        `academies/${academyId}/notifications`,
+        notificationId
+      );
+
+      await deleteDoc(notificationRef);
+    } catch (err) {
+      console.error('Error deleting notification:', err);
+      throw err;
+    }
+  }, [academyId]);
+
+  // ============================================
   // Refresh (for manual reload)
   // ============================================
   const refreshNotifications = useCallback(() => {
@@ -215,6 +237,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     error,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
     refreshNotifications,
   }), [
     notifications,
@@ -223,6 +246,7 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     error,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
     refreshNotifications,
   ]);
 

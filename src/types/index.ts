@@ -443,6 +443,9 @@ export interface CompetitionEnrollment {
 // ============================================
 // Competition Result Interface
 // ============================================
+export type CompetitionModality = 'gi' | 'nogi';
+export type CompetitionDivisionType = 'weight' | 'absolute';
+
 export interface CompetitionResult {
   id: string;
   competitionId: string;
@@ -457,6 +460,8 @@ export interface CompetitionResult {
   beltCategory: BeltColor | KidsBeltColor;  // Belt at competition
   ageCategory: AgeCategory;         // kids | juvenile | adult | master
   weightCategory: string;           // Ex: "Meio-Pesado", "Leve", "Pesado"
+  modality?: CompetitionModality;   // gi | nogi
+  divisionType?: CompetitionDivisionType; // weight | absolute
 
   notes?: string;
   date: Date;                       // Competition date
@@ -1130,6 +1135,41 @@ export interface BulkNotificationResult {
 }
 
 // ============================================
+// Bulk Send Types (for /api/send-bulk endpoint)
+// ============================================
+export interface BulkSendPayload {
+  message: string;
+  subject?: string;
+  phones: string[];
+  emails: string[];
+  scheduledTime?: string;
+}
+
+export interface BulkChannelSummary {
+  total: number;
+  sent?: number;
+  failed?: number;
+}
+
+export interface BulkFailure {
+  type: 'whatsapp' | 'email';
+  recipient: string;
+  error: string;
+}
+
+export interface BulkServerResult {
+  success: boolean;
+  scheduled?: boolean;
+  jobId?: string;
+  scheduledTime?: string;
+  summary: {
+    whatsapp: BulkChannelSummary;
+    email: BulkChannelSummary;
+  };
+  failures?: BulkFailure[];
+}
+
+// ============================================
 // Retention & Risk Types
 // ============================================
 export type RiskLevel = 'low' | 'medium' | 'high' | 'critical';
@@ -1216,4 +1256,27 @@ export interface FinancialRecommendation {
   title: string;
   description: string;
   metric: string;
+}
+
+// ============================================
+// Competition Photo Gallery Types
+// ============================================
+export interface CompetitionPhoto {
+  id: string;
+  competitionId: string;
+  competitionName: string;        // Denormalized for display
+  studentId: string;              // Who uploaded (student's ID at academy)
+  studentName: string;            // Denormalized for display
+  url: string;                    // Firebase Storage download URL
+  storagePath: string;            // Path in Storage for deletion
+  caption?: string;               // Optional caption (max 200 chars)
+  likes: number;                  // For future features
+  isHighlight: boolean;           // Admin can mark as highlight
+
+  // Medal info (from competition result if available)
+  medalType?: CompetitionPosition;  // gold | silver | bronze | participant
+
+  createdAt: Date;
+  updatedAt: Date;
+  createdBy: string;              // Firebase UID
 }

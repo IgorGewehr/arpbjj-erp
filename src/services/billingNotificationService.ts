@@ -9,6 +9,8 @@ import {
   EmailBillingPayload,
   BillingNotificationResult,
   BulkNotificationResult,
+  BulkSendPayload,
+  BulkServerResult,
 } from '@/types';
 
 // ============================================
@@ -160,7 +162,7 @@ export class BillingNotificationService {
     daysOverdue: number,
     customMessage?: string
   ): WhatsAppBillingPayload | null {
-    const phone = contact.category === 'kids' && contact.guardianPhone
+    const phone = contact.category === 'kids'
       ? contact.guardianPhone
       : contact.phone;
 
@@ -204,7 +206,7 @@ export class BillingNotificationService {
     customSubject?: string,
     customMessage?: string
   ): EmailBillingPayload | null {
-    const email = contact.category === 'kids' && contact.guardianEmail
+    const email = contact.category === 'kids'
       ? contact.guardianEmail
       : contact.email;
 
@@ -430,6 +432,90 @@ export class BillingNotificationService {
     result.skipped = skipped;
     result.total = financials.length;
     return result;
+  }
+
+  // ============================================
+  // Generate Generic Stage Message (no per-student personalization)
+  // ============================================
+  generateGenericStageMessage(stage: BillingStage): string {
+    const template = this.customTemplates?.whatsapp?.[stage] || DEFAULT_WHATSAPP_TEMPLATES[stage];
+    return template
+      .replace(/\{nome\}/g, 'aluno(a)')
+      .replace(/\{valor\}/g, '(valor)')
+      .replace(/\{vencimento\}/g, '(data)')
+      .replace(/\{dias\}/g, String(stage === 'D+30' ? '30+' : stage.replace('D+', '')))
+      .replace(/\{academia\}/g, this.academyName);
+  }
+
+  // ============================================
+  // Generate Generic Email Subject
+  // ============================================
+  generateGenericEmailSubject(stage: BillingStage): string {
+    const template = this.customTemplates?.emailSubject?.[stage] || DEFAULT_EMAIL_SUBJECT_TEMPLATES[stage];
+    return template.replace(/\{academia\}/g, this.academyName);
+  }
+
+  // ============================================
+  // Build Bulk Payload (collect phones/emails, deduplicate)
+  // ============================================
+  buildBulkPayload(
+    financials: Financial[],
+    contacts: Map<string, StudentContact>,
+    message: string,
+    subject: string,
+    scheduledTime?: string
+  ): { payload: BulkSendPayload; skipped: number } {
+    const phonesSet = new Set<string>();
+    const emailsSet = new Set<string>();
+    let skipped = 0;
+
+    for (const financial of financials) {
+      const contact = contacts.get(financial.studentId);
+      if (!contact) {
+        skipped++;
+        continue;
+      }
+
+      const phone = contact.category === 'kids'
+        ? contact.guardianPhone
+        : contact.phone;
+      const email = contact.category === 'kids'
+        ? contact.guardianEmail
+        : contact.email;
+
+      if (phone) phonesSet.add(normalizePhone(phone));
+      if (email) emailsSet.add(email);
+
+      if (!phone && !email) skipped++;
+    }
+
+    const payload: BulkSendPayload = {
+      message,
+      subject: emailsSet.size > 0 ? subject : undefined,
+      phones: Array.from(phonesSet),
+      emails: Array.from(emailsSet),
+      scheduledTime,
+    };
+
+    return { payload, skipped };
+  }
+
+  // ============================================
+  // Send Bulk (via server proxy)
+  // ============================================
+  async sendBulk(payload: BulkSendPayload): Promise<BulkServerResult> {
+    const response = await fetch('/api/billing/send-bulk', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const data = await response.json().catch(() => ({}));
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    return await response.json();
   }
 
   // ============================================

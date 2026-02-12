@@ -30,6 +30,8 @@ import {
   Skeleton,
   Divider,
   Autocomplete,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
 import {
@@ -48,6 +50,7 @@ import {
   Bus,
   Car,
   HelpCircle,
+  Camera,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -61,6 +64,7 @@ import { createCompetitionEnrollmentService } from '@/services/competitionEnroll
 import { createStudentService } from '@/services/studentService';
 import { createAchievementService } from '@/services/achievementService';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
+import { CompetitionGallery } from '@/components/features/competitions';
 import {
   Competition,
   CompetitionEnrollment,
@@ -71,6 +75,8 @@ import {
   StudentTransportPreference,
   Student,
   AgeCategory,
+  CompetitionModality,
+  CompetitionDivisionType,
   WEIGHT_CATEGORIES_CBJJ,
   AGE_CATEGORY_LABELS,
   TRANSPORT_STATUS_LABELS,
@@ -299,6 +305,8 @@ function AddResultDialog({ open, onClose, onSave, competition, students, enrollm
   const [position, setPosition] = useState<CompetitionPosition>(existingResult?.position || 'participant');
   const [ageCategory, setAgeCategory] = useState<AgeCategory>(existingResult?.ageCategory || 'adult');
   const [weightCategory, setWeightCategory] = useState(existingResult?.weightCategory || '');
+  const [modality, setModality] = useState<CompetitionModality>(existingResult?.modality || 'gi');
+  const [divisionType, setDivisionType] = useState<CompetitionDivisionType>(existingResult?.divisionType || 'weight');
   const [notes, setNotes] = useState(existingResult?.notes || '');
 
   useEffect(() => {
@@ -307,12 +315,16 @@ function AddResultDialog({ open, onClose, onSave, competition, students, enrollm
       setPosition(existingResult.position);
       setAgeCategory(existingResult.ageCategory);
       setWeightCategory(existingResult.weightCategory);
+      setModality(existingResult.modality || 'gi');
+      setDivisionType(existingResult.divisionType || 'weight');
       setNotes(existingResult.notes || '');
     } else {
       setStudentId('');
       setPosition('participant');
       setAgeCategory('adult');
       setWeightCategory('');
+      setModality('gi');
+      setDivisionType('weight');
       setNotes('');
     }
   }, [existingResult, open]);
@@ -344,6 +356,8 @@ function AddResultDialog({ open, onClose, onSave, competition, students, enrollm
       beltCategory: selectedStudent.currentBelt,
       ageCategory,
       weightCategory,
+      modality,
+      divisionType,
       notes: notes || undefined,
       date: competition.date,
     });
@@ -430,6 +444,42 @@ function AddResultDialog({ open, onClose, onSave, competition, students, enrollm
             </FormControl>
           </Grid>
 
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                Modalidade
+              </Typography>
+              <ToggleButtonGroup
+                value={modality}
+                exclusive
+                onChange={(_, val) => val && setModality(val)}
+                size="small"
+                fullWidth
+              >
+                <ToggleButton value="gi">Gi</ToggleButton>
+                <ToggleButton value="nogi">No-Gi</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+          </Grid>
+
+          <Grid size={{ xs: 12, sm: 6 }}>
+            <Box>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                Divisao
+              </Typography>
+              <ToggleButtonGroup
+                value={divisionType}
+                exclusive
+                onChange={(_, val) => val && setDivisionType(val)}
+                size="small"
+                fullWidth
+              >
+                <ToggleButton value="weight">Peso</ToggleButton>
+                <ToggleButton value="absolute">Absoluto</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+          </Grid>
+
           <Grid size={{ xs: 12 }}>
             <Autocomplete
               freeSolo
@@ -477,7 +527,7 @@ export default function CompetitionDetailsPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const { user } = useAuth();
-  const { academy } = useAcademy();
+  const { academy, academyUser } = useAcademy();
   const { success, error: showError } = useFeedback();
   const { confirm } = useConfirmDialog();
 
@@ -811,6 +861,7 @@ export default function CompetitionDetailsPage() {
                   <Tab label={`Inscritos (${enrollments.length})`} icon={<Users size={18} />} iconPosition="start" />
                   <Tab label={`Transporte (${transportStats.needTransport})`} icon={<Bus size={18} />} iconPosition="start" />
                   <Tab label={`Resultados (${results.length})`} icon={<Medal size={18} />} iconPosition="start" />
+                  <Tab label="Galeria" icon={<Camera size={18} />} iconPosition="start" />
                 </Tabs>
               </Paper>
 
@@ -1100,6 +1151,31 @@ export default function CompetitionDetailsPage() {
                       })}
                     </Grid>
                   )}
+                </Paper>
+              )}
+
+              {tabValue === 3 && (
+                /* Gallery Tab */
+                <Paper sx={{ p: 3, borderRadius: 3 }}>
+                  <CompetitionGallery
+                    competitionId={competitionId}
+                    competitionName={competition?.name || ''}
+                    studentId={academyUser?.studentId}
+                    studentName={
+                      academyUser?.studentId
+                        ? students.find((s) => s.id === academyUser.studentId)?.fullName
+                        : undefined
+                    }
+                    isEnrolled={
+                      academyUser?.studentId
+                        ? enrollments.some((e) => e.studentId === academyUser.studentId)
+                        : false
+                    }
+                    enrolledStudents={enrollments.map((e) => {
+                      const student = students.find((s) => s.id === e.studentId);
+                      return { id: e.studentId, name: student?.fullName || e.studentName };
+                    })}
+                  />
                 </Paper>
               )}
             </>

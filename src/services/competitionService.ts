@@ -74,6 +74,8 @@ const docToResult = (doc: DocumentSnapshot): CompetitionResult => {
     beltCategory: data.beltCategory,
     ageCategory: data.ageCategory,
     weightCategory: data.weightCategory,
+    modality: data.modality,
+    divisionType: data.divisionType,
     notes: data.notes,
     date: data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date),
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
@@ -390,6 +392,8 @@ export class CompetitionService {
 
     // Only add optional fields if they have values
     if (data.weightCategory) docData.weightCategory = data.weightCategory;
+    if (data.modality) docData.modality = data.modality;
+    if (data.divisionType) docData.divisionType = data.divisionType;
     if (data.notes) docData.notes = data.notes;
 
     const docRef = await addDoc(this.resultsRef, docData);
@@ -405,6 +409,8 @@ export class CompetitionService {
       beltCategory: data.beltCategory,
       ageCategory: data.ageCategory,
       weightCategory: data.weightCategory,
+      modality: data.modality,
+      divisionType: data.divisionType,
       notes: data.notes,
       date: new Date(data.date),
       createdAt: now,

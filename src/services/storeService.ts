@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { collections } from '@/lib/firebase/collections';
+import { removeUndefinedDeep } from '@/lib/firestoreUtils';
 import {
   StoreProduct,
   StoreOrder,
@@ -130,7 +131,7 @@ class StoreService {
   }
 
   async createProduct(data: CreateProductData): Promise<StoreProduct> {
-    const productData = {
+    const productData: Record<string, unknown> = {
       academyId: this.academyId,
       name: data.name,
       description: data.description || '',
@@ -138,13 +139,16 @@ class StoreService {
       images: data.images || [],
       category: data.category,
       stockType: data.stockType,
-      stockQuantity: data.stockType === 'in_stock' ? (data.stockQuantity || 0) : undefined,
       sizes: data.sizes || [],
       colors: data.colors || [],
       active: data.active ?? true,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     };
+
+    if (data.stockType === 'in_stock') {
+      productData.stockQuantity = data.stockQuantity || 0;
+    }
 
     const docRef = await addDoc(this.productsRef, productData);
 
@@ -602,20 +606,23 @@ class StoreService {
     if (!ownerId) return;
 
     const notificationsRef = collections.notifications(this.academyId);
-    await addDoc(notificationsRef, {
+    const notifData: Record<string, unknown> = {
       academyId: this.academyId,
       userId: ownerId,
       type: 'system',
       priority: 'normal',
       title,
       message,
-      actionUrl,
-      actionLabel: actionUrl ? 'Ver pedido' : undefined,
       read: false,
       channels: ['in_app'],
       sentVia: ['in_app'],
       createdAt: serverTimestamp(),
-    });
+    };
+    if (actionUrl) {
+      notifData.actionUrl = actionUrl;
+      notifData.actionLabel = 'Ver pedido';
+    }
+    await addDoc(notificationsRef, notifData);
   }
 
   private async notifyStudent(
@@ -637,20 +644,23 @@ class StoreService {
     if (!linkedUserId) return;
 
     const notificationsRef = collections.notifications(this.academyId);
-    await addDoc(notificationsRef, {
+    const notifData: Record<string, unknown> = {
       academyId: this.academyId,
       userId: linkedUserId,
       type: 'system',
       priority: 'normal',
       title,
       message,
-      actionUrl,
-      actionLabel: actionUrl ? 'Ver pedidos' : undefined,
       read: false,
       channels: ['in_app'],
       sentVia: ['in_app'],
       createdAt: serverTimestamp(),
-    });
+    };
+    if (actionUrl) {
+      notifData.actionUrl = actionUrl;
+      notifData.actionLabel = 'Ver pedidos';
+    }
+    await addDoc(notificationsRef, notifData);
   }
 
   private getStatusNotificationTitle(status: StoreOrderStatus): string {

@@ -1,0 +1,123 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ============================================
+    // Helper Functions
+    // ============================================
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get user-academy mapping
+    function getUserAcademyMapping() {
+      return firestore.get(/databases/(default)/documents/userAcademyMapping/$(request.auth.uid)).data;
+    }
+
+    // Get academy-scoped user document
+    function getAcademyUserData(academyId) {
+      return firestore.get(/databases/(default)/documents/academies/$(academyId)/users/$(request.auth.uid)).data;
+    }
+
+    // Check if user belongs to academy
+    function belongsToAcademy(academyId) {
+      let mapping = getUserAcademyMapping();
+      return isAuthenticated() && (
+        academyId in mapping.academyIds ||
+        mapping.primaryAcademyId == academyId
+      );
+    }
+
+    // Check if user is admin of the academy
+    function isAcademyAdmin(academyId) {
+      let mapping = getUserAcademyMapping();
+      return belongsToAcademy(academyId) && (
+        // Primary: from userAcademyMapping.academyDetails
+        (mapping.keys().hasAll(['academyDetails']) &&
+         mapping.academyDetails.keys().hasAll([academyId]) &&
+         mapping.academyDetails[academyId].role == 'admin') ||
+        // Fallback: from academy-scoped user doc
+        getAcademyUserData(academyId).role == 'admin'
+      );
+    }
+
+    // Check if user's studentId matches
+    function isOwnStudent(academyId, studentId) {
+      let mapping = getUserAcademyMapping();
+      return belongsToAcademy(academyId) && (
+        // Primary: from userAcademyMapping.academyDetails
+        (mapping.keys().hasAll(['academyDetails']) &&
+         mapping.academyDetails.keys().hasAll([academyId]) &&
+         mapping.academyDetails[academyId].studentId == studentId) ||
+        // Fallback: from academy-scoped user doc
+        (getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
+         getAcademyUserData(academyId).studentId == studentId)
+      );
+    }
+
+    // Validate file size (5MB = 5 * 1024 * 1024 bytes)
+    function isValidSize() {
+      return request.resource.size <= 5 * 1024 * 1024;
+    }
+
+    // Validate file size for competition photos (10MB)
+    function isValidPhotoSize() {
+      return request.resource.size <= 10 * 1024 * 1024;
+    }
+
+    // Validate image content type
+    function isImage() {
+      return request.resource.contentType.matches('image/.*');
+    }
+
+    // Check if user is enrolled in a competition
+    function isEnrolledInCompetition(academyId, competitionId) {
+      let mapping = getUserAcademyMapping();
+      let studentId = mapping.keys().hasAll(['academyDetails']) &&
+                      mapping.academyDetails.keys().hasAll([academyId])
+                      ? mapping.academyDetails[academyId].studentId
+                      : getAcademyUserData(academyId).studentId;
+      return studentId != null &&
+             firestore.exists(/databases/(default)/documents/academies/$(academyId)/competitionEnrollments/$(studentId + '_' + competitionId));
+    }
+
+    // ============================================
+    // Student Profile Photos
+    // ============================================
+    match /academies/{academyId}/students/{studentId}/profile.jpg {
+      // Students can upload/update their own photo
+      // Admins can upload/update any student's photo
+      allow write: if isAuthenticated()
+                   && isValidSize()
+                   && isImage()
+                   && (isOwnStudent(academyId, studentId) || isAcademyAdmin(academyId));
+
+      // Anyone in the academy can read profile photos
+      allow read: if belongsToAcademy(academyId);
+    }
+
+    // ============================================
+    // Competition Photos
+    // ============================================
+    match /academies/{academyId}/competitions/{competitionId}/photos/{photoId}.jpg {
+      // Allow upload if admin or enrolled in competition
+      allow write: if isAuthenticated()
+                   && isValidPhotoSize()
+                   && isImage()
+                   && (isAcademyAdmin(academyId) || isEnrolledInCompetition(academyId, competitionId));
+
+      // Anyone in academy can read
+      allow read: if belongsToAcademy(academyId);
+    }
+
+    // ============================================
+    // Deny all other paths
+    // ============================================
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

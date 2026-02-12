@@ -361,14 +361,18 @@ class AbacatePayService {
       });
     } else {
       const incrementAmount = operation === 'add' ? amount : -amount;
-      await updateDoc(this.walletRef, {
+      const walletUpdate: Record<string, unknown> = {
         availableBalance: increment(incrementAmount),
-        totalReceived: operation === 'add' ? increment(amount) : undefined,
-        totalWithdrawn: operation === 'subtract' ? increment(amount) : undefined,
         transactionCount: increment(1),
         lastTransactionAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
-      });
+      };
+      if (operation === 'add') {
+        walletUpdate.totalReceived = increment(amount);
+      } else {
+        walletUpdate.totalWithdrawn = increment(amount);
+      }
+      await updateDoc(this.walletRef, walletUpdate);
     }
   }
 

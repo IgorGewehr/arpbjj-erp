@@ -102,7 +102,7 @@ service firebase.storage {
     // ============================================
     // Competition Photos
     // ============================================
-    match /academies/{academyId}/competitions/{competitionId}/photos/{photoId}.jpg {
+    match /academies/{academyId}/competitions/{competitionId}/photos/{photoId} {
       // Allow upload if admin or enrolled in competition
       allow write: if isAuthenticated()
                    && isValidPhotoSize()

@@ -26,12 +26,6 @@ interface TimelineEvent {
   academyId: string;
 }
 
-interface Student {
-  name: string;
-  academyId: string;
-  userId?: string;
-}
-
 interface Academy {
   adminUserId: string;
   ownerId?: string;

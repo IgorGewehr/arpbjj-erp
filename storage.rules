@@ -92,14 +92,13 @@ service firebase.storage {
     // Competition Photos
     // ============================================
     match /academies/{academyId}/competitions/{competitionId}/photos/{photoId} {
-      // Any academy member can upload (detailed permission check is in Firestore rules)
+      // Authenticated users can upload (detailed permission check is in Firestore rules)
       allow write: if isAuthenticated()
                    && isValidPhotoSize()
-                   && isImage()
-                   && belongsToAcademy(academyId);
+                   && isImage();
 
-      // Anyone in academy can read
-      allow read: if belongsToAcademy(academyId);
+      // Authenticated users can read
+      allow read: if isAuthenticated();
     }
 
     // ============================================

@@ -210,19 +210,19 @@ export default function PortalFinanceiroPage() {
     enabled: !!studentId && !!academy?.id,
   });
 
-  // Validate if the plan actually exists
-  const { data: plan } = useQuery({
-    queryKey: ['plan', student?.planId, academy?.id],
-    queryFn: () => {
-      if (!academy?.id || !student?.planId) return null;
+  // Check if student is enrolled in any plan (via plan.studentIds)
+  const { data: studentPlan } = useQuery({
+    queryKey: ['studentPlan', studentId, academy?.id],
+    queryFn: async () => {
+      if (!academy?.id) return null;
       const planService = createPlanService(academy.id);
-      return planService.getById(student.planId);
+      return planService.getPlanForStudent(studentId);
     },
-    enabled: !!student?.planId && !!academy?.id,
+    enabled: !!studentId && !!academy?.id,
   });
 
-  // Only consider having a valid plan if the plan exists
-  const hasValidPlan = !!student?.planId && !!plan;
+  // Student has a valid plan if enrolled in any plan's studentIds
+  const hasValidPlan = !!studentPlan;
 
   // Fetch academy settings (for PIX key)
   const { data: academySettings } = useQuery({
@@ -306,7 +306,7 @@ export default function PortalFinanceiroPage() {
         },
         body: JSON.stringify({
           academyId: academy.id,
-          amount: Math.round(payment.amount * 100), // Convert reais to centavos
+          amount: payment.amount, // Send in reais — API routes handle centavo conversion internally
           description: payment.description || `Mensalidade - ${payment.referenceMonth || ''}`,
           financialId: payment.id,
           studentId,

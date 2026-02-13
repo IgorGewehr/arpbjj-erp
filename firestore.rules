@@ -573,6 +573,20 @@ service cloud.firestore {
       }
 
       // ============================================
+      // Billing Contact Log
+      // ============================================
+      match /billingContactLog/{logId} {
+        // Staff can read all contact logs
+        allow read: if isAcademyStaff(academyId);
+
+        // Staff can create contact logs (logging billing attempts)
+        allow create: if isAcademyStaff(academyId);
+
+        // No updates or deletes from client
+        allow update, delete: if false;
+      }
+
+      // ============================================
       // Settings
       // ============================================
       match /settings/{settingId} {

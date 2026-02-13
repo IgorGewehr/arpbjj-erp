@@ -99,19 +99,19 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
     enabled: !!studentId && !!academy?.id,
   });
 
-  // Validate if the plan actually exists (handles orphaned planIds)
-  const { data: plan } = useQuery({
-    queryKey: ['plan', student?.planId, academy?.id],
-    queryFn: () => {
+  // Check if student is enrolled in any plan (via plan.studentIds)
+  const { data: studentPlan } = useQuery({
+    queryKey: ['studentPlan', studentId, academy?.id],
+    queryFn: async () => {
       if (!academy?.id) return null;
       const planService = createPlanService(academy.id);
-      return planService.getById(student!.planId!);
+      return planService.getPlanForStudent(studentId);
     },
-    enabled: !!student?.planId && !!academy?.id,
+    enabled: !!studentId && !!academy?.id,
   });
 
-  // Only consider student has a valid plan if the plan exists
-  const hasValidPlan = !!student?.planId && !!plan;
+  // Student has a valid plan if enrolled in any plan's studentIds
+  const hasValidPlan = !!studentPlan;
 
   const navItems = useMemo(() => {
     return NAV_ITEMS.filter((item) => {

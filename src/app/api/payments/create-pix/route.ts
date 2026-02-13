@@ -145,10 +145,11 @@ export async function POST(request: NextRequest) {
     });
 
     // 13. Create walletTransaction record for webhook to find (using Admin SDK)
+    // Store amount in centavos to match AbacatePay webhook payload
     await adminDb.collection(`academies/${academyId}/walletTransactions`).add({
       academyId,
       type: 'payment',
-      amount,
+      amount: Math.round(amount * 100),
       status: 'pending',
       financialId,
       studentId,

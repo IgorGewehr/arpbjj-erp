@@ -196,16 +196,16 @@ export function CompetitionGallery({
       {/* Photo Grid */}
       <Grid container spacing={2}>
         {filteredPhotos.map((photo, index) => (
-          <Grid item xs={12} sm={6} md={4} lg={3} key={photo.id}>
+          <Grid size={{ xs: 12, sm: 6, md: 4, lg: 3 }} key={photo.id}>
             <PhotoCard
               photo={photo}
               onClick={() => handlePhotoClick(index)}
               canEdit={isAdmin || photo.createdBy === user?.id}
               canDelete={isAdmin || photo.createdBy === user?.id}
               canHighlight={isAdmin}
-              onDelete={deletePhoto}
-              onUpdateCaption={updateCaption}
-              onToggleHighlight={toggleHighlight}
+              onDelete={(photoId) => deletePhoto(photoId)}
+              onUpdateCaption={(photoId, caption) => updateCaption({ photoId, caption })}
+              onToggleHighlight={(photoId, isHighlight) => toggleHighlight({ photoId, isHighlight })}
             />
           </Grid>
         ))}

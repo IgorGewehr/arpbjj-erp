@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Box,
@@ -1344,7 +1344,7 @@ function StudentsReport({ classFilter, categoryFilter, classes, selectedMonth }:
 // ============================================
 // Main Component
 // ============================================
-export default function RelatoriosPage() {
+function RelatoriosPageContent() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const searchParams = useSearchParams();
@@ -1520,5 +1520,13 @@ export default function RelatoriosPage() {
         </Box>
       </AppLayout>
     </ProtectedRoute>
+  );
+}
+
+export default function RelatoriosPage() {
+  return (
+    <Suspense>
+      <RelatoriosPageContent />
+    </Suspense>
   );
 }

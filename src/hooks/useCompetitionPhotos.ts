@@ -117,7 +117,7 @@ export function useCompetitionPhotos(options: UseCompetitionPhotosOptions = {}) 
       caption?: string;
       medalType?: string;
     }) => {
-      if (!user?.uid) throw new Error('Usuário não autenticado');
+      if (!user?.id) throw new Error('Usuário não autenticado');
       return photoService.uploadPhoto(
         competitionId,
         competitionName,
@@ -125,7 +125,7 @@ export function useCompetitionPhotos(options: UseCompetitionPhotosOptions = {}) 
         studentName,
         file,
         caption,
-        user.uid,
+        user.id,
         medalType
       );
     },

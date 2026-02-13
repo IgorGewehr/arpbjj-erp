@@ -52,10 +52,7 @@ export function PhotoUploadDialog({
 
   const remainingPhotos = maxPhotos - currentPhotos;
 
-  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
+  const processFile = (file: File) => {
     // Validate file type
     if (!file.type.startsWith('image/')) {
       setError('Por favor, selecione uma imagem válida');
@@ -77,6 +74,11 @@ export function PhotoUploadDialog({
       setPreview(reader.result as string);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) processFile(file);
   };
 
   const handleUpload = async () => {
@@ -105,12 +107,7 @@ export function PhotoUploadDialog({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (file) {
-      const fakeEvent = {
-        target: { files: [file] },
-      } as React.ChangeEvent<HTMLInputElement>;
-      handleFileSelect(fakeEvent);
-    }
+    if (file) processFile(file);
   };
 
   return (

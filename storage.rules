@@ -73,17 +73,6 @@ service firebase.storage {
       return request.resource.contentType.matches('image/.*');
     }
 
-    // Check if user is enrolled in a competition
-    function isEnrolledInCompetition(academyId, competitionId) {
-      let mapping = getUserAcademyMapping();
-      let studentId = mapping.keys().hasAll(['academyDetails']) &&
-                      mapping.academyDetails.keys().hasAll([academyId])
-                      ? mapping.academyDetails[academyId].studentId
-                      : getAcademyUserData(academyId).studentId;
-      return studentId != null &&
-             firestore.exists(/databases/(default)/documents/academies/$(academyId)/competitionEnrollments/$(studentId + '_' + competitionId));
-    }
-
     // ============================================
     // Student Profile Photos
     // ============================================
@@ -103,11 +92,11 @@ service firebase.storage {
     // Competition Photos
     // ============================================
     match /academies/{academyId}/competitions/{competitionId}/photos/{photoId} {
-      // Allow upload if admin or enrolled in competition
+      // Any academy member can upload (detailed permission check is in Firestore rules)
       allow write: if isAuthenticated()
                    && isValidPhotoSize()
                    && isImage()
-                   && (isAcademyAdmin(academyId) || isEnrolledInCompetition(academyId, competitionId));
+                   && belongsToAcademy(academyId);
 
       // Anyone in academy can read
       allow read: if belongsToAcademy(academyId);

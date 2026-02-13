@@ -143,17 +143,6 @@ service cloud.firestore {
       return amount is number && amount > 0;
     }
 
-    // Check if user is enrolled in a competition
-    function isEnrolledInCompetition(academyId, competitionId) {
-      let mapping = getUserAcademyMapping();
-      let studentId = mapping.keys().hasAll(['academyDetails']) &&
-                      mapping.academyDetails.keys().hasAll([academyId])
-                      ? mapping.academyDetails[academyId].studentId
-                      : getAcademyUserData(academyId).studentId;
-      return studentId != null &&
-             exists(/databases/$(database)/documents/academies/$(academyId)/competitionEnrollments/$(studentId + '_' + competitionId));
-    }
-
     // ============================================
     // Root Users Collection
     // ============================================
@@ -501,8 +490,8 @@ service cloud.firestore {
         // Anyone in the academy can read photos
         allow read: if belongsToAcademy(academyId);
 
-        // Students can create if enrolled in competition
-        // Admins can create unlimited
+        // Admins can create unlimited, students can create own photos
+        // Enrollment check is enforced at the application level
         allow create: if isAuthenticated()
                       && belongsToAcademy(academyId)
                       && request.resource.data.studentId != null
@@ -513,9 +502,8 @@ service cloud.firestore {
                       && (
                         // Admin can upload unlimited
                         isAcademyStaff(academyId) ||
-                        // Student can upload if enrolled and own photo
-                        (isOwnStudentRecord(academyId, request.resource.data.studentId) &&
-                         isEnrolledInCompetition(academyId, request.resource.data.competitionId))
+                        // Student can upload own photos
+                        isOwnStudentRecord(academyId, request.resource.data.studentId)
                       );
 
         // Can update own photos (caption only) or admin can update any

@@ -1590,7 +1590,7 @@ export function BillingRemindersDashboard() {
                 <strong>{currentStageFinancials.length}</strong> aluno(s) em {STAGE_LABELS[currentStage]}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Mesma mensagem sera enviada via WhatsApp e Email
+                Cada aluno recebera uma mensagem personalizada via WhatsApp e Email
               </Typography>
             </Alert>
 
@@ -1609,10 +1609,10 @@ export function BillingRemindersDashboard() {
               fullWidth
               multiline
               rows={8}
-              label="Mensagem"
+              label="Modelo da Mensagem"
               value={bulkMessage}
               onChange={(e) => setBulkMessage(e.target.value)}
-              helperText="Mesma mensagem sera enviada via WhatsApp e Email"
+              helperText="Variaveis: {nome}, {valor}, {vencimento}, {dias} — serao substituidas para cada aluno"
               sx={{ mb: 2 }}
             />
 

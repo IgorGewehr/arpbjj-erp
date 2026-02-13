@@ -435,16 +435,32 @@ export class BillingNotificationService {
   }
 
   // ============================================
-  // Generate Generic Stage Message (no per-student personalization)
+  // Generate Generic Stage Message (template preview with placeholders)
   // ============================================
   generateGenericStageMessage(stage: BillingStage): string {
     const template = this.customTemplates?.whatsapp?.[stage] || DEFAULT_WHATSAPP_TEMPLATES[stage];
     return template
-      .replace(/\{nome\}/g, 'aluno(a)')
-      .replace(/\{valor\}/g, '(valor)')
-      .replace(/\{vencimento\}/g, '(data)')
-      .replace(/\{dias\}/g, String(stage === 'D+30' ? '30+' : stage.replace('D+', '')))
       .replace(/\{academia\}/g, this.academyName);
+  }
+
+  // ============================================
+  // Apply message template with per-student data
+  // ============================================
+  applyMessageTemplate(
+    template: string,
+    studentName: string,
+    amount: number,
+    dueDate: Date,
+    daysOverdue: number
+  ): string {
+    const vars: MessageVars = {
+      studentName,
+      academyName: this.academyName,
+      amountFormatted: formatCurrency(amount),
+      dueDateFormatted: format(dueDate, 'dd/MM/yyyy', { locale: ptBR }),
+      daysOverdue,
+    };
+    return applyTemplate(template, vars);
   }
 
   // ============================================
@@ -521,7 +537,7 @@ export class BillingNotificationService {
   // ============================================
   // Helper: Calculate days overdue
   // ============================================
-  private calculateDaysOverdue(dueDate: Date): number {
+  calculateDaysOverdue(dueDate: Date): number {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
     const due = new Date(dueDate);

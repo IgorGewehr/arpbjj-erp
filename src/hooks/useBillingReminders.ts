@@ -402,39 +402,64 @@ export function useBillingReminders() {
     }): Promise<BulkServerResult> => {
       if (!studentContactsMap) throw new Error('Contatos dos alunos nao carregados');
 
-      const { payload } = notificationService.buildBulkPayload(
-        data.financials,
-        studentContactsMap,
-        data.message,
-        data.subject,
-        data.scheduledTime
-      );
+      const messageTemplate = data.message;
+      const subjectTemplate = data.subject;
+      let waSent = 0, waFailed = 0, waTotal = 0;
+      let emSent = 0, emFailed = 0, emTotal = 0;
+      const failures: Array<{ type: 'whatsapp' | 'email'; recipient: string; error: string }> = [];
 
-      if (payload.phones.length === 0 && payload.emails.length === 0) {
-        throw new Error('Nenhum destinatario encontrado');
-      }
+      for (const financial of data.financials) {
+        const contact = studentContactsMap.get(financial.studentId);
+        if (!contact) continue;
 
-      const result = await notificationService.sendBulk(payload);
+        const studentName = financial.studentName || contact.studentName;
+        const daysOverdue = notificationService.calculateDaysOverdue(financial.dueDate);
+        const personalizedMessage = notificationService.applyMessageTemplate(
+          messageTemplate, studentName, financial.amount, financial.dueDate, daysOverdue
+        );
+        const personalizedSubject = notificationService.applyMessageTemplate(
+          subjectTemplate, studentName, financial.amount, financial.dueDate, daysOverdue
+        );
 
-      // Auto-log contact for immediate sends
-      if (!result.scheduled && user) {
-        for (const financial of data.financials) {
-          const contact = studentContactsMap.get(financial.studentId);
-          if (!contact) continue;
+        // Send WhatsApp
+        const waPayload = notificationService.buildWhatsAppPayload(
+          financial, contact, data.stage, daysOverdue, personalizedMessage
+        );
+        if (waPayload) {
+          waTotal++;
+          const result = await notificationService.sendWhatsApp(waPayload);
+          if (result.success) waSent++;
+          else {
+            waFailed++;
+            failures.push({ type: 'whatsapp', recipient: waPayload.phone, error: result.error || 'Erro desconhecido' });
+          }
+        }
 
+        // Send Email
+        const emPayload = notificationService.buildEmailPayload(
+          financial, contact, data.stage, daysOverdue, personalizedSubject, personalizedMessage
+        );
+        if (emPayload) {
+          emTotal++;
+          const result = await notificationService.sendEmail(emPayload);
+          if (result.success) emSent++;
+          else {
+            emFailed++;
+            failures.push({ type: 'email', recipient: emPayload.email, error: result.error || 'Erro desconhecido' });
+          }
+        }
+
+        // Auto-log contact
+        if (user) {
           const phone = contact.category === 'kids' ? contact.guardianPhone : contact.phone;
           const email = contact.category === 'kids' ? contact.guardianEmail : contact.email;
-
           if (phone || email) {
-            const daysOverdue = Math.floor(
-              (Date.now() - financial.dueDate.getTime()) / (1000 * 60 * 60 * 24)
-            );
             await billingService.logContactAttempt(
               financial.id,
               financial.studentId,
-              financial.studentName || 'Aluno',
+              studentName,
               phone ? 'whatsapp' : 'email',
-              'Cobranca em massa (bulk)',
+              'Cobranca em massa (personalizada)',
               data.stage,
               daysOverdue,
               user.id,
@@ -444,7 +469,15 @@ export function useBillingReminders() {
         }
       }
 
-      return result;
+      return {
+        success: true,
+        scheduled: false,
+        summary: {
+          whatsapp: { total: waTotal, sent: waSent, failed: waFailed },
+          email: { total: emTotal, sent: emSent, failed: emFailed },
+        },
+        failures,
+      };
     },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.overdueStages] });

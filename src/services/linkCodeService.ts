@@ -83,12 +83,8 @@ export class LinkCodeService {
     studentName: string,
     createdBy: string
   ): Promise<LinkCode> {
-    // Check if student already has an active code
-    const existingCode = await this.getActiveForStudent(studentId);
-    if (existingCode) {
-      // Return existing code if still valid
-      return existingCode;
-    }
+    // Invalidate existing unused codes for this student
+    await this.invalidate(studentId);
 
     // Generate unique code
     let code: string;

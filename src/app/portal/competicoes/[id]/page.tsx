@@ -161,17 +161,17 @@ export default function StudentCompetitionDetailPage() {
   // Derived data
   // ============================================
   const isEnrolled = enrollments.some((e) => e.studentId === effectiveStudentId);
-  const myResult = results.find((r) => r.studentId === effectiveStudentId);
+  const myResults = results.filter((r) => r.studentId === effectiveStudentId);
   const myEnrollment = enrollments.find((e) => e.studentId === effectiveStudentId);
   const enrolledStudentsList = enrollments.map((e) => ({ id: e.studentId, name: e.studentName }));
 
   // ============================================
   // Handle result dialog
   // ============================================
-  const handleOpenResultDialog = useCallback(() => {
-    setEditingResult(myResult || null);
+  const handleOpenResultDialog = useCallback((result?: CompetitionResult) => {
+    setEditingResult(result || null);
     setResultDialogOpen(true);
-  }, [myResult]);
+  }, []);
 
   const handleSaveResult = async (data: {
     position: CompetitionPosition;
@@ -188,8 +188,8 @@ export default function StudentCompetitionDetailPage() {
 
     setSavingResult(true);
     try {
-      if (myResult) {
-        await competitionService.updateResult(myResult.id, {
+      if (editingResult) {
+        await competitionService.updateResult(editingResult.id, {
           position: data.position,
           ageCategory: data.ageCategory,
           weightCategory: data.weightCategory,
@@ -199,7 +199,7 @@ export default function StudentCompetitionDetailPage() {
         });
         setResults((prev) =>
           prev.map((r) =>
-            r.id === myResult.id
+            r.id === editingResult.id
               ? { ...r, position: data.position, ageCategory: data.ageCategory, weightCategory: data.weightCategory, modality: data.modality, divisionType: data.divisionType, notes: data.notes }
               : r
           )
@@ -249,8 +249,8 @@ export default function StudentCompetitionDetailPage() {
   // ============================================
   // Handle Delete Result
   // ============================================
-  const handleDeleteResult = async () => {
-    if (!myResult || !academy?.id) return;
+  const handleDeleteResult = async (resultToDelete: CompetitionResult) => {
+    if (!academy?.id) return;
 
     const confirmed = await confirm({
       title: 'Excluir Resultado',
@@ -262,8 +262,8 @@ export default function StudentCompetitionDetailPage() {
     if (confirmed) {
       const competitionService = createCompetitionService(academy.id);
       try {
-        await competitionService.deleteResult(myResult.id);
-        setResults((prev) => prev.filter((r) => r.id !== myResult.id));
+        await competitionService.deleteResult(resultToDelete.id);
+        setResults((prev) => prev.filter((r) => r.id !== resultToDelete.id));
         success('Resultado excluído');
       } catch (err) {
         showError('Erro ao excluir resultado');
@@ -550,7 +550,7 @@ export default function StudentCompetitionDetailPage() {
               </SlideIn>
             )}
 
-            {/* My result card (prominent) */}
+            {/* My results card (supports multiple) */}
             {effectiveStudentId && (
               <SlideIn direction="up" delay={0.15}>
                 <Box
@@ -559,54 +559,70 @@ export default function StudentCompetitionDetailPage() {
                     bgcolor: '#fff',
                     borderRadius: 2,
                     border: '2px solid',
-                    borderColor: myResult ? positionConfig[myResult.position]?.color || 'grey.300' : 'primary.main',
+                    borderColor: myResults.length > 0 ? positionConfig[myResults[0].position]?.color || 'grey.300' : 'primary.main',
                   }}
                 >
-                  <Typography
-                    variant="body2"
-                    fontWeight={600}
-                    color="text.secondary"
-                    sx={{
-                      mb: 1.5,
-                      fontSize: { xs: '0.7rem', sm: '0.75rem' },
-                      textTransform: 'uppercase',
-                      letterSpacing: 0.5,
-                    }}
-                  >
-                    Meu Resultado
-                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1.5 }}>
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      color="text.secondary"
+                      sx={{
+                        fontSize: { xs: '0.7rem', sm: '0.75rem' },
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.5,
+                      }}
+                    >
+                      {myResults.length > 1 ? 'Meus Resultados' : 'Meu Resultado'}
+                    </Typography>
+                    <Button
+                      size="small"
+                      startIcon={<Medal size={14} />}
+                      onClick={() => handleOpenResultDialog()}
+                      sx={{ fontSize: '0.75rem', textTransform: 'none' }}
+                    >
+                      Adicionar
+                    </Button>
+                  </Box>
 
-                  {myResult ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-                      <Typography sx={{ fontSize: { xs: '2rem', sm: '2.5rem' }, lineHeight: 1 }}>
-                        {positionConfig[myResult.position]?.icon || '🎖️'}
-                      </Typography>
-                      <Box sx={{ flex: 1 }}>
-                        <Typography variant="body1" fontWeight={600}>
-                          {positionConfig[myResult.position]?.label || 'Participante'}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {myResult.modality && `${myResult.modality === 'gi' ? 'Gi' : 'No-Gi'} - `}
-                          {myResult.divisionType && `${myResult.divisionType === 'absolute' ? 'Absoluto' : 'Peso'} - `}
-                          {myResult.ageCategory && AGE_CATEGORY_LABELS[myResult.ageCategory as AgeCategory]}
-                          {myResult.weightCategory && ` - ${myResult.weightCategory}`}
-                        </Typography>
-                        {myResult.notes && (
-                          <Typography variant="caption" color="text.secondary" display="block">
-                            {myResult.notes}
-                          </Typography>
-                        )}
-                      </Box>
-                      <IconButton size="small" onClick={handleOpenResultDialog}>
-                        <Edit size={16} />
-                      </IconButton>
-                      <IconButton size="small" color="error" onClick={handleDeleteResult}>
-                        <Trash2 size={16} />
-                      </IconButton>
+                  {myResults.length > 0 ? (
+                    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                      {myResults.map((result) => {
+                        const pos = positionConfig[result.position] || positionConfig.participant;
+                        return (
+                          <Box key={result.id} sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                            <Typography sx={{ fontSize: { xs: '2rem', sm: '2.5rem' }, lineHeight: 1 }}>
+                              {pos.icon}
+                            </Typography>
+                            <Box sx={{ flex: 1 }}>
+                              <Typography variant="body1" fontWeight={600}>
+                                {pos.label}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {result.modality && `${result.modality === 'gi' ? 'Gi' : 'No-Gi'} - `}
+                                {result.divisionType && `${result.divisionType === 'absolute' ? 'Absoluto' : 'Peso'} - `}
+                                {result.ageCategory && AGE_CATEGORY_LABELS[result.ageCategory as AgeCategory]}
+                                {result.weightCategory && ` - ${result.weightCategory}`}
+                              </Typography>
+                              {result.notes && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {result.notes}
+                                </Typography>
+                              )}
+                            </Box>
+                            <IconButton size="small" onClick={() => handleOpenResultDialog(result)}>
+                              <Edit size={16} />
+                            </IconButton>
+                            <IconButton size="small" color="error" onClick={() => handleDeleteResult(result)}>
+                              <Trash2 size={16} />
+                            </IconButton>
+                          </Box>
+                        );
+                      })}
                     </Box>
                   ) : (
                     <Box
-                      onClick={handleOpenResultDialog}
+                      onClick={() => handleOpenResultDialog()}
                       sx={{
                         display: 'flex',
                         alignItems: 'center',

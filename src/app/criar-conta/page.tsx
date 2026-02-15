@@ -121,25 +121,21 @@ export default function CreateAccountPage() {
       const codeUpper = code.toUpperCase().trim();
 
       // collectionGroup query across all academies' linkCodes
+      // MUST filter by usedAt == null to match security rules constraint
       const q = query(
         collectionGroup(db, 'linkCodes'),
         where('code', '==', codeUpper),
+        where('usedAt', '==', null),
       );
       const snapshot = await getDocs(q);
 
       if (snapshot.empty) {
-        setError('Codigo nao encontrado');
+        setError('Codigo nao encontrado ou ja utilizado. Solicite um novo codigo.');
         return;
       }
 
       const codeDoc = snapshot.docs[0];
       const data = codeDoc.data();
-
-      // Check if already used
-      if (data.usedAt) {
-        setError('Este codigo ja foi utilizado');
-        return;
-      }
 
       // Check if expired
       const expiresAt = data.expiresAt instanceof Timestamp

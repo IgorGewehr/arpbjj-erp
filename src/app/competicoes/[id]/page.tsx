@@ -933,12 +933,20 @@ export default function CompetitionDetailsPage() {
               <Paper sx={{ mb: 3, borderRadius: 3 }}>
                 <Tabs value={tabValue} onChange={(_, v) => setTabValue(v)} sx={{ px: 2 }}>
                   <Tab label={`Inscritos (${enrollments.length})`} icon={<Users size={18} />} iconPosition="start" />
-                  <Tab label={`Transporte (${transportStats.needTransport})`} icon={<Bus size={18} />} iconPosition="start" />
+                  {competition.status !== 'completed' && (
+                    <Tab label={`Transporte (${transportStats.needTransport})`} icon={<Bus size={18} />} iconPosition="start" />
+                  )}
                   <Tab label={`Resultados (${results.length})`} icon={<Medal size={18} />} iconPosition="start" />
                   <Tab label="Galeria" icon={<Camera size={18} />} iconPosition="start" />
                 </Tabs>
               </Paper>
 
+              {(() => {
+                const isCompleted = competition.status === 'completed';
+                const transportTabIdx = isCompleted ? -1 : 1;
+                const resultsTabIdx = isCompleted ? 1 : 2;
+                const galleryTabIdx = isCompleted ? 2 : 3;
+                return (<>
               {tabValue === 0 && (
                 /* Enrolled Students Tab */
                 <Paper sx={{ p: 3, borderRadius: 3 }}>
@@ -1024,7 +1032,7 @@ export default function CompetitionDetailsPage() {
                 </Paper>
               )}
 
-              {tabValue === 1 && (
+              {tabValue === transportTabIdx && transportTabIdx !== -1 && (
                 /* Transport Tab */
                 <Paper sx={{ p: 3, borderRadius: 3 }}>
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -1131,7 +1139,7 @@ export default function CompetitionDetailsPage() {
                 </Paper>
               )}
 
-              {tabValue === 2 && (
+              {tabValue === resultsTabIdx && (
                 /* Results Tab */
                 <Paper sx={{ p: 3, borderRadius: 3 }}>
                   {/* Team Result Card */}
@@ -1285,7 +1293,7 @@ export default function CompetitionDetailsPage() {
                 </Paper>
               )}
 
-              {tabValue === 3 && (
+              {tabValue === galleryTabIdx && (
                 /* Gallery Tab */
                 <Paper sx={{ p: 3, borderRadius: 3 }}>
                   <CompetitionGallery
@@ -1309,6 +1317,8 @@ export default function CompetitionDetailsPage() {
                   />
                 </Paper>
               )}
+                </>);
+              })()}
             </>
           )}
         </Box>

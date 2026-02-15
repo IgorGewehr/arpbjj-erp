@@ -234,6 +234,33 @@ export default function StudentCompetitionDetailPage() {
           user.id
         );
 
+        // Auto-enroll if not already enrolled
+        if (!isEnrolled) {
+          try {
+            const enrollmentService = createCompetitionEnrollmentService(academy.id);
+            const enrollment = await enrollmentService.enroll({
+              competitionId: competition.id,
+              competitionName: competition.name,
+              studentId: effectiveStudentId,
+              studentName: studentName,
+              ageCategory: data.ageCategory,
+              weightCategory: data.weightCategory,
+              transportPreference: 'undecided' as StudentTransportPreference,
+              enrolledBy: user.id,
+            });
+            setEnrollments((prev) => [...prev, enrollment]);
+
+            // Also update legacy enrolledStudentIds
+            try {
+              await competitionService.enrollStudent(competition.id, effectiveStudentId);
+            } catch {
+              // Legacy field may not exist
+            }
+          } catch {
+            // Already enrolled - ignore
+          }
+        }
+
         setResults((prev) => [...prev, newResult]);
         success('Resultado registrado!');
       }

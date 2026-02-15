@@ -40,6 +40,7 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
+  Image,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -52,6 +53,7 @@ import { Competition, CompetitionStatus } from '@/types';
 import { CardSkeleton } from '@/components/common/SkeletonComponents';
 import { EmptyCompetitionsIllustration } from '@/components/common/EmptyStateIllustrations';
 import { FadeInView, ScaleOnPress, BottomSheet } from '@/components/mobile';
+import { TeamGalleryDialog } from '@/components/features/competitions/TeamGalleryDialog';
 
 // ============================================
 // Status Config
@@ -206,6 +208,7 @@ export default function CompetitionsPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [tabValue, setTabValue] = useState(0);
+  const [teamGalleryOpen, setTeamGalleryOpen] = useState(false);
 
   // ============================================
   // Load Competitions
@@ -308,51 +311,109 @@ export default function CompetitionsPage() {
             </Box>
           </FadeInView>
 
-          {/* Stats Cards */}
-          <FadeInView direction="up" delay={50}>
-            <Grid container spacing={{ xs: 1, sm: 2 }} sx={{ mb: 3 }}>
-              <Grid size={{ xs: 6, sm: 3 }}>
-                <Paper sx={{ p: { xs: 1.5, sm: 2 }, textAlign: 'center', borderRadius: 2 }}>
-                  <Typography variant="h4" fontWeight={700} color="primary" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
-                    {stats.total}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>
-                    Total
-                  </Typography>
+          {/* Trophy Showcase */}
+          {(() => {
+            const trophyCompetitions = competitions.filter((c) => c.teamPosition);
+            const teamPositionConfig: Record<string, { label: string; emoji: string; bgColor: string; color: string; borderColor: string }> = {
+              gold: { label: 'Campeao', emoji: '🏆', bgColor: '#FEF3C7', color: '#92400E', borderColor: '#F59E0B' },
+              silver: { label: 'Vice', emoji: '🏆', bgColor: '#F3F4F6', color: '#374151', borderColor: '#9CA3AF' },
+              bronze: { label: '3o Lugar', emoji: '🏆', bgColor: '#FED7AA', color: '#7C2D12', borderColor: '#F97316' },
+            };
+            return (
+              <FadeInView direction="up" delay={50}>
+                <Paper sx={{ p: { xs: 2, sm: 2.5 }, mb: 3, borderRadius: 2 }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: trophyCompetitions.length > 0 ? 2 : 0 }}>
+                    <Typography
+                      variant="body2"
+                      fontWeight={600}
+                      color="text.secondary"
+                      sx={{ fontSize: { xs: '0.75rem', sm: '0.8rem' }, textTransform: 'uppercase', letterSpacing: 0.5 }}
+                    >
+                      Trofeus da Academia {trophyCompetitions.length > 0 && `(${trophyCompetitions.length})`}
+                    </Typography>
+                    <Button
+                      size="small"
+                      startIcon={<Image size={14} />}
+                      onClick={() => setTeamGalleryOpen(true)}
+                      sx={{ fontSize: '0.75rem', textTransform: 'none' }}
+                    >
+                      Galeria da Equipe
+                    </Button>
+                  </Box>
+                  {trophyCompetitions.length > 0 ? (
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        gap: 1.5,
+                        overflowX: 'auto',
+                        scrollSnapType: 'x mandatory',
+                        pb: 1,
+                        '&::-webkit-scrollbar': { display: 'none' },
+                        scrollbarWidth: 'none',
+                      }}
+                    >
+                      {trophyCompetitions.map((comp) => {
+                        const tpConfig = teamPositionConfig[comp.teamPosition!];
+                        if (!tpConfig) return null;
+                        return (
+                          <Box
+                            key={comp.id}
+                            onClick={() => router.push(`/competicoes/${comp.id}`)}
+                            sx={{
+                              scrollSnapAlign: 'start',
+                              minWidth: { xs: 160, sm: 180 },
+                              p: 2,
+                              bgcolor: tpConfig.bgColor,
+                              borderRadius: 2,
+                              border: '1px solid',
+                              borderColor: tpConfig.borderColor,
+                              cursor: 'pointer',
+                              flexShrink: 0,
+                              '&:hover': { opacity: 0.85 },
+                              transition: 'opacity 0.2s',
+                            }}
+                          >
+                            <Typography sx={{ fontSize: '1.75rem', lineHeight: 1, mb: 1, filter: comp.teamPosition === 'silver' ? 'grayscale(0.8)' : comp.teamPosition === 'bronze' ? 'sepia(0.5)' : 'none' }}>
+                              {tpConfig.emoji}
+                            </Typography>
+                            <Typography
+                              variant="body2"
+                              fontWeight={700}
+                              sx={{ color: tpConfig.color, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}
+                              noWrap
+                            >
+                              {comp.name}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              sx={{ color: tpConfig.color, opacity: 0.7, fontSize: { xs: '0.65rem', sm: '0.7rem' } }}
+                            >
+                              {format(new Date(comp.date), "MMM yyyy", { locale: ptBR })}
+                            </Typography>
+                            <Typography
+                              variant="caption"
+                              fontWeight={600}
+                              display="block"
+                              sx={{ color: tpConfig.color, mt: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                            >
+                              {tpConfig.label}
+                            </Typography>
+                          </Box>
+                        );
+                      })}
+                    </Box>
+                  ) : (
+                    <Box sx={{ textAlign: 'center', py: 2 }}>
+                      <Trophy size={32} color="#ccc" />
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1, fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
+                        Registre o primeiro trofeu da academia!
+                      </Typography>
+                    </Box>
+                  )}
                 </Paper>
-              </Grid>
-              <Grid size={{ xs: 6, sm: 3 }}>
-                <Paper sx={{ p: { xs: 1.5, sm: 2 }, textAlign: 'center', borderRadius: 2 }}>
-                  <Typography variant="h4" fontWeight={700} color="warning.main" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
-                    {stats.upcoming}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>
-                    Próximas
-                  </Typography>
-                </Paper>
-              </Grid>
-              <Grid size={{ xs: 6, sm: 3 }}>
-                <Paper sx={{ p: { xs: 1.5, sm: 2 }, textAlign: 'center', borderRadius: 2 }}>
-                  <Typography variant="h4" fontWeight={700} color="info.main" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
-                    {stats.ongoing}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>
-                    Em Andamento
-                  </Typography>
-                </Paper>
-              </Grid>
-              <Grid size={{ xs: 6, sm: 3 }}>
-                <Paper sx={{ p: { xs: 1.5, sm: 2 }, textAlign: 'center', borderRadius: 2 }}>
-                  <Typography variant="h4" fontWeight={700} color="success.main" sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}>
-                    {stats.completed}
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.875rem' } }}>
-                    Concluídas
-                  </Typography>
-                </Paper>
-              </Grid>
-            </Grid>
-          </FadeInView>
+              </FadeInView>
+            );
+          })()}
 
           {/* Filters */}
           <FadeInView direction="up" delay={100}>
@@ -444,6 +505,12 @@ export default function CompetitionsPage() {
             </FadeInView>
           )}
         </Box>
+
+        {/* Team Gallery Dialog */}
+        <TeamGalleryDialog
+          open={teamGalleryOpen}
+          onClose={() => setTeamGalleryOpen(false)}
+        />
       </AppLayout>
     </ProtectedRoute>
   );

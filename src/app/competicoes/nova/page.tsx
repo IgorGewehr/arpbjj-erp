@@ -13,9 +13,10 @@ import {
   Select,
   MenuItem,
   IconButton,
+  Alert,
 } from '@mui/material';
 import Grid from '@mui/material/Grid';
-import { ArrowLeft, Save, Trophy, Bus } from 'lucide-react';
+import { ArrowLeft, Save, Trophy, Bus, Info } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useFeedback } from '@/components/providers';
@@ -258,20 +259,22 @@ export default function NewCompetitionPage() {
                 />
               </Grid>
 
-              {/* Registration Deadline */}
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Prazo para Inscrição"
-                  type="date"
-                  value={formData.registrationDeadline}
-                  onChange={(e) => handleChange('registrationDeadline', e.target.value)}
-                  fullWidth
-                  helperText="Opcional - Data limite para os alunos se inscreverem"
-                  slotProps={{
-                    inputLabel: { shrink: true },
-                  }}
-                />
-              </Grid>
+              {/* Registration Deadline - hidden for completed competitions */}
+              {formData.status !== 'completed' && (
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <TextField
+                    label="Prazo para Inscrição"
+                    type="date"
+                    value={formData.registrationDeadline}
+                    onChange={(e) => handleChange('registrationDeadline', e.target.value)}
+                    fullWidth
+                    helperText="Opcional - Data limite para os alunos se inscreverem"
+                    slotProps={{
+                      inputLabel: { shrink: true },
+                    }}
+                  />
+                </Grid>
+              )}
 
               {/* Description */}
               <Grid size={{ xs: 12 }}>
@@ -287,75 +290,86 @@ export default function NewCompetitionPage() {
               </Grid>
             </Grid>
 
-            {/* Transport Section */}
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 4, mb: 3 }}>
-              <Box
-                sx={{
-                  p: 1.5,
-                  borderRadius: 2,
-                  bgcolor: 'info.light',
-                  color: 'info.dark',
-                }}
-              >
-                <Bus size={28} />
-              </Box>
-              <Box>
-                <Typography variant="h6" fontWeight={600}>
-                  Transporte
-                </Typography>
-                <Typography variant="body2" color="text.secondary">
-                  Informações sobre transporte para a competição
-                </Typography>
-              </Box>
-            </Box>
+            {/* Completed banner */}
+            {formData.status === 'completed' && (
+              <Alert severity="info" icon={<Info size={20} />} sx={{ mt: 3, borderRadius: 2 }}>
+                Competicao concluida - preencha os dados basicos. Resultados e fotos podem ser adicionados depois.
+              </Alert>
+            )}
 
-            <Grid container spacing={3}>
-              {/* Transport Status */}
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormControl fullWidth>
-                  <InputLabel>Status do Transporte</InputLabel>
-                  <Select
-                    value={formData.transportStatus}
-                    onChange={(e) => handleChange('transportStatus', e.target.value as CompetitionTransportStatus)}
-                    label="Status do Transporte"
+            {/* Transport Section - hidden for completed competitions */}
+            {formData.status !== 'completed' && (
+              <>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mt: 4, mb: 3 }}>
+                  <Box
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      bgcolor: 'info.light',
+                      color: 'info.dark',
+                    }}
                   >
-                    {Object.entries(TRANSPORT_STATUS_LABELS).map(([value, label]) => (
-                      <MenuItem key={value} value={value}>{label}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
+                    <Bus size={28} />
+                  </Box>
+                  <Box>
+                    <Typography variant="h6" fontWeight={600}>
+                      Transporte
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      Informações sobre transporte para a competição
+                    </Typography>
+                  </Box>
+                </Box>
 
-              {/* Transport Capacity */}
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Capacidade de Vagas"
-                  type="number"
-                  value={formData.transportCapacity}
-                  onChange={(e) => handleChange('transportCapacity', e.target.value)}
-                  fullWidth
-                  helperText="Número de vagas disponíveis no transporte"
-                  slotProps={{
-                    input: { inputProps: { min: 0 } },
-                  }}
-                  disabled={formData.transportStatus === 'no_transport'}
-                />
-              </Grid>
+                <Grid container spacing={3}>
+                  {/* Transport Status */}
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <FormControl fullWidth>
+                      <InputLabel>Status do Transporte</InputLabel>
+                      <Select
+                        value={formData.transportStatus}
+                        onChange={(e) => handleChange('transportStatus', e.target.value as CompetitionTransportStatus)}
+                        label="Status do Transporte"
+                      >
+                        {Object.entries(TRANSPORT_STATUS_LABELS).map(([value, label]) => (
+                          <MenuItem key={value} value={value}>{label}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
 
-              {/* Transport Notes */}
-              <Grid size={{ xs: 12 }}>
-                <TextField
-                  label="Informações sobre Transporte"
-                  value={formData.transportNotes}
-                  onChange={(e) => handleChange('transportNotes', e.target.value)}
-                  multiline
-                  rows={2}
-                  fullWidth
-                  placeholder="Ex: Saída às 6h da academia, retorno após as lutas..."
-                  disabled={formData.transportStatus === 'no_transport'}
-                />
-              </Grid>
-            </Grid>
+                  {/* Transport Capacity */}
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      label="Capacidade de Vagas"
+                      type="number"
+                      value={formData.transportCapacity}
+                      onChange={(e) => handleChange('transportCapacity', e.target.value)}
+                      fullWidth
+                      helperText="Número de vagas disponíveis no transporte"
+                      slotProps={{
+                        input: { inputProps: { min: 0 } },
+                      }}
+                      disabled={formData.transportStatus === 'no_transport'}
+                    />
+                  </Grid>
+
+                  {/* Transport Notes */}
+                  <Grid size={{ xs: 12 }}>
+                    <TextField
+                      label="Informações sobre Transporte"
+                      value={formData.transportNotes}
+                      onChange={(e) => handleChange('transportNotes', e.target.value)}
+                      multiline
+                      rows={2}
+                      fullWidth
+                      placeholder="Ex: Saída às 6h da academia, retorno após as lutas..."
+                      disabled={formData.transportStatus === 'no_transport'}
+                    />
+                  </Grid>
+                </Grid>
+              </>
+            )}
 
             {/* Actions */}
             <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 4 }}>

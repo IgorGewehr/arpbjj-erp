@@ -65,6 +65,7 @@ import { EmptyCompetitionsIllustration } from '@/components/common/EmptyStateIll
 import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { ListItemSkeleton, StatsCardSkeleton } from '@/components/common/SkeletonComponents';
 import { FadeIn, ListItemAnimation, SlideIn } from '@/components/common/AnimatedComponents';
+import { TeamGalleryDialog } from '@/components/features/competitions/TeamGalleryDialog';
 
 // ============================================
 // Status Config
@@ -329,6 +330,7 @@ export default function StudentCompetitionsPage() {
   const [enrolling, setEnrolling] = useState(false);
   const [canceling, setCanceling] = useState<string | null>(null);
   const [effectiveStudentId, setEffectiveStudentId] = useState<string | undefined>(studentIdFromUser);
+  const [teamGalleryOpen, setTeamGalleryOpen] = useState(false);
 
   // Load data
   useEffect(() => {
@@ -473,10 +475,18 @@ export default function StudentCompetitionsPage() {
     }
   };
 
-  // Get result for competition
+  // Get result for competition (single - legacy)
   const getResult = useCallback(
     (competitionId: string) => {
       return results.find((r) => r.competitionId === competitionId);
+    },
+    [results]
+  );
+
+  // Get all results for competition (multi-result support)
+  const getResults = useCallback(
+    (competitionId: string) => {
+      return results.filter((r) => r.competitionId === competitionId);
     },
     [results]
   );
@@ -524,8 +534,101 @@ export default function StudentCompetitionsPage() {
         {/* Academy indicator for multi-academy users */}
         <AcademyIndicator label="Competicoes de" icon={<Trophy size={16} />} />
 
-        {/* Medal Stats Card */}
-        <SlideIn direction="up" delay={0.1}>
+        {/* Trophy Showcase - Academy team trophies (before Minhas Conquistas) */}
+        {(() => {
+          const trophyCompetitions = competitions.filter((c) => c.teamPosition);
+          if (trophyCompetitions.length === 0) return null;
+          return (
+            <SlideIn direction="up" delay={0.1}>
+              <Box sx={{ mb: 2 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5 }}>
+                  <Typography
+                    variant="body2"
+                    fontWeight={600}
+                    color="text.secondary"
+                    sx={{
+                      fontSize: { xs: '0.75rem', sm: '0.8rem' },
+                      textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    {trophyCompetitions.length} {trophyCompetitions.length === 1 ? 'Trofeu' : 'Trofeus'} da Academia
+                  </Typography>
+                  <Button
+                    size="small"
+                    onClick={() => setTeamGalleryOpen(true)}
+                    sx={{ fontSize: '0.7rem', textTransform: 'none', minWidth: 'auto' }}
+                  >
+                    Galeria da Equipe
+                  </Button>
+                </Box>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 1.5,
+                    overflowX: 'auto',
+                    scrollSnapType: 'x mandatory',
+                    pb: 1,
+                    '&::-webkit-scrollbar': { display: 'none' },
+                    scrollbarWidth: 'none',
+                  }}
+                >
+                  {trophyCompetitions.map((comp) => {
+                    const tpConfig = teamPositionConfig[comp.teamPosition!];
+                    return (
+                      <Box
+                        key={comp.id}
+                        onClick={() => router.push(`/portal/competicoes/${comp.id}`)}
+                        sx={{
+                          scrollSnapAlign: 'start',
+                          minWidth: { xs: 160, sm: 180 },
+                          p: 2,
+                          bgcolor: tpConfig.bgColor,
+                          borderRadius: 2,
+                          border: '1px solid',
+                          borderColor: tpConfig.borderColor,
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                          '&:hover': { opacity: 0.85 },
+                          transition: 'opacity 0.2s',
+                        }}
+                      >
+                        <Typography sx={{ fontSize: '1.75rem', lineHeight: 1, mb: 1, filter: comp.teamPosition === 'silver' ? 'grayscale(0.8)' : comp.teamPosition === 'bronze' ? 'sepia(0.5)' : 'none' }}>
+                          {tpConfig.emoji}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          fontWeight={700}
+                          sx={{ color: tpConfig.color, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}
+                          noWrap
+                        >
+                          {comp.name}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: tpConfig.color, opacity: 0.7, fontSize: { xs: '0.65rem', sm: '0.7rem' } }}
+                        >
+                          {format(new Date(comp.date), "MMM yyyy", { locale: ptBR })}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          fontWeight={600}
+                          display="block"
+                          sx={{ color: tpConfig.color, mt: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                        >
+                          {tpConfig.label}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            </SlideIn>
+          );
+        })()}
+
+        {/* Medal Stats Card - Minhas Conquistas */}
+        <SlideIn direction="up" delay={0.15}>
           <Box
             sx={{
               p: { xs: 2, sm: 2.5 },
@@ -606,91 +709,6 @@ export default function StudentCompetitionsPage() {
             </Box>
           </Box>
         </SlideIn>
-
-        {/* Trophy Showcase - Academy team trophies */}
-        {(() => {
-          const trophyCompetitions = competitions.filter((c) => c.teamPosition);
-          if (trophyCompetitions.length === 0) return null;
-          return (
-            <SlideIn direction="up" delay={0.15}>
-              <Box sx={{ mb: 3 }}>
-                <Typography
-                  variant="body2"
-                  fontWeight={600}
-                  color="text.secondary"
-                  sx={{
-                    mb: 1.5,
-                    fontSize: { xs: '0.75rem', sm: '0.8rem' },
-                    textTransform: 'uppercase',
-                    letterSpacing: 0.5,
-                  }}
-                >
-                  Trofeus da Academia
-                </Typography>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    gap: 1.5,
-                    overflowX: 'auto',
-                    scrollSnapType: 'x mandatory',
-                    pb: 1,
-                    '&::-webkit-scrollbar': { display: 'none' },
-                    scrollbarWidth: 'none',
-                  }}
-                >
-                  {trophyCompetitions.map((comp) => {
-                    const tpConfig = teamPositionConfig[comp.teamPosition!];
-                    return (
-                      <Box
-                        key={comp.id}
-                        onClick={() => router.push(`/portal/competicoes/${comp.id}`)}
-                        sx={{
-                          scrollSnapAlign: 'start',
-                          minWidth: { xs: 160, sm: 180 },
-                          p: 2,
-                          bgcolor: tpConfig.bgColor,
-                          borderRadius: 2,
-                          border: '1px solid',
-                          borderColor: tpConfig.borderColor,
-                          cursor: 'pointer',
-                          flexShrink: 0,
-                          '&:hover': { opacity: 0.85 },
-                          transition: 'opacity 0.2s',
-                        }}
-                      >
-                        <Typography sx={{ fontSize: '1.75rem', lineHeight: 1, mb: 1, filter: comp.teamPosition === 'silver' ? 'grayscale(0.8)' : comp.teamPosition === 'bronze' ? 'sepia(0.5)' : 'none' }}>
-                          {tpConfig.emoji}
-                        </Typography>
-                        <Typography
-                          variant="body2"
-                          fontWeight={700}
-                          sx={{ color: tpConfig.color, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}
-                          noWrap
-                        >
-                          {comp.name}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          sx={{ color: tpConfig.color, opacity: 0.7, fontSize: { xs: '0.65rem', sm: '0.7rem' } }}
-                        >
-                          {format(new Date(comp.date), "MMM yyyy", { locale: ptBR })}
-                        </Typography>
-                        <Typography
-                          variant="caption"
-                          fontWeight={600}
-                          display="block"
-                          sx={{ color: tpConfig.color, mt: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
-                        >
-                          {tpConfig.label}
-                        </Typography>
-                      </Box>
-                    );
-                  })}
-                </Box>
-              </Box>
-            </SlideIn>
-          );
-        })()}
 
         {/* Tabs */}
         <Box
@@ -1030,8 +1048,8 @@ export default function StudentCompetitionsPage() {
                           </Box>
                         )}
 
-                        {/* Transport info */}
-                        {competition.transportStatus && (
+                        {/* Transport info - hidden for completed competitions */}
+                        {competition.transportStatus && competition.status !== 'completed' && (
                           <Alert
                             severity={competition.transportStatus === 'confirmed' ? 'success' : competition.transportStatus === 'no_transport' ? 'warning' : 'info'}
                             sx={{ mb: 2 }}
@@ -1104,7 +1122,7 @@ export default function StudentCompetitionsPage() {
                 </Box>
               ) : (
                 pastCompetitions.map((competition, index) => {
-                  const result = getResult(competition.id);
+                  const competitionResults = getResults(competition.id);
                   const enrollment = getEnrollment(competition.id);
 
                   return (
@@ -1144,7 +1162,7 @@ export default function StudentCompetitionsPage() {
                           </Box>
                         </Box>
 
-                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: result ? 1.5 : 0 }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75, mb: competitionResults.length > 0 ? 1.5 : 0 }}>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                             <Calendar size={14} color="#666" />
                             <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
@@ -1159,36 +1177,41 @@ export default function StudentCompetitionsPage() {
                           </Box>
                         </Box>
 
-                        {/* Result summary */}
-                        {result && (
-                          <Box
-                            sx={{
-                              p: 1.5,
-                              bgcolor: 'grey.50',
-                              borderRadius: 1.5,
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 1.5,
-                            }}
-                          >
-                            <Typography sx={{ fontSize: { xs: '1.5rem', sm: '2rem' }, lineHeight: 1 }}>
-                              {positionConfig[result.position].icon}
-                            </Typography>
-                            <Box sx={{ flex: 1 }}>
-                              <Typography variant="body2" fontWeight={600} sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' } }}>
-                                {positionConfig[result.position].label}
-                              </Typography>
-                              {(result.ageCategory || result.weightCategory) && (
-                                <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
-                                  {[result.ageCategory, result.weightCategory].filter(Boolean).join(' - ')}
+                        {/* All results for this competition */}
+                        {competitionResults.length > 0 && (
+                          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                            {competitionResults.map((result) => (
+                              <Box
+                                key={result.id}
+                                sx={{
+                                  p: 1.5,
+                                  bgcolor: 'grey.50',
+                                  borderRadius: 1.5,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: 1.5,
+                                }}
+                              >
+                                <Typography sx={{ fontSize: { xs: '1.5rem', sm: '2rem' }, lineHeight: 1 }}>
+                                  {positionConfig[result.position].icon}
                                 </Typography>
-                              )}
-                            </Box>
+                                <Box sx={{ flex: 1 }}>
+                                  <Typography variant="body2" fontWeight={600} sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' } }}>
+                                    {positionConfig[result.position].label}
+                                  </Typography>
+                                  {(result.ageCategory || result.weightCategory) && (
+                                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}>
+                                      {[result.ageCategory, result.weightCategory].filter(Boolean).join(' - ')}
+                                    </Typography>
+                                  )}
+                                </Box>
+                              </Box>
+                            ))}
                           </Box>
                         )}
 
                         {/* Enrolled but no result yet */}
-                        {!result && enrollment && (
+                        {competitionResults.length === 0 && enrollment && (
                           <Box
                             sx={{
                               display: 'flex',
@@ -1221,6 +1244,12 @@ export default function StudentCompetitionsPage() {
           existingEnrollment={selectedCompetition ? getEnrollment(selectedCompetition.id) || null : null}
           onEnroll={handleEnroll}
           loading={enrolling}
+        />
+
+        {/* Team Gallery Dialog */}
+        <TeamGalleryDialog
+          open={teamGalleryOpen}
+          onClose={() => setTeamGalleryOpen(false)}
         />
       </Box>
     </FadeIn>

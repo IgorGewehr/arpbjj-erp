@@ -78,11 +78,13 @@ import {
   AgeCategory,
   CompetitionModality,
   CompetitionDivisionType,
+  TeamPosition,
   WEIGHT_CATEGORIES_CBJJ,
   AGE_CATEGORY_LABELS,
   TRANSPORT_STATUS_LABELS,
   TRANSPORT_PREFERENCE_LABELS,
 } from '@/types';
+import { deleteField } from 'firebase/firestore';
 
 // ============================================
 // Position Colors
@@ -92,6 +94,12 @@ const positionConfig: Record<CompetitionPosition, { label: string; color: string
   silver: { label: 'Prata', color: '#6B7280', bgColor: '#F3F4F6' },
   bronze: { label: 'Bronze', color: '#92400E', bgColor: '#FED7AA' },
   participant: { label: 'Participante', color: '#3B82F6', bgColor: '#DBEAFE' },
+};
+
+const teamPositionConfig: Record<TeamPosition, { label: string; gradient: string; color: string }> = {
+  gold: { label: 'Campeao por Equipes', gradient: 'linear-gradient(135deg, #FEF3C7 0%, #FDE68A 50%, #F59E0B 100%)', color: '#92400E' },
+  silver: { label: 'Vice-campeao por Equipes', gradient: 'linear-gradient(135deg, #F3F4F6 0%, #D1D5DB 50%, #9CA3AF 100%)', color: '#374151' },
+  bronze: { label: '3o Lugar por Equipes', gradient: 'linear-gradient(135deg, #FED7AA 0%, #FDBA74 50%, #F97316 100%)', color: '#7C2D12' },
 };
 
 const statusConfig: Record<CompetitionStatus, { label: string; color: 'warning' | 'info' | 'success' }> = {
@@ -551,6 +559,11 @@ export default function CompetitionDetailsPage() {
   const [resultDialogOpen, setResultDialogOpen] = useState(false);
   const [editingResult, setEditingResult] = useState<CompetitionResult | undefined>();
 
+  // Team result dialog
+  const [teamResultDialogOpen, setTeamResultDialogOpen] = useState(false);
+  const [teamPosition, setTeamPosition] = useState<TeamPosition>('gold');
+  const [teamNotes, setTeamNotes] = useState('');
+
   // ============================================
   // Load Data
   // ============================================
@@ -727,6 +740,66 @@ export default function CompetitionDetailsPage() {
         showError('Erro ao excluir resultado');
       }
     }
+  };
+
+  // ============================================
+  // Team Result Handlers
+  // ============================================
+  const handleSaveTeamResult = async () => {
+    if (!competition || !academy?.id) return;
+
+    const competitionService = createCompetitionService(academy.id);
+
+    try {
+      setSaving(true);
+      await competitionService.update(competition.id, {
+        teamPosition,
+        teamNotes: teamNotes || null,
+      });
+      setCompetition({ ...competition, teamPosition, teamNotes: teamNotes || undefined });
+      setTeamResultDialogOpen(false);
+      success('Resultado da equipe registrado!');
+    } catch (err) {
+      showError('Erro ao salvar resultado da equipe');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleRemoveTeamResult = async () => {
+    if (!competition || !academy?.id) return;
+
+    const confirmed = await confirm({
+      title: 'Remover Resultado da Equipe',
+      message: 'Deseja remover o resultado da equipe nesta competicao?',
+      confirmText: 'Remover',
+      severity: 'warning',
+    });
+
+    if (confirmed) {
+      const competitionService = createCompetitionService(academy.id);
+      try {
+        await competitionService.update(competition.id, {
+          teamPosition: deleteField(),
+          teamNotes: deleteField(),
+        });
+        setCompetition({ ...competition, teamPosition: undefined, teamNotes: undefined });
+        success('Resultado da equipe removido');
+      } catch (err) {
+        showError('Erro ao remover resultado da equipe');
+      }
+    }
+  };
+
+  const handleOpenTeamResultDialog = (editing: boolean) => {
+    if (editing && competition?.teamPosition) {
+      setTeamPosition(competition.teamPosition);
+      setTeamNotes(competition.teamNotes || '');
+    } else {
+      setTeamPosition('gold');
+      setTeamNotes('');
+    }
+    setTeamResultDialogOpen(true);
   };
 
   // ============================================
@@ -1061,6 +1134,56 @@ export default function CompetitionDetailsPage() {
               {tabValue === 2 && (
                 /* Results Tab */
                 <Paper sx={{ p: 3, borderRadius: 3 }}>
+                  {/* Team Result Card */}
+                  {competition.teamPosition ? (
+                    <Box
+                      sx={{
+                        p: 3,
+                        mb: 3,
+                        borderRadius: 3,
+                        background: teamPositionConfig[competition.teamPosition].gradient,
+                        color: teamPositionConfig[competition.teamPosition].color,
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                        <Typography sx={{ fontSize: '2.5rem', lineHeight: 1 }}>🏆</Typography>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography variant="body2" fontWeight={600} sx={{ textTransform: 'uppercase', letterSpacing: 0.5, opacity: 0.8, fontSize: '0.7rem' }}>
+                            Resultado da Equipe
+                          </Typography>
+                          <Typography variant="h6" fontWeight={700}>
+                            {teamPositionConfig[competition.teamPosition].label}
+                          </Typography>
+                          {competition.teamNotes && (
+                            <Typography variant="body2" sx={{ mt: 0.5, opacity: 0.9 }}>
+                              {competition.teamNotes}
+                            </Typography>
+                          )}
+                        </Box>
+                        <Box sx={{ display: 'flex', gap: 0.5 }}>
+                          <IconButton size="small" onClick={() => handleOpenTeamResultDialog(true)} sx={{ color: 'inherit' }}>
+                            <Edit size={16} />
+                          </IconButton>
+                          <IconButton size="small" onClick={handleRemoveTeamResult} sx={{ color: 'inherit' }}>
+                            <Trash2 size={16} />
+                          </IconButton>
+                        </Box>
+                      </Box>
+                    </Box>
+                  ) : (
+                    <Box sx={{ mb: 3 }}>
+                      <Button
+                        variant="outlined"
+                        startIcon={<Trophy size={18} />}
+                        onClick={() => handleOpenTeamResultDialog(false)}
+                        fullWidth
+                        sx={{ py: 1.5, borderStyle: 'dashed' }}
+                      >
+                        Registrar Resultado da Equipe
+                      </Button>
+                    </Box>
+                  )}
+
                   <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
                     <Typography variant="h6" fontWeight={600}>
                       Resultados
@@ -1212,6 +1335,54 @@ export default function CompetitionDetailsPage() {
           enrollments={enrollments}
           existingResult={editingResult}
         />
+
+        {/* Team Result Dialog */}
+        <Dialog open={teamResultDialogOpen} onClose={() => setTeamResultDialogOpen(false)} maxWidth="sm" fullWidth>
+          <DialogTitle>Resultado da Equipe</DialogTitle>
+          <DialogContent dividers>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, mt: 1 }}>
+              <FormControl fullWidth required>
+                <InputLabel>Posicao da Equipe</InputLabel>
+                <Select
+                  value={teamPosition}
+                  onChange={(e) => setTeamPosition(e.target.value as TeamPosition)}
+                  label="Posicao da Equipe"
+                >
+                  <MenuItem value="gold">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      🥇 Campeao (1o Lugar)
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="silver">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      🥈 Vice-campeao (2o Lugar)
+                    </Box>
+                  </MenuItem>
+                  <MenuItem value="bronze">
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      🥉 3o Lugar
+                    </Box>
+                  </MenuItem>
+                </Select>
+              </FormControl>
+              <TextField
+                label="Observacoes (opcional)"
+                value={teamNotes}
+                onChange={(e) => setTeamNotes(e.target.value)}
+                multiline
+                rows={2}
+                fullWidth
+                placeholder="Ex: 32 atletas inscritos"
+              />
+            </Box>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setTeamResultDialogOpen(false)}>Cancelar</Button>
+            <Button variant="contained" onClick={handleSaveTeamResult} disabled={saving}>
+              {saving ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </AppLayout>
     </ProtectedRoute>
   );

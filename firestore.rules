@@ -27,6 +27,11 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/academies/$(academyId)/users/$(request.auth.uid)).data;
     }
 
+    // Check if academy-scoped user document exists (prevents errors in fallback paths)
+    function academyUserExists(academyId) {
+      return exists(/databases/$(database)/documents/academies/$(academyId)/users/$(request.auth.uid));
+    }
+
     // Check if user belongs to a specific academy (via mapping)
     function belongsToAcademy(academyId) {
       let mapping = getUserAcademyMapping();
@@ -45,8 +50,8 @@ service cloud.firestore {
         (mapping.keys().hasAll(['academyDetails']) &&
          mapping.academyDetails.keys().hasAll([academyId]) &&
          mapping.academyDetails[academyId].role == 'admin') ||
-        // Fallback: from academy-scoped user doc
-        getAcademyUserData(academyId).role == 'admin'
+        // Fallback: from academy-scoped user doc (only if doc exists)
+        (academyUserExists(academyId) && getAcademyUserData(academyId).role == 'admin')
       );
     }
 
@@ -58,7 +63,8 @@ service cloud.firestore {
         (mapping.keys().hasAll(['academyDetails']) &&
          mapping.academyDetails.keys().hasAll([academyId]) &&
          mapping.academyDetails[academyId].role == 'instructor') ||
-        getAcademyUserData(academyId).role == 'instructor'
+        // Fallback: from academy-scoped user doc (only if doc exists)
+        (academyUserExists(academyId) && getAcademyUserData(academyId).role == 'instructor')
       );
     }
 
@@ -77,8 +83,9 @@ service cloud.firestore {
         (mapping.keys().hasAll(['academyDetails']) &&
          mapping.academyDetails.keys().hasAll([academyId]) &&
          mapping.academyDetails[academyId].studentId == studentId) ||
-        // Fallback: from academy-scoped user doc
-        (getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
+        // Fallback: from academy-scoped user doc (only if doc exists)
+        (academyUserExists(academyId) &&
+         getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
          getAcademyUserData(academyId).studentId == studentId)
       );
     }
@@ -91,8 +98,9 @@ service cloud.firestore {
         (mapping.keys().hasAll(['academyDetails']) &&
          mapping.academyDetails.keys().hasAll([academyId]) &&
          docStudentId == mapping.academyDetails[academyId].studentId) ||
-        // Fallback: from academy-scoped user doc
-        (getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
+        // Fallback: from academy-scoped user doc (only if doc exists)
+        (academyUserExists(academyId) &&
+         getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
          docStudentId == getAcademyUserData(academyId).studentId)
       );
     }
@@ -116,8 +124,9 @@ service cloud.firestore {
                 mapping.academyDetails.keys().hasAll([academyId]) &&
                 mapping.academyDetails[academyId].studentId != null &&
                 mapping.academyDetails[academyId].studentId in academy.monitorIds) ||
-               // Fallback: from academy-scoped user doc
-               (getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
+               // Fallback: from academy-scoped user doc (only if doc exists)
+               (academyUserExists(academyId) &&
+                getAcademyUserData(academyId).keys().hasAll(['studentId']) &&
                 getAcademyUserData(academyId).studentId != null &&
                 getAcademyUserData(academyId).studentId in academy.monitorIds)
              );
@@ -289,10 +298,10 @@ service cloud.firestore {
                                    'currentBelt', 'currentStripes', 'status',
                                    'beltHistory', 'createdAt', 'createdBy']);
 
-        // Students can update only personal info (including photoUrl)
+        // Students can update only personal info (including photoUrl and registration linking fields)
         allow update: if isOwnStudent(academyId, studentId)
                       && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['photoUrl', 'updatedAt']);
+                          .hasOnly(['photoUrl', 'updatedAt', 'linkedUserId', 'email', 'cpf', 'phone']);
 
         // Timeline subcollection
         match /timeline/{eventId} {

@@ -55,6 +55,7 @@ import {
   CompetitionEnrollment,
   AgeCategory,
   StudentTransportPreference,
+  TeamPosition,
   AGE_CATEGORY_LABELS,
   WEIGHT_CATEGORIES_CBJJ,
   TRANSPORT_STATUS_LABELS,
@@ -72,6 +73,15 @@ const statusConfig: Record<CompetitionStatus, { label: string; color: 'warning' 
   upcoming: { label: 'Próxima', color: 'warning' },
   ongoing: { label: 'Em Andamento', color: 'info' },
   completed: { label: 'Concluída', color: 'success' },
+};
+
+// ============================================
+// Team Position Config
+// ============================================
+const teamPositionConfig: Record<TeamPosition, { label: string; emoji: string; bgColor: string; color: string; borderColor: string }> = {
+  gold: { label: 'Campeao', emoji: '🏆', bgColor: '#FEF3C7', color: '#92400E', borderColor: '#F59E0B' },
+  silver: { label: 'Vice', emoji: '🏆', bgColor: '#F3F4F6', color: '#374151', borderColor: '#9CA3AF' },
+  bronze: { label: '3o Lugar', emoji: '🏆', bgColor: '#FED7AA', color: '#7C2D12', borderColor: '#F97316' },
 };
 
 // ============================================
@@ -596,6 +606,91 @@ export default function StudentCompetitionsPage() {
             </Box>
           </Box>
         </SlideIn>
+
+        {/* Trophy Showcase - Academy team trophies */}
+        {(() => {
+          const trophyCompetitions = competitions.filter((c) => c.teamPosition);
+          if (trophyCompetitions.length === 0) return null;
+          return (
+            <SlideIn direction="up" delay={0.15}>
+              <Box sx={{ mb: 3 }}>
+                <Typography
+                  variant="body2"
+                  fontWeight={600}
+                  color="text.secondary"
+                  sx={{
+                    mb: 1.5,
+                    fontSize: { xs: '0.75rem', sm: '0.8rem' },
+                    textTransform: 'uppercase',
+                    letterSpacing: 0.5,
+                  }}
+                >
+                  Trofeus da Academia
+                </Typography>
+                <Box
+                  sx={{
+                    display: 'flex',
+                    gap: 1.5,
+                    overflowX: 'auto',
+                    scrollSnapType: 'x mandatory',
+                    pb: 1,
+                    '&::-webkit-scrollbar': { display: 'none' },
+                    scrollbarWidth: 'none',
+                  }}
+                >
+                  {trophyCompetitions.map((comp) => {
+                    const tpConfig = teamPositionConfig[comp.teamPosition!];
+                    return (
+                      <Box
+                        key={comp.id}
+                        onClick={() => router.push(`/portal/competicoes/${comp.id}`)}
+                        sx={{
+                          scrollSnapAlign: 'start',
+                          minWidth: { xs: 160, sm: 180 },
+                          p: 2,
+                          bgcolor: tpConfig.bgColor,
+                          borderRadius: 2,
+                          border: '1px solid',
+                          borderColor: tpConfig.borderColor,
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                          '&:hover': { opacity: 0.85 },
+                          transition: 'opacity 0.2s',
+                        }}
+                      >
+                        <Typography sx={{ fontSize: '1.75rem', lineHeight: 1, mb: 1, filter: comp.teamPosition === 'silver' ? 'grayscale(0.8)' : comp.teamPosition === 'bronze' ? 'sepia(0.5)' : 'none' }}>
+                          {tpConfig.emoji}
+                        </Typography>
+                        <Typography
+                          variant="body2"
+                          fontWeight={700}
+                          sx={{ color: tpConfig.color, fontSize: { xs: '0.8rem', sm: '0.85rem' } }}
+                          noWrap
+                        >
+                          {comp.name}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          sx={{ color: tpConfig.color, opacity: 0.7, fontSize: { xs: '0.65rem', sm: '0.7rem' } }}
+                        >
+                          {format(new Date(comp.date), "MMM yyyy", { locale: ptBR })}
+                        </Typography>
+                        <Typography
+                          variant="caption"
+                          fontWeight={600}
+                          display="block"
+                          sx={{ color: tpConfig.color, mt: 0.5, fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                        >
+                          {tpConfig.label}
+                        </Typography>
+                      </Box>
+                    );
+                  })}
+                </Box>
+              </Box>
+            </SlideIn>
+          );
+        })()}
 
         {/* Tabs */}
         <Box

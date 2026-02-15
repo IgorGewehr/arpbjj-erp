@@ -60,6 +60,7 @@ export type CompetitionPosition = 'gold' | 'silver' | 'bronze' | 'participant';
 // Competition Types
 export type CompetitionStatus = 'upcoming' | 'ongoing' | 'completed';
 export type AgeCategory = 'kids' | 'juvenile' | 'adult' | 'master';
+export type TeamPosition = 'gold' | 'silver' | 'bronze';
 export type WeightCategory =
   | 'galo' | 'pluma' | 'pena' | 'leve' | 'medio'
   | 'meio-pesado' | 'pesado' | 'super-pesado' | 'pesadissimo' | 'absoluto';
@@ -413,6 +414,10 @@ export interface Competition {
 
   // Custom weight categories (in addition to CBJJ standard)
   customWeightCategories?: string[];
+
+  // Team result (academy placement in the competition)
+  teamPosition?: TeamPosition;    // gold | silver | bronze
+  teamNotes?: string;             // e.g. "32 atletas inscritos"
 
   createdAt: Date;
   updatedAt: Date;
@@ -1275,6 +1280,9 @@ export interface CompetitionPhoto {
 
   // Medal info (from competition result if available)
   medalType?: CompetitionPosition;  // gold | silver | bronze | participant
+
+  // Photo type (student photo or team photo)
+  photoType?: 'student' | 'team';   // Default 'student' for backward compat
 
   createdAt: Date;
   updatedAt: Date;

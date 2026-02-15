@@ -44,6 +44,7 @@ import {
   CompetitionEnrollment,
   AgeCategory,
   StudentTransportPreference,
+  TeamPosition,
   AGE_CATEGORY_LABELS,
 } from '@/types';
 import { CompetitionGallery } from '@/components/features/competitions';
@@ -59,6 +60,12 @@ const positionConfig: Record<string, { label: string; color: string; icon: strin
   silver: { label: 'Prata', color: '#C0C0C0', icon: '🥈' },
   bronze: { label: 'Bronze', color: '#CD7F32', icon: '🥉' },
   participant: { label: 'Participante', color: '#666', icon: '🎖️' },
+};
+
+const teamPositionConfig: Record<TeamPosition, { label: string; bgColor: string; borderColor: string; color: string }> = {
+  gold: { label: 'Campeao por Equipes', bgColor: '#FEF3C7', borderColor: '#F59E0B', color: '#92400E' },
+  silver: { label: 'Vice-campeao por Equipes', bgColor: '#F3F4F6', borderColor: '#9CA3AF', color: '#374151' },
+  bronze: { label: '3o Lugar por Equipes', bgColor: '#FED7AA', borderColor: '#F97316', color: '#7C2D12' },
 };
 
 const statusConfig: Record<string, { label: string; color: 'warning' | 'info' | 'success' }> = {
@@ -494,6 +501,55 @@ export default function StudentCompetitionDetailPage() {
         {/* Results Tab */}
         {tabValue === 0 && (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+            {/* Team Result Card */}
+            {competition.teamPosition && (
+              <SlideIn direction="up" delay={0.1}>
+                <Box
+                  sx={{
+                    p: { xs: 2, sm: 2.5 },
+                    bgcolor: teamPositionConfig[competition.teamPosition].bgColor,
+                    borderRadius: 2,
+                    border: '2px solid',
+                    borderColor: teamPositionConfig[competition.teamPosition].borderColor,
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                    <Typography sx={{ fontSize: { xs: '2rem', sm: '2.5rem' }, lineHeight: 1 }}>🏆</Typography>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography
+                        variant="body2"
+                        fontWeight={600}
+                        sx={{
+                          textTransform: 'uppercase',
+                          letterSpacing: 0.5,
+                          fontSize: { xs: '0.65rem', sm: '0.7rem' },
+                          color: teamPositionConfig[competition.teamPosition].color,
+                          opacity: 0.7,
+                        }}
+                      >
+                        Resultado da Equipe
+                      </Typography>
+                      <Typography
+                        variant="body1"
+                        fontWeight={700}
+                        sx={{ color: teamPositionConfig[competition.teamPosition].color }}
+                      >
+                        {teamPositionConfig[competition.teamPosition].label}
+                      </Typography>
+                      {competition.teamNotes && (
+                        <Typography
+                          variant="caption"
+                          sx={{ color: teamPositionConfig[competition.teamPosition].color, opacity: 0.8 }}
+                        >
+                          {competition.teamNotes}
+                        </Typography>
+                      )}
+                    </Box>
+                  </Box>
+                </Box>
+              </SlideIn>
+            )}
+
             {/* My result card (prominent) */}
             {effectiveStudentId && (
               <SlideIn direction="up" delay={0.15}>

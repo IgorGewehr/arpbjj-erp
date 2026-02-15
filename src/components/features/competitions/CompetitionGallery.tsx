@@ -80,15 +80,18 @@ export function CompetitionGallery({
     return Array.from(studentMap.entries()).map(([id, name]) => ({ id, name }));
   }, [enrolledStudents, photos]);
 
-  const filteredPhotos = filterStudentId
-    ? photos.filter((p) => p.studentId === filterStudentId)
-    : photos;
+  const filteredPhotos = filterStudentId === '__team__'
+    ? photos.filter((p) => p.photoType === 'team' || p.studentId === '__team__')
+    : filterStudentId
+      ? photos.filter((p) => p.studentId === filterStudentId)
+      : photos;
 
-  const handleUpload = async (file: File, caption?: string) => {
-    const uploadStudentId = isAdmin ? selectedStudentId : studentId;
-    const uploadStudentName = isAdmin
+  const handleUpload = async (file: File, caption?: string, photoType?: 'student' | 'team') => {
+    const isTeamPhoto = photoType === 'team';
+    const uploadStudentId = isTeamPhoto ? '__team__' : (isAdmin ? selectedStudentId : studentId);
+    const uploadStudentName = isTeamPhoto ? 'Equipe' : (isAdmin
       ? (enrolledStudents.find((s) => s.id === selectedStudentId)?.name || '')
-      : (studentName || '');
+      : (studentName || ''));
 
     if (!uploadStudentId || !uploadStudentName) {
       throw new Error('Selecione um aluno para fazer upload');
@@ -101,6 +104,7 @@ export function CompetitionGallery({
       studentName: uploadStudentName,
       file,
       caption,
+      photoType: isTeamPhoto ? 'team' : undefined,
     });
   };
 
@@ -154,7 +158,8 @@ export function CompetitionGallery({
                 }}
               >
                 <MenuItem value="">Todos</MenuItem>
-                {filterStudents.map((s) => (
+                <MenuItem value="__team__">Equipe</MenuItem>
+                {filterStudents.filter((s) => s.id !== '__team__').map((s) => (
                   <MenuItem key={s.id} value={s.id}>
                     {s.name}
                   </MenuItem>

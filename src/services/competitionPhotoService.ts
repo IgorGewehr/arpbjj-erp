@@ -92,7 +92,8 @@ export const createCompetitionPhotoService = (academyId: string) => {
       file: File,
       caption: string | undefined,
       createdBy: string,
-      medalType?: string
+      medalType?: string,
+      photoType?: 'student' | 'team'
     ): Promise<CompetitionPhoto> {
       // Validate file
       const validationError = validateImage(file);
@@ -130,6 +131,7 @@ export const createCompetitionPhotoService = (academyId: string) => {
         likes: 0,
         isHighlight: false,
         medalType: medalType || null,
+        photoType: photoType || null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
         createdBy,

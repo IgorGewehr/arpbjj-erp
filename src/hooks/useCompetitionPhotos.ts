@@ -108,6 +108,7 @@ export function useCompetitionPhotos(options: UseCompetitionPhotosOptions = {}) 
       file,
       caption,
       medalType,
+      photoType,
     }: {
       competitionId: string;
       competitionName: string;
@@ -116,6 +117,7 @@ export function useCompetitionPhotos(options: UseCompetitionPhotosOptions = {}) 
       file: File;
       caption?: string;
       medalType?: string;
+      photoType?: 'student' | 'team';
     }) => {
       if (!user?.id) throw new Error('Usuário não autenticado');
       return photoService.uploadPhoto(
@@ -126,7 +128,8 @@ export function useCompetitionPhotos(options: UseCompetitionPhotosOptions = {}) 
         file,
         caption,
         user.id,
-        medalType
+        medalType,
+        photoType
       );
     },
     onSuccess: () => {

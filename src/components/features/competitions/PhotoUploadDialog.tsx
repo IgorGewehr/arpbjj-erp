@@ -16,13 +16,15 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  ToggleButton,
+  ToggleButtonGroup,
 } from '@mui/material';
 import { CloudUpload as UploadIcon } from '@mui/icons-material';
 
 interface PhotoUploadDialogProps {
   open: boolean;
   onClose: () => void;
-  onUpload: (file: File, caption?: string) => Promise<void>;
+  onUpload: (file: File, caption?: string, photoType?: 'student' | 'team') => Promise<void>;
   maxPhotos: number;
   currentPhotos: number;
   isUploading?: boolean;
@@ -48,6 +50,7 @@ export function PhotoUploadDialog({
   const [preview, setPreview] = useState<string | null>(null);
   const [caption, setCaption] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [photoType, setPhotoType] = useState<'student' | 'team'>('student');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const remainingPhotos = maxPhotos - currentPhotos;
@@ -85,7 +88,7 @@ export function PhotoUploadDialog({
     if (!selectedFile) return;
 
     try {
-      await onUpload(selectedFile, caption || undefined);
+      await onUpload(selectedFile, caption || undefined, isAdmin ? photoType : undefined);
       handleClose();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao fazer upload');
@@ -97,6 +100,7 @@ export function PhotoUploadDialog({
     setPreview(null);
     setCaption('');
     setError(null);
+    setPhotoType('student');
     onClose();
   };
 
@@ -122,21 +126,37 @@ export function PhotoUploadDialog({
       </DialogTitle>
 
       <DialogContent>
-        {isAdmin && enrolledStudents.length > 0 && (
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>Selecione o Aluno</InputLabel>
-            <Select
-              value={selectedStudentId}
-              label="Selecione o Aluno"
-              onChange={(e) => onStudentSelect?.(e.target.value)}
+        {isAdmin && (
+          <Box sx={{ mb: 2 }}>
+            <ToggleButtonGroup
+              value={photoType}
+              exclusive
+              onChange={(_, val) => val && setPhotoType(val)}
+              size="small"
+              fullWidth
+              sx={{ mb: 2 }}
             >
-              {enrolledStudents.map((s) => (
-                <MenuItem key={s.id} value={s.id}>
-                  {s.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              <ToggleButton value="student">Foto do Aluno</ToggleButton>
+              <ToggleButton value="team">Foto da Equipe</ToggleButton>
+            </ToggleButtonGroup>
+
+            {photoType === 'student' && enrolledStudents.length > 0 && (
+              <FormControl fullWidth>
+                <InputLabel>Selecione o Aluno</InputLabel>
+                <Select
+                  value={selectedStudentId}
+                  label="Selecione o Aluno"
+                  onChange={(e) => onStudentSelect?.(e.target.value)}
+                >
+                  {enrolledStudents.map((s) => (
+                    <MenuItem key={s.id} value={s.id}>
+                      {s.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
+          </Box>
         )}
 
         {error && (
@@ -223,7 +243,7 @@ export function PhotoUploadDialog({
           <Button
             onClick={handleUpload}
             variant="contained"
-            disabled={isUploading || (isAdmin && !selectedStudentId)}
+            disabled={isUploading || (isAdmin && photoType === 'student' && !selectedStudentId)}
           >
             {isUploading ? 'Enviando...' : 'Fazer Upload'}
           </Button>

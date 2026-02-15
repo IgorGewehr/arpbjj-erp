@@ -110,6 +110,8 @@ export class LinkCodeService {
       createdBy,
       createdAt: Timestamp.fromDate(now),
       expiresAt: Timestamp.fromDate(expiresAt),
+      usedAt: null,
+      usedBy: null,
     };
 
     const docRef = await addDoc(this.linkCodesRef, docData);

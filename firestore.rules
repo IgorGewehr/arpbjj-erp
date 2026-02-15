@@ -301,7 +301,10 @@ service cloud.firestore {
         // Students can update only personal info (including photoUrl and registration linking fields)
         allow update: if isOwnStudent(academyId, studentId)
                       && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['photoUrl', 'updatedAt', 'linkedUserId', 'email', 'cpf', 'phone']);
+                          .hasOnly(['photoUrl', 'updatedAt', 'linkedUserId', 'email', 'cpf', 'phone',
+                                    'nickname', 'birthDate', 'rg', 'weight',
+                                    'address', 'bloodType', 'allergies', 'healthNotes',
+                                    'emergencyContact', 'isProfilePublic']);
 
         // Timeline subcollection
         match /timeline/{eventId} {
@@ -462,6 +465,11 @@ service cloud.firestore {
         allow read: if belongsToAcademy(academyId);
         allow create, delete: if isAcademyStaff(academyId);
         allow update: if isAcademyStaff(academyId);
+
+        // Students can update only enrolledStudentIds (self-enroll/unenroll from legacy array)
+        allow update: if belongsToAcademy(academyId)
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['enrolledStudentIds', 'updatedAt']);
       }
 
       // ============================================
@@ -474,6 +482,11 @@ service cloud.firestore {
         // Students can enroll themselves (via mapping or academy user doc)
         allow create: if belongsToAcademy(academyId)
                       && isOwnStudentRecord(academyId, request.resource.data.studentId);
+
+        // Students can update their own enrollment (category, weight, transport)
+        allow update: if isOwnStudentRecord(academyId, resource.data.studentId)
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['ageCategory', 'weightCategory', 'transportPreference', 'updatedAt']);
 
         // Students can cancel their own enrollment
         allow delete: if isOwnStudentRecord(academyId, resource.data.studentId);
@@ -540,6 +553,10 @@ service cloud.firestore {
         allow read: if isAcademyStaff(academyId);
         allow read: if isOwnStudentRecord(academyId, resource.data.studentId);
         allow write: if isAcademyStaff(academyId);
+
+        // Students can create their own achievements (auto-created after competition results)
+        allow create: if belongsToAcademy(academyId)
+                      && isOwnStudentRecord(academyId, request.resource.data.studentId);
       }
 
       // ============================================

@@ -754,7 +754,7 @@ export default function CompetitionDetailsPage() {
       setSaving(true);
       await competitionService.update(competition.id, {
         teamPosition,
-        teamNotes: teamNotes || null,
+        teamNotes: teamNotes || undefined,
       });
       setCompetition({ ...competition, teamPosition, teamNotes: teamNotes || undefined });
       setTeamResultDialogOpen(false);
@@ -780,8 +780,8 @@ export default function CompetitionDetailsPage() {
       const competitionService = createCompetitionService(academy.id);
       try {
         await competitionService.update(competition.id, {
-          teamPosition: deleteField(),
-          teamNotes: deleteField(),
+          teamPosition: deleteField() as unknown as undefined,
+          teamNotes: deleteField() as unknown as undefined,
         });
         setCompetition({ ...competition, teamPosition: undefined, teamNotes: undefined });
         success('Resultado da equipe removido');

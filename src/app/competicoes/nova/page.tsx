@@ -23,7 +23,7 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { createCompetitionService } from '@/services/competitionService';
 import { CompetitionStatus, CompetitionTransportStatus, TRANSPORT_STATUS_LABELS } from '@/types';
-import { format, parseISO } from 'date-fns';
+import { format, parseISO, isPast, startOfDay } from 'date-fns';
 
 // ============================================
 // Form State Interface
@@ -131,7 +131,19 @@ export default function NewCompetitionPage() {
   // Handle Field Change
   // ============================================
   const handleChange = (field: keyof FormData, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const updated = { ...prev, [field]: value };
+      // Auto-set status to 'completed' when a past date is selected
+      if (field === 'date' && value) {
+        const selectedDate = startOfDay(parseISO(value));
+        if (isPast(selectedDate)) {
+          updated.status = 'completed';
+        } else if (prev.status === 'completed') {
+          updated.status = 'upcoming';
+        }
+      }
+      return updated;
+    });
     if (errors[field]) {
       setErrors((prev) => ({ ...prev, [field]: undefined }));
     }
@@ -202,7 +214,12 @@ export default function NewCompetitionPage() {
                   value={formData.date}
                   onChange={(e) => handleChange('date', e.target.value)}
                   error={!!errors.date}
-                  helperText={errors.date}
+                  helperText={
+                    errors.date ||
+                    (formData.date && isPast(startOfDay(parseISO(formData.date)))
+                      ? 'Data passada - será criada como concluída'
+                      : undefined)
+                  }
                   fullWidth
                   required
                   slotProps={{

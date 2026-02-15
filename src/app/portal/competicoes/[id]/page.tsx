@@ -23,13 +23,14 @@ import {
   Medal,
   Camera,
   Edit,
+  Trash2,
   Users,
   UserPlus,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { useFeedback } from '@/components/providers';
+import { useFeedback, useConfirmDialog } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { createCompetitionService } from '@/services/competitionService';
 import { createCompetitionEnrollmentService } from '@/services/competitionEnrollmentService';
@@ -77,6 +78,7 @@ export default function StudentCompetitionDetailPage() {
   const { user } = useAuth();
   const { academy, academyUser } = useAcademy();
   const { success, error: showError } = useFeedback();
+  const { confirm } = useConfirmDialog();
 
   const competitionId = params.id as string;
   const studentName = academyUser?.displayName || user?.displayName;
@@ -234,6 +236,31 @@ export default function StudentCompetitionDetailPage() {
       showError('Erro ao salvar resultado');
     } finally {
       setSavingResult(false);
+    }
+  };
+
+  // ============================================
+  // Handle Delete Result
+  // ============================================
+  const handleDeleteResult = async () => {
+    if (!myResult || !academy?.id) return;
+
+    const confirmed = await confirm({
+      title: 'Excluir Resultado',
+      message: 'Deseja excluir seu resultado desta competição?',
+      confirmText: 'Excluir',
+      severity: 'error',
+    });
+
+    if (confirmed) {
+      const competitionService = createCompetitionService(academy.id);
+      try {
+        await competitionService.deleteResult(myResult.id);
+        setResults((prev) => prev.filter((r) => r.id !== myResult.id));
+        success('Resultado excluído');
+      } catch (err) {
+        showError('Erro ao excluir resultado');
+      }
     }
   };
 
@@ -516,6 +543,9 @@ export default function StudentCompetitionDetailPage() {
                       </Box>
                       <IconButton size="small" onClick={handleOpenResultDialog}>
                         <Edit size={16} />
+                      </IconButton>
+                      <IconButton size="small" color="error" onClick={handleDeleteResult}>
+                        <Trash2 size={16} />
                       </IconButton>
                     </Box>
                   ) : (

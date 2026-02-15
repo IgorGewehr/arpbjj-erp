@@ -51,6 +51,7 @@ import {
   Car,
   HelpCircle,
   Camera,
+  Trash2,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -1124,7 +1125,7 @@ export default function CompetitionDetailsPage() {
                                     />
                                   </Box>
                                 </Box>
-                                <Box>
+                                <Box sx={{ display: 'flex', gap: 0.5 }}>
                                   <IconButton
                                     size="small"
                                     onClick={() => {
@@ -1133,6 +1134,13 @@ export default function CompetitionDetailsPage() {
                                     }}
                                   >
                                     <Edit size={16} />
+                                  </IconButton>
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => handleDeleteResult(result)}
+                                  >
+                                    <Trash2 size={16} />
                                   </IconButton>
                                 </Box>
                               </Box>

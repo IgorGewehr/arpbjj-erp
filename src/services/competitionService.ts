@@ -231,6 +231,9 @@ export class CompetitionService {
     if (data.transportStatus !== undefined) updateData.transportStatus = data.transportStatus;
     if (data.transportNotes !== undefined) updateData.transportNotes = data.transportNotes;
     if (data.transportCapacity !== undefined) updateData.transportCapacity = data.transportCapacity;
+    // Team result fields
+    if (data.teamPosition !== undefined) updateData.teamPosition = data.teamPosition;
+    if (data.teamNotes !== undefined) updateData.teamNotes = data.teamNotes;
     // Custom weight categories
     if (data.customWeightCategories !== undefined) updateData.customWeightCategories = data.customWeightCategories;
 

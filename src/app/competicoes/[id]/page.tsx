@@ -936,7 +936,7 @@ export default function CompetitionDetailsPage() {
                   {competition.status !== 'completed' && (
                     <Tab label={`Transporte (${transportStats.needTransport})`} icon={<Bus size={18} />} iconPosition="start" />
                   )}
-                  <Tab label={`Resultados (${results.length})`} icon={<Medal size={18} />} iconPosition="start" />
+                  <Tab label={`Resultados (${results.length + (competition.teamPosition ? 1 : 0)})`} icon={<Medal size={18} />} iconPosition="start" />
                   <Tab label="Galeria" icon={<Camera size={18} />} iconPosition="start" />
                 </Tabs>
               </Paper>

@@ -51,6 +51,9 @@ const docToCompetition = (doc: DocumentSnapshot): Competition => {
     transportCapacity: data.transportCapacity,
     // Custom weight categories
     customWeightCategories: data.customWeightCategories || [],
+    // Team result
+    teamPosition: data.teamPosition,
+    teamNotes: data.teamNotes,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
     createdBy: data.createdBy,

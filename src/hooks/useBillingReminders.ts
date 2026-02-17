@@ -401,6 +401,9 @@ export function useBillingReminders() {
       scheduledTime?: string;
     }): Promise<BulkServerResult> => {
       if (!studentContactsMap) throw new Error('Contatos dos alunos nao carregados');
+      if (!reminderSettings?.whatsappEnabled && !reminderSettings?.emailEnabled) {
+        throw new Error('Nenhum canal de notificacao esta habilitado. Habilite WhatsApp ou Email nas configuracoes.');
+      }
 
       const messageTemplate = data.message;
       const subjectTemplate = data.subject;
@@ -421,31 +424,35 @@ export function useBillingReminders() {
           subjectTemplate, studentName, financial.amount, financial.dueDate, daysOverdue
         );
 
-        // Send WhatsApp
-        const waPayload = notificationService.buildWhatsAppPayload(
-          financial, contact, data.stage, daysOverdue, personalizedMessage
-        );
-        if (waPayload) {
-          waTotal++;
-          const result = await notificationService.sendWhatsApp(waPayload);
-          if (result.success) waSent++;
-          else {
-            waFailed++;
-            failures.push({ type: 'whatsapp', recipient: waPayload.phone, error: result.error || 'Erro desconhecido' });
+        // Send WhatsApp (only if enabled in settings)
+        if (reminderSettings?.whatsappEnabled) {
+          const waPayload = notificationService.buildWhatsAppPayload(
+            financial, contact, data.stage, daysOverdue, personalizedMessage
+          );
+          if (waPayload) {
+            waTotal++;
+            const result = await notificationService.sendWhatsApp(waPayload);
+            if (result.success) waSent++;
+            else {
+              waFailed++;
+              failures.push({ type: 'whatsapp', recipient: waPayload.phone, error: result.error || 'Erro desconhecido' });
+            }
           }
         }
 
-        // Send Email
-        const emPayload = notificationService.buildEmailPayload(
-          financial, contact, data.stage, daysOverdue, personalizedSubject, personalizedMessage
-        );
-        if (emPayload) {
-          emTotal++;
-          const result = await notificationService.sendEmail(emPayload);
-          if (result.success) emSent++;
-          else {
-            emFailed++;
-            failures.push({ type: 'email', recipient: emPayload.email, error: result.error || 'Erro desconhecido' });
+        // Send Email (only if enabled in settings)
+        if (reminderSettings?.emailEnabled) {
+          const emPayload = notificationService.buildEmailPayload(
+            financial, contact, data.stage, daysOverdue, personalizedSubject, personalizedMessage
+          );
+          if (emPayload) {
+            emTotal++;
+            const result = await notificationService.sendEmail(emPayload);
+            if (result.success) emSent++;
+            else {
+              emFailed++;
+              failures.push({ type: 'email', recipient: emPayload.email, error: result.error || 'Erro desconhecido' });
+            }
           }
         }
 
@@ -453,12 +460,14 @@ export function useBillingReminders() {
         if (user) {
           const phone = contact.category === 'kids' ? contact.guardianPhone : contact.phone;
           const email = contact.category === 'kids' ? contact.guardianEmail : contact.email;
-          if (phone || email) {
+          const sentWhatsApp = reminderSettings?.whatsappEnabled && phone;
+          const sentEmail = reminderSettings?.emailEnabled && email;
+          if (sentWhatsApp || sentEmail) {
             await billingService.logContactAttempt(
               financial.id,
               financial.studentId,
               studentName,
-              phone ? 'whatsapp' : 'email',
+              sentWhatsApp ? 'whatsapp' : 'email',
               'Cobranca em massa (personalizada)',
               data.stage,
               daysOverdue,

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useRef } from 'react';
+import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Box,
@@ -29,12 +29,12 @@ import {
   Building2,
   GraduationCap,
   MessageCircle,
-  Sparkles,
   FileText,
 } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // ============================================
@@ -96,25 +96,6 @@ function generateSlug(name: string): string {
   return `${slug}-${timestamp}`;
 }
 
-// ============================================
-// Check if Academy Name Already Exists
-// ============================================
-async function checkAcademyNameExists(name: string): Promise<boolean> {
-  const normalizedName = name.trim().toLowerCase();
-
-  // Query academies collection looking for similar names
-  const academiesRef = collection(db, 'academies');
-  const snapshot = await getDocs(academiesRef);
-
-  for (const doc of snapshot.docs) {
-    const academyName = doc.data().name;
-    if (academyName && academyName.toLowerCase().trim() === normalizedName) {
-      return true;
-    }
-  }
-
-  return false;
-}
 
 // ============================================
 // CPF/CNPJ Helpers
@@ -238,44 +219,6 @@ function StepIndicator({ activeStep, steps }: { activeStep: number; steps: strin
 }
 
 // ============================================
-// Confetti Particles (for success step)
-// ============================================
-function ConfettiParticles() {
-  const particles = useMemo(() =>
-    Array.from({ length: 30 }, (_, i) => ({
-      id: i,
-      x: Math.random() * 100,
-      delay: Math.random() * 2,
-      duration: 2 + Math.random() * 2,
-      color: ['#FFD700', '#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEAA7', '#DDA0DD'][
-        Math.floor(Math.random() * 7)
-      ],
-      size: 4 + Math.random() * 8,
-    }))
-    , []);
-
-  return (
-    <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 200, overflow: 'hidden', pointerEvents: 'none' }}>
-      {particles.map((p) => (
-        <motion.div
-          key={p.id}
-          initial={{ y: -20, x: `${p.x}%`, opacity: 1, rotate: 0 }}
-          animate={{ y: 200, opacity: 0, rotate: 360 }}
-          transition={{ duration: p.duration, delay: p.delay, ease: 'easeOut' }}
-          style={{
-            position: 'absolute',
-            width: p.size,
-            height: p.size,
-            backgroundColor: p.color,
-            borderRadius: p.size > 8 ? '50%' : '2px',
-          }}
-        />
-      ))}
-    </Box>
-  );
-}
-
-// ============================================
 // Step Types
 // ============================================
 type Step = 0 | 1 | 2;
@@ -286,6 +229,8 @@ type DocumentType = 'cpf' | 'cnpj';
 // ============================================
 export default function CreateAcademyPage() {
   const router = useRouter();
+  const { reloadUserMapping } = useAcademy();
+  const redirectingRef = useRef(false);
 
   const [activeStep, setActiveStep] = useState<Step>(0);
   const [loading, setLoading] = useState(false);
@@ -304,6 +249,29 @@ export default function CreateAcademyPage() {
   const [documentType, setDocumentType] = useState<DocumentType>('cpf');
   const [documentNumber, setDocumentNumber] = useState('');
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+
+  // ============================================
+  // Poll AcademyContext until admin data is loaded
+  // ============================================
+  useEffect(() => {
+    if (activeStep !== 2 || redirectingRef.current) return;
+    redirectingRef.current = true;
+
+    const pollUntilReady = async () => {
+      for (let i = 0; i < 20; i++) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const loadedUser = await reloadUserMapping();
+        if (loadedUser && loadedUser.role === 'admin') {
+          router.replace('/dashboard');
+          return;
+        }
+      }
+      // Fallback: redirect anyway after 10s
+      router.replace('/dashboard');
+    };
+
+    pollUntilReady();
+  }, [activeStep, reloadUserMapping, router]);
 
   // Validation for step 1
   const isStep1Valid = useMemo(() => {
@@ -399,14 +367,6 @@ export default function CreateAcademyPage() {
     try {
       setLoading(true);
       setError('');
-
-      // Step 0: Check if academy name already exists
-      const nameExists = await checkAcademyNameExists(academyName.trim());
-      if (nameExists) {
-        setError('Ja existe uma academia com este nome. Escolha outro nome.');
-        setLoading(false);
-        return;
-      }
 
       // Generate slug automatically from academy name
       const academySlug = generateSlug(academyName.trim());
@@ -770,9 +730,9 @@ export default function CreateAcademyPage() {
   );
 
   // ============================================
-  // Render Step 3 - Success
+  // Render Step 3 - Redirecting (loading while AcademyContext loads)
   // ============================================
-  const renderSuccessStep = () => (
+  const renderRedirectingStep = () => (
     <motion.div
       key="step-2"
       variants={pageVariants}
@@ -781,9 +741,7 @@ export default function CreateAcademyPage() {
       exit="exit"
       transition={{ duration: 0.4, ease: 'easeOut' }}
     >
-      <Box sx={{ textAlign: 'center', position: 'relative', overflow: 'hidden' }}>
-        <ConfettiParticles />
-
+      <Box sx={{ textAlign: 'center', py: 4 }}>
         <motion.div
           initial={{ scale: 0, rotate: -180 }}
           animate={{ scale: 1, rotate: 0 }}
@@ -794,15 +752,14 @@ export default function CreateAcademyPage() {
               width: 100,
               height: 100,
               borderRadius: '50%',
-              background: 'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+              bgcolor: 'success.light',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               margin: '0 auto 24px',
-              boxShadow: '0 8px 24px rgba(67, 233, 123, 0.3)',
             }}
           >
-            <CheckCircle size={50} color="white" />
+            <CheckCircle size={50} color="#2e7d32" />
           </Box>
         </motion.div>
 
@@ -811,48 +768,15 @@ export default function CreateAcademyPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4, duration: 0.4 }}
         >
-          <Typography variant="h5" fontWeight={700} gutterBottom sx={{ color: '#059669' }}>
+          <Typography variant="h5" fontWeight={700} gutterBottom color="success.main">
             Academia criada com sucesso!
           </Typography>
 
-          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            Sua academia <strong>{academyName}</strong> esta pronta para uso.
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
+            Preparando seu painel...
           </Typography>
 
-          <Box
-            sx={{
-              p: 2,
-              bgcolor: '#f0fdf4',
-              borderRadius: 2,
-              mb: 4,
-              border: '1px solid #bbf7d0',
-            }}
-          >
-            <Typography variant="body2" color="text.secondary">
-              Voce ja pode acessar o painel e comecar a cadastrar seus alunos.
-            </Typography>
-          </Box>
-
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <Button
-              variant="contained"
-              size="large"
-              onClick={() => router.push('/login')}
-              startIcon={<Sparkles size={20} />}
-              sx={{
-                minWidth: 200,
-                background: 'linear-gradient(135deg, #111 0%, #333 100%)',
-                py: 1.5,
-                fontSize: '1rem',
-              }}
-            >
-              Fazer Login Agora
-            </Button>
-
-            <Typography variant="caption" color="text.secondary">
-              Use suas credenciais para acessar
-            </Typography>
-          </Box>
+          <CircularProgress size={32} />
         </motion.div>
       </Box>
     </motion.div>
@@ -936,7 +860,7 @@ export default function CreateAcademyPage() {
           <AnimatePresence mode="wait">
             {activeStep === 0 && renderProfessorStep()}
             {activeStep === 1 && renderAcademyStep()}
-            {activeStep === 2 && renderSuccessStep()}
+            {activeStep === 2 && renderRedirectingStep()}
           </AnimatePresence>
 
           {/* Navigation Buttons */}

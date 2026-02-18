@@ -31,8 +31,8 @@ import {
   MessageCircle,
   FileText,
 } from 'lucide-react';
-import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, updateProfile, deleteUser } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp, collection, getDocs } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -96,6 +96,25 @@ function generateSlug(name: string): string {
   return `${slug}-${timestamp}`;
 }
 
+// ============================================
+// Check if Academy Name Already Exists
+// Must be called AFTER authentication (Firestore rules require it)
+// ============================================
+async function checkAcademyNameExists(name: string): Promise<boolean> {
+  const normalizedName = name.trim().toLowerCase();
+
+  const academiesRef = collection(db, 'academies');
+  const snapshot = await getDocs(academiesRef);
+
+  for (const doc of snapshot.docs) {
+    const academyName = doc.data().name;
+    if (academyName && academyName.toLowerCase().trim() === normalizedName) {
+      return true;
+    }
+  }
+
+  return false;
+}
 
 // ============================================
 // CPF/CNPJ Helpers
@@ -368,11 +387,7 @@ export default function CreateAcademyPage() {
       setLoading(true);
       setError('');
 
-      // Generate slug automatically from academy name
-      const academySlug = generateSlug(academyName.trim());
-      const docDigits = documentNumber.replace(/\D/g, '');
-
-      // Step 1: Create Firebase Auth user
+      // Step 1: Create Firebase Auth user (must authenticate BEFORE name check - Firestore rules require it)
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
 
@@ -381,9 +396,23 @@ export default function CreateAcademyPage() {
         displayName: professorName.trim(),
       });
 
+      // Step 3: Check if academy name already exists (now authenticated, list rule allows it)
+      const nameExists = await checkAcademyNameExists(academyName.trim());
+      if (nameExists) {
+        // Clean up: delete the auth user we just created
+        await deleteUser(user);
+        setError('Ja existe uma academia com este nome. Escolha outro nome.');
+        setLoading(false);
+        return;
+      }
+
+      // Generate slug automatically from academy name
+      const academySlug = generateSlug(academyName.trim());
+      const docDigits = documentNumber.replace(/\D/g, '');
+
       const now = serverTimestamp();
 
-      // Step 3: Create academy document
+      // Step 4: Create academy document
       const academyData = {
         name: academyName.trim(),
         slug: academySlug,
@@ -411,7 +440,7 @@ export default function CreateAcademyPage() {
 
       await setDoc(doc(db, 'academies', academySlug), academyData);
 
-      // Step 4: Create global user document with accountType: 'linked'
+      // Step 5: Create global user document with accountType: 'linked'
       const userData = {
         email: email.trim(),
         displayName: professorName.trim(),
@@ -423,7 +452,7 @@ export default function CreateAcademyPage() {
 
       await setDoc(doc(db, 'users', user.uid), userData);
 
-      // Step 5: Create user document in academy-scoped users collection
+      // Step 6: Create user document in academy-scoped users collection
       await setDoc(doc(db, `academies/${academySlug}/users`, user.uid), {
         email: email.trim(),
         displayName: professorName.trim(),
@@ -434,7 +463,7 @@ export default function CreateAcademyPage() {
         updatedAt: now,
       });
 
-      // Step 6: Create userAcademyMapping with academyDetails
+      // Step 7: Create userAcademyMapping with academyDetails
       await setDoc(doc(db, 'userAcademyMapping', user.uid), {
         role: 'admin',
         academyIds: [academySlug],

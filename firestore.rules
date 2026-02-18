@@ -225,6 +225,9 @@ service cloud.firestore {
       // Anyone who belongs to the academy can read academy info
       allow read: if belongsToAcademy(academyId);
 
+      // Allow any authenticated user to list academies (for name uniqueness check during registration)
+      allow list: if isAuthenticated();
+
       // Owner or admin can update academy settings
       allow update: if (isAcademyOwner(academyId) || isAcademyAdmin(academyId))
                     && !request.resource.data.diff(resource.data).affectedKeys()

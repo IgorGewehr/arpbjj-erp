@@ -31,8 +31,8 @@ import {
   MessageCircle,
   FileText,
 } from 'lucide-react';
-import { createUserWithEmailAndPassword, updateProfile, deleteUser } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, collection, getDocs } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { doc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -75,45 +75,6 @@ function WhatsAppButton() {
       <MessageCircle size={28} color="white" fill="white" />
     </Box>
   );
-}
-
-// ============================================
-// Slug Generator (automatic from name + timestamp)
-// ============================================
-function generateSlug(name: string): string {
-  const slug = name
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '')
-    .substring(0, 30);
-
-  // Add timestamp for uniqueness
-  const timestamp = Date.now().toString().substring(6);
-  return `${slug}-${timestamp}`;
-}
-
-// ============================================
-// Check if Academy Name Already Exists
-// Must be called AFTER authentication (Firestore rules require it)
-// ============================================
-async function checkAcademyNameExists(name: string): Promise<boolean> {
-  const normalizedName = name.trim().toLowerCase();
-
-  const academiesRef = collection(db, 'academies');
-  const snapshot = await getDocs(academiesRef);
-
-  for (const doc of snapshot.docs) {
-    const academyName = doc.data().name;
-    if (academyName && academyName.toLowerCase().trim() === normalizedName) {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 // ============================================
@@ -387,7 +348,7 @@ export default function CreateAcademyPage() {
       setLoading(true);
       setError('');
 
-      // Step 1: Create Firebase Auth user (must authenticate BEFORE name check - Firestore rules require it)
+      // Step 1: Create Firebase Auth user
       const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
       const user = userCredential.user;
 
@@ -396,26 +357,16 @@ export default function CreateAcademyPage() {
         displayName: professorName.trim(),
       });
 
-      // Step 3: Check if academy name already exists (now authenticated, list rule allows it)
-      const nameExists = await checkAcademyNameExists(academyName.trim());
-      if (nameExists) {
-        // Clean up: delete the auth user we just created
-        await deleteUser(user);
-        setError('Ja existe uma academia com este nome. Escolha outro nome.');
-        setLoading(false);
-        return;
-      }
-
-      // Generate slug automatically from academy name
-      const academySlug = generateSlug(academyName.trim());
+      // Generate a random Firestore document ID (independent of academy name)
+      const academyRef = doc(collection(db, 'academies'));
+      const academyId = academyRef.id;
       const docDigits = documentNumber.replace(/\D/g, '');
 
       const now = serverTimestamp();
 
-      // Step 4: Create academy document
-      const academyData = {
+      // Step 3: Create academy document (using auto-generated ID)
+      await setDoc(academyRef, {
         name: academyName.trim(),
-        slug: academySlug,
         ownerId: user.uid,
         createdAt: now,
         updatedAt: now,
@@ -433,27 +384,22 @@ export default function CreateAcademyPage() {
         abacatePayEnabled: false,
         autoGraduationEnabled: false,
         studentCheckinEnabled: true,
-        // Owner document info
         ownerDocumentType: documentType,
         ownerDocumentNumber: docDigits,
-      };
+      });
 
-      await setDoc(doc(db, 'academies', academySlug), academyData);
-
-      // Step 5: Create global user document with accountType: 'linked'
-      const userData = {
+      // Step 4: Create global user document with accountType: 'linked'
+      await setDoc(doc(db, 'users', user.uid), {
         email: email.trim(),
         displayName: professorName.trim(),
         accountType: 'linked',
         isProfilePublic: false,
         createdAt: now,
         updatedAt: now,
-      };
+      });
 
-      await setDoc(doc(db, 'users', user.uid), userData);
-
-      // Step 6: Create user document in academy-scoped users collection
-      await setDoc(doc(db, `academies/${academySlug}/users`, user.uid), {
+      // Step 5: Create user document in academy-scoped users collection
+      await setDoc(doc(db, `academies/${academyId}/users`, user.uid), {
         email: email.trim(),
         displayName: professorName.trim(),
         role: 'admin',
@@ -463,13 +409,13 @@ export default function CreateAcademyPage() {
         updatedAt: now,
       });
 
-      // Step 7: Create userAcademyMapping with academyDetails
+      // Step 6: Create userAcademyMapping with academyDetails
       await setDoc(doc(db, 'userAcademyMapping', user.uid), {
         role: 'admin',
-        academyIds: [academySlug],
-        primaryAcademyId: academySlug,
+        academyIds: [academyId],
+        primaryAcademyId: academyId,
         academyDetails: {
-          [academySlug]: {
+          [academyId]: {
             role: 'admin',
             joinedAt: now,
             status: 'active',

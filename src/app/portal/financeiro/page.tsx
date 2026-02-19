@@ -235,7 +235,7 @@ export default function PortalFinanceiroPage() {
     enabled: !!academy?.id,
   });
 
-  // Fetch payments - only if student has a valid plan
+  // Fetch payments - always fetch regardless of plan status so history is visible
   const { data: payments = [], isLoading } = useQuery({
     queryKey: ['studentPayments', studentId, academy?.id],
     queryFn: () => {
@@ -243,7 +243,7 @@ export default function PortalFinanceiroPage() {
       const financialService = createFinancialService(academy.id);
       return financialService.getByStudent(studentId);
     },
-    enabled: !!studentId && !!academy?.id && hasValidPlan,
+    enabled: !!studentId && !!academy?.id,
   });
 
   const pixKey = academySettings?.pixKey || '';
@@ -334,8 +334,8 @@ export default function PortalFinanceiroPage() {
     }
   };
 
-  // If no valid plan, show a message
-  if (!hasValidPlan && !isLoading) {
+  // If no valid plan and no payment history, show a message
+  if (!hasValidPlan && !isLoading && payments.length === 0) {
     return (
       <Box sx={{ textAlign: 'center', py: 8 }}>
         <Receipt size={48} color="#9CA3AF" />
@@ -361,6 +361,13 @@ export default function PortalFinanceiroPage() {
       <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary', mt: 0.5, mb: 3 }}>
         Gerencie suas mensalidades e pagamentos
       </Typography>
+
+      {/* No active plan alert */}
+      {!hasValidPlan && !isLoading && payments.length > 0 && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          Voce nao possui um plano ativo no momento.
+        </Alert>
+      )}
 
       {/* Debt Alert - when has open payments */}
       {openPayments.length > 0 && (

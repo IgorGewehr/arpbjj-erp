@@ -222,16 +222,16 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
     <Dialog
       open={open}
       onClose={onClose}
-      maxWidth="xs"
+      maxWidth="sm"
       fullWidth
       PaperProps={{
-        sx: { borderRadius: 3 },
+        sx: { borderRadius: 3, overflow: 'hidden' },
       }}
     >
       {/* Image carousel */}
       {product.images.length > 0 && (
         <Box sx={{ position: 'relative' }}>
-          <Box sx={{ height: 180, bgcolor: 'grey.100', overflow: 'hidden' }}>
+          <Box sx={{ height: 300, bgcolor: 'grey.100', overflow: 'hidden' }}>
             <img
               src={product.images[imageIndex]}
               alt={product.name}

@@ -725,7 +725,10 @@ class StoreService {
       academyId: data.academyId,
       studentId: data.studentId,
       studentName: data.studentName,
-      items: data.items || [],
+      items: (data.items || []).map((item: any) => ({
+        ...item,
+        unitPrice: item.unitPrice ?? item.price ?? 0,
+      })),
       totalAmount: data.total ?? data.totalAmount,
       status: data.status,
       paymentMethod: data.paymentMethod,

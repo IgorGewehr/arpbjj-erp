@@ -102,6 +102,20 @@ service firebase.storage {
     }
 
     // ============================================
+    // Store Product Images
+    // ============================================
+    match /academies/{academyId}/products/{imageId} {
+      // Admins can upload/update product images
+      allow write: if isAuthenticated()
+                   && isValidSize()
+                   && isImage()
+                   && isAcademyAdmin(academyId);
+
+      // Anyone in the academy can read product images
+      allow read: if belongsToAcademy(academyId);
+    }
+
+    // ============================================
     // Deny all other paths
     // ============================================
     match /{allPaths=**} {

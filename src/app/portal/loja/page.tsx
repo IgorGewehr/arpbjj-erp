@@ -27,6 +27,8 @@ import {
   Minus,
   X,
   Store,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { useStoreCart } from '@/hooks';
 import { useAuth, useFeedback } from '@/components/providers';
@@ -191,6 +193,7 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
   const [quantity, setQuantity] = useState(1);
   const [selectedSize, setSelectedSize] = useState('');
   const [selectedColor, setSelectedColor] = useState('');
+  const [imageIndex, setImageIndex] = useState(0);
 
   const handleAdd = () => {
     if (!product) return;
@@ -207,6 +210,7 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
     setQuantity(1);
     setSelectedSize('');
     setSelectedColor('');
+    setImageIndex(0);
     onClose();
   };
 
@@ -224,23 +228,14 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
         sx: { borderRadius: 3 },
       }}
     >
-      {/* Image */}
+      {/* Image carousel */}
       {product.images.length > 0 && (
         <Box sx={{ position: 'relative' }}>
-          <Box
-            sx={{
-              height: 180,
-              bgcolor: 'grey.100',
-            }}
-          >
+          <Box sx={{ height: 180, bgcolor: 'grey.100', overflow: 'hidden' }}>
             <img
-              src={product.images[0]}
+              src={product.images[imageIndex]}
               alt={product.name}
-              style={{
-                width: '100%',
-                height: '100%',
-                objectFit: 'cover',
-              }}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
             />
           </Box>
           <IconButton
@@ -256,6 +251,63 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
           >
             <X size={16} />
           </IconButton>
+          {product.images.length > 1 && (
+            <>
+              <IconButton
+                size="small"
+                onClick={() => setImageIndex((i) => (i - 1 + product.images.length) % product.images.length)}
+                sx={{
+                  position: 'absolute',
+                  left: 8,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  bgcolor: 'rgba(255,255,255,0.9)',
+                  '&:hover': { bgcolor: '#fff' },
+                }}
+              >
+                <ChevronLeft size={16} />
+              </IconButton>
+              <IconButton
+                size="small"
+                onClick={() => setImageIndex((i) => (i + 1) % product.images.length)}
+                sx={{
+                  position: 'absolute',
+                  right: 8,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  bgcolor: 'rgba(255,255,255,0.9)',
+                  '&:hover': { bgcolor: '#fff' },
+                }}
+              >
+                <ChevronRight size={16} />
+              </IconButton>
+              <Box
+                sx={{
+                  position: 'absolute',
+                  bottom: 8,
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  display: 'flex',
+                  gap: 0.5,
+                }}
+              >
+                {product.images.map((_, i) => (
+                  <Box
+                    key={i}
+                    onClick={() => setImageIndex(i)}
+                    sx={{
+                      width: i === imageIndex ? 16 : 6,
+                      height: 6,
+                      borderRadius: 3,
+                      bgcolor: i === imageIndex ? '#fff' : 'rgba(255,255,255,0.5)',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s',
+                    }}
+                  />
+                ))}
+              </Box>
+            </>
+          )}
         </Box>
       )}
 
@@ -286,6 +338,12 @@ function ProductDialog({ product, open, onClose, onAddToCart }: ProductDialogPro
         {product.description && (
           <Typography sx={{ fontSize: '0.85rem', color: 'text.secondary', mb: 2 }}>
             {product.description}
+          </Typography>
+        )}
+
+        {product.stockType === 'in_stock' && (
+          <Typography sx={{ fontSize: '0.8rem', color: (product.stockQuantity ?? 0) <= 5 ? 'warning.main' : 'text.secondary', mb: 1.5 }}>
+            {product.stockQuantity ?? 0} disponível{(product.stockQuantity ?? 0) !== 1 ? 'is' : ''}
           </Typography>
         )}
 

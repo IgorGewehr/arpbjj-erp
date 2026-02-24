@@ -51,7 +51,9 @@ import {
   ChevronDown,
   ChevronUp,
   CreditCard,
+  Layers,
 } from 'lucide-react';
+import { Class } from '@/types';
 import { format, addMonths, subMonths, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useFinancial, usePlans, useStudents, useClasses, useAcademySettings } from '@/hooks';
@@ -426,6 +428,191 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
 }
 
 // ============================================
+// Bulk Enroll from Classes Dialog
+// ============================================
+interface BulkEnrollFromClassesDialogProps {
+  open: boolean;
+  plan: Plan | null;
+  classes: Class[];
+  students: Student[];
+  onClose: () => void;
+  onConfirm: (planId: string, classIds: string[]) => Promise<void>;
+  isLoading: boolean;
+}
+
+function BulkEnrollFromClassesDialog({
+  open,
+  plan,
+  classes,
+  students,
+  onClose,
+  onConfirm,
+  isLoading,
+}: BulkEnrollFromClassesDialogProps) {
+  const [selectedClassIds, setSelectedClassIds] = useState<string[]>([]);
+
+  // Reset selection when dialog opens
+  useState(() => {
+    if (open) setSelectedClassIds([]);
+  });
+
+  const toggleClass = useCallback((classId: string) => {
+    setSelectedClassIds((prev) =>
+      prev.includes(classId) ? prev.filter((id) => id !== classId) : [...prev, classId]
+    );
+  }, []);
+
+  // Compute preview: students that would be added / already enrolled
+  const preview = useMemo(() => {
+    if (!plan) return { toAdd: [], alreadyIn: [] };
+
+    const fromClasses = new Set<string>();
+    for (const cls of classes) {
+      if (selectedClassIds.includes(cls.id)) {
+        cls.studentIds.forEach((id) => fromClasses.add(id));
+      }
+    }
+
+    const toAdd: Student[] = [];
+    const alreadyIn: Student[] = [];
+
+    for (const studentId of fromClasses) {
+      const student = students.find((s) => s.id === studentId);
+      if (!student) continue;
+      if (plan.studentIds.includes(studentId)) {
+        alreadyIn.push(student);
+      } else {
+        toAdd.push(student);
+      }
+    }
+
+    return { toAdd, alreadyIn };
+  }, [plan, classes, students, selectedClassIds]);
+
+  const handleConfirm = useCallback(async () => {
+    if (!plan || selectedClassIds.length === 0) return;
+    await onConfirm(plan.id, selectedClassIds);
+    onClose();
+  }, [plan, selectedClassIds, onConfirm, onClose]);
+
+  if (!plan) return null;
+
+  return (
+    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+      <DialogTitle>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <Layers size={20} />
+          Adicionar da Turma
+        </Box>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+          Selecione as turmas para adicionar seus alunos ao plano &ldquo;{plan.name}&rdquo;
+        </Typography>
+      </DialogTitle>
+      <DialogContent dividers>
+        {/* Classes selection */}
+        <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1.5 }}>
+          Turmas
+        </Typography>
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mb: 3 }}>
+          {classes.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              Nenhuma turma cadastrada.
+            </Typography>
+          )}
+          {classes.map((cls) => {
+            const selected = selectedClassIds.includes(cls.id);
+            return (
+              <Card
+                key={cls.id}
+                variant="outlined"
+                sx={{
+                  borderColor: selected ? 'primary.main' : 'divider',
+                  bgcolor: selected ? 'primary.50' : 'background.paper',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                onClick={() => toggleClass(cls.id)}
+              >
+                <CardContent sx={{ py: '8px !important', px: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <Box>
+                      <Typography variant="body2" fontWeight={600}>{cls.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {cls.studentIds.length} aluno{cls.studentIds.length !== 1 ? 's' : ''}
+                        {cls.category === 'kids' ? ' · Kids' : ' · Adulto'}
+                      </Typography>
+                    </Box>
+                    {selected && <CheckCircle size={18} color="#1976d2" />}
+                  </Box>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </Box>
+
+        {/* Preview */}
+        {selectedClassIds.length > 0 && (
+          <>
+            <Divider sx={{ mb: 2 }} />
+            <Typography variant="subtitle2" fontWeight={600} sx={{ mb: 1 }}>
+              Pré-visualização
+            </Typography>
+            {preview.toAdd.length > 0 && (
+              <Box sx={{ mb: 1.5 }}>
+                <Chip
+                  label={`${preview.toAdd.length} aluno${preview.toAdd.length !== 1 ? 's' : ''} a adicionar`}
+                  color="success"
+                  size="small"
+                  sx={{ mb: 1 }}
+                />
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {preview.toAdd.map((s) => (
+                    <Chip
+                      key={s.id}
+                      label={s.nickname || s.fullName.split(' ')[0]}
+                      size="small"
+                      variant="outlined"
+                    />
+                  ))}
+                </Box>
+              </Box>
+            )}
+            {preview.alreadyIn.length > 0 && (
+              <Box>
+                <Chip
+                  label={`${preview.alreadyIn.length} já no plano (ignorados)`}
+                  color="default"
+                  size="small"
+                  sx={{ mb: 1 }}
+                />
+              </Box>
+            )}
+            {preview.toAdd.length === 0 && (
+              <Typography variant="body2" color="text.secondary">
+                Todos os alunos das turmas selecionadas já estão no plano.
+              </Typography>
+            )}
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={isLoading}>
+          Cancelar
+        </Button>
+        <Button
+          variant="contained"
+          onClick={handleConfirm}
+          disabled={selectedClassIds.length === 0 || preview.toAdd.length === 0 || isLoading}
+          startIcon={isLoading ? <CircularProgress size={16} color="inherit" /> : <CheckCircle size={16} />}
+        >
+          {isLoading ? 'Adicionando...' : `Adicionar ${preview.toAdd.length > 0 ? preview.toAdd.length : ''} aluno${preview.toAdd.length !== 1 ? 's' : ''}`}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+}
+
+// ============================================
 // Manage Students Dialog for Plans
 // ============================================
 interface ManagePlanStudentsDialogProps {
@@ -435,6 +622,7 @@ interface ManagePlanStudentsDialogProps {
   onClose: () => void;
   onToggleStudent: (planId: string, studentId: string) => void;
   isToggling: boolean;
+  onBulkEnrollFromClasses?: (plan: Plan) => void;
 }
 
 function ManagePlanStudentsDialog({
@@ -444,6 +632,7 @@ function ManagePlanStudentsDialog({
   onClose,
   onToggleStudent,
   isToggling,
+  onBulkEnrollFromClasses,
 }: ManagePlanStudentsDialogProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -537,7 +726,15 @@ function ManagePlanStudentsDialog({
           </Box>
         )}
       </DialogContent>
-      <DialogActions>
+      <DialogActions sx={{ justifyContent: 'space-between' }}>
+        <Button
+          startIcon={<Layers size={16} />}
+          onClick={() => plan && onBulkEnrollFromClasses?.(plan)}
+          disabled={!onBulkEnrollFromClasses}
+          variant="outlined"
+        >
+          Adicionar da Turma
+        </Button>
         <Button onClick={onClose}>Fechar</Button>
       </DialogActions>
     </Dialog>
@@ -740,10 +937,12 @@ export function FinancialDashboard() {
     updatePlan,
     deletePlan,
     toggleStudent,
+    addStudentsFromClasses,
     isCreating,
     isUpdating,
     isDeleting,
     isTogglingStudent,
+    isAddingStudentsFromClasses,
     refresh: refreshPlans,
   } = usePlans();
   const { confirm } = useConfirmDialog();
@@ -761,6 +960,7 @@ export function FinancialDashboard() {
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [editingPlan, setEditingPlan] = useState<Plan | null>(null);
   const [managingPlan, setManagingPlan] = useState<Plan | null>(null);
+  const [bulkEnrollPlan, setBulkEnrollPlan] = useState<Plan | null>(null);
   const [payingStudentsDialogOpen, setPayingStudentsDialogOpen] = useState(false);
 
   // ============================================
@@ -1000,6 +1200,14 @@ export function FinancialDashboard() {
   const handleManagePlanStudents = useCallback((plan: Plan) => {
     setManagingPlan(plan);
   }, []);
+
+  const handleBulkEnrollFromClasses = useCallback((plan: Plan) => {
+    setBulkEnrollPlan(plan);
+  }, []);
+
+  const handleConfirmBulkEnroll = useCallback(async (planId: string, classIds: string[]) => {
+    await addStudentsFromClasses({ planId, classIds });
+  }, [addStudentsFromClasses]);
 
   const handleToggleStudentInPlan = useCallback(async (planId: string, studentId: string) => {
     await toggleStudent({ planId, studentId });
@@ -1577,6 +1785,18 @@ export function FinancialDashboard() {
         onClose={() => setManagingPlan(null)}
         onToggleStudent={handleToggleStudentInPlan}
         isToggling={isTogglingStudent}
+        onBulkEnrollFromClasses={handleBulkEnrollFromClasses}
+      />
+
+      {/* Bulk Enroll from Classes Dialog */}
+      <BulkEnrollFromClassesDialog
+        open={!!bulkEnrollPlan}
+        plan={bulkEnrollPlan}
+        classes={classes}
+        students={activeStudents}
+        onClose={() => setBulkEnrollPlan(null)}
+        onConfirm={handleConfirmBulkEnroll}
+        isLoading={isAddingStudentsFromClasses}
       />
 
       {/* Paying Students Dialog */}

@@ -166,6 +166,11 @@ export interface User {
 }
 
 // ============================================
+// Multi-Sport Types (imported from constants — keep types here for consumers)
+// ============================================
+export type { SportId, GradeSystem, GradeDefinition, SportDefinition } from '@/lib/constants/sports';
+
+// ============================================
 // Student Interface
 // ============================================
 export interface Student {
@@ -217,6 +222,24 @@ export interface Student {
     date: Date;
     notes?: string;
   }>;
+
+  // Multi-sport fields (optional — backward compat: absent = assume BJJ)
+  sports?: import('@/lib/constants/sports').SportId[];  // List of sports this student practices
+  sportData?: {
+    [sport: string]: {
+      currentGrade: string;       // grade id (e.g. 'blue', 'light-blue')
+      currentStripes: number;     // 0 if sport has no stripes
+      startDate?: Date;           // Sport-specific start date
+      attendanceCount?: number;   // Sport-specific attendance count
+      gradeHistory?: Array<{
+        grade: string;
+        stripes: number;
+        date: Date;
+        notes?: string;
+        promotedBy?: string;
+      }>;
+    };
+  };
 
   // Attendance tracking
   initialAttendanceCount?: number;  // Previous attendances (from other systems/academies)
@@ -275,6 +298,7 @@ export interface Class {
 
   // Target
   category: StudentCategory;
+  sport?: import('@/lib/constants/sports').SportId;  // defaults to 'bjj' if undefined
   minBelt?: BeltColor;
   maxBelt?: BeltColor;
   maxStudents?: number;
@@ -1287,4 +1311,45 @@ export interface CompetitionPhoto {
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;              // Firebase UID
+}
+
+// ============================================
+// Multi-Sport Backward Compat Helpers
+// ============================================
+import type { SportId } from '@/lib/constants/sports';
+
+/**
+ * Returns the effective list of sports for a student.
+ * If `sports` field is absent, falls back to ['bjj'] for backward compat.
+ */
+export function getStudentSports(student: Student): SportId[] {
+  return student.sports?.length ? (student.sports as SportId[]) : ['bjj'];
+}
+
+/**
+ * Returns grade info for a student in a given sport.
+ * For BJJ without sportData, falls back to legacy currentBelt / currentStripes.
+ */
+export function getStudentGrade(
+  student: Student,
+  sport: SportId
+): { currentGrade: string; currentStripes: number } | null {
+  if (sport === 'bjj' && !student.sportData?.bjj) {
+    // Backward compat: use legacy fields
+    return {
+      currentGrade: student.currentBelt as string,
+      currentStripes: student.currentStripes as number,
+    };
+  }
+  const data = student.sportData?.[sport];
+  if (!data) return null;
+  return { currentGrade: data.currentGrade, currentStripes: data.currentStripes };
+}
+
+/**
+ * Returns the effective sport for a class.
+ * If `sport` field is absent, falls back to 'bjj' for backward compat.
+ */
+export function getClassSport(cls: Class): SportId {
+  return (cls.sport as SportId) ?? 'bjj';
 }

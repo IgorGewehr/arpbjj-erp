@@ -200,6 +200,26 @@ export function usePlans() {
   });
 
   // ============================================
+  // Add Students from Classes Mutation (Bulk Enrollment)
+  // ============================================
+  const addStudentsFromClassesMutation = useMutation({
+    mutationFn: async ({ planId, classIds }: { planId: string; classIds: string[] }) => {
+      return planService.addStudentsFromClasses(planId, classIds);
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.plans] });
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.activePlans] });
+      queryClient.invalidateQueries({ queryKey: ['students'] });
+      queryClient.invalidateQueries({ queryKey: ['student'] });
+      const skippedMsg = result.skipped.length > 0 ? ` (${result.skipped.length} já estavam no plano)` : '';
+      success(`${result.added.length} aluno${result.added.length !== 1 ? 's' : ''} adicionado${result.added.length !== 1 ? 's' : ''} ao plano!${skippedMsg}`);
+    },
+    onError: () => {
+      showError('Erro ao adicionar alunos da turma');
+    },
+  });
+
+  // ============================================
   // Get Plan by ID
   // ============================================
   const getPlan = useCallback(async (id: string): Promise<Plan | null> => {
@@ -236,6 +256,8 @@ export function usePlans() {
     updatePlan: updateMutation.mutateAsync,
     deletePlan: deleteMutation.mutateAsync,
     toggleStudent: toggleStudentMutation.mutateAsync,
+    addStudentsFromClasses: addStudentsFromClassesMutation.mutateAsync,
+    isAddingStudentsFromClasses: addStudentsFromClassesMutation.isPending,
     setCustomValue: setCustomValueMutation.mutateAsync,
     removeCustomValue: removeCustomValueMutation.mutateAsync,
     setCustomDueDay: setCustomDueDayMutation.mutateAsync,

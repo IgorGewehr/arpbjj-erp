@@ -33,6 +33,7 @@ const docToClass = (doc: DocumentSnapshot): Class => {
     studentIds: data.studentIds || [],
     schedule: data.schedule || [],
     category: data.category,
+    sport: data.sport,  // optional — undefined = BJJ (backward compat)
     minBelt: data.minBelt,
     maxBelt: data.maxBelt,
     maxStudents: data.maxStudents,

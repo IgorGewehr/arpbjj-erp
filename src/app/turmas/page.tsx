@@ -48,9 +48,11 @@ import {
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
+import { SportChip } from '@/components/shared/SportChip';
 import { useClasses, useStudents } from '@/hooks';
 import { useConfirmDialog } from '@/components/providers';
-import { Class, Student, StudentCategory, BeltColor } from '@/types';
+import { Class, Student, StudentCategory, BeltColor, getClassSport } from '@/types';
+import { SportId, SPORT_OPTIONS } from '@/lib/constants/sports';
 import { getBeltChipColor } from '@/lib/theme';
 
 // ============================================
@@ -194,7 +196,7 @@ function ClassCard({ classData, students, onEdit, onDelete, onManageStudents, is
         {/* Header */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box sx={{ flex: 1 }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5, flexWrap: 'wrap' }}>
               <Typography variant="h6" fontWeight={700}>
                 {classData.name}
               </Typography>
@@ -206,6 +208,7 @@ function ClassCard({ classData, students, onEdit, onDelete, onManageStudents, is
                 variant="outlined"
                 sx={{ height: 22 }}
               />
+              <SportChip sportId={getClassSport(classData)} variant="short" size="xs" />
             </Box>
             {classData.description && (
               <Typography variant="body2" color="text.secondary">
@@ -450,6 +453,7 @@ interface ClassFormData {
   description: string;
   instructorName: string;
   category: StudentCategory;
+  sport: SportId;
   maxStudents: number;
   schedule: { dayOfWeek: number; startTime: string; endTime: string }[];
 }
@@ -459,6 +463,7 @@ const initialFormData: ClassFormData = {
   description: '',
   instructorName: '',
   category: 'adult',
+  sport: 'bjj',
   maxStudents: 20,
   schedule: [{ dayOfWeek: 1, startTime: '19:00', endTime: '20:30' }],
 };
@@ -536,6 +541,7 @@ export default function TurmasPage() {
       description: cls.description || '',
       instructorName: cls.instructorName || '',
       category: cls.category,
+      sport: getClassSport(cls),
       maxStudents: cls.maxStudents || 20,
       schedule: cls.schedule,
     });
@@ -597,14 +603,24 @@ export default function TurmasPage() {
     if (!formData.name.trim()) return;
 
     try {
+      const classPayload = {
+        name: formData.name,
+        description: formData.description,
+        instructorName: formData.instructorName,
+        category: formData.category,
+        sport: formData.sport,
+        maxStudents: formData.maxStudents,
+        schedule: formData.schedule,
+      };
+
       if (editingClass) {
         await updateClass({
           id: editingClass.id,
-          data: formData,
+          data: classPayload,
         });
       } else {
         await createClass({
-          ...formData,
+          ...classPayload,
           instructorId: 'admin',
           studentIds: [],
           isActive: true,
@@ -740,6 +756,23 @@ export default function TurmasPage() {
                             <cat.icon size={16} />
                             {cat.label}
                           </Box>
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 6 }}>
+                  <FormControl fullWidth disabled={isSaving}>
+                    <InputLabel>Esporte</InputLabel>
+                    <Select
+                      value={formData.sport}
+                      label="Esporte"
+                      onChange={(e) => handleFieldChange('sport', e.target.value as SportId)}
+                    >
+                      {SPORT_OPTIONS.map((opt) => (
+                        <MenuItem key={opt.value} value={opt.value}>
+                          {opt.label}
                         </MenuItem>
                       ))}
                     </Select>

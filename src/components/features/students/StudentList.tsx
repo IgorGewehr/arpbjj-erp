@@ -26,7 +26,8 @@ import { Search, Grid, List, Users, Filter } from 'lucide-react';
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses, usePlans } from '@/hooks';
-import { Student, BeltColor, KidsBeltColor, StudentStatus, StudentCategory } from '@/types';
+import { Student, BeltColor, KidsBeltColor, StudentStatus, StudentCategory, getStudentSports } from '@/types';
+import { SportId, SPORT_OPTIONS, SPORTS, getGradesForSport } from '@/lib/constants/sports';
 
 // ============================================
 // Sort Options
@@ -263,6 +264,7 @@ export function StudentList() {
   const [classFilter, setClassFilter] = useState<string>('');
   const [planFilter, setPlanFilter] = useState<string>('');
   const [accountFilter, setAccountFilter] = useState<string>('');
+  const [sportFilter, setSportFilter] = useState<SportId | ''>('');
   const [sortBy, setSortBy] = useState<SortOption>('alphabetical');
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const initialViewModeSet = useRef(false);
@@ -294,7 +296,7 @@ export function StudentList() {
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, isSearching, fetchNextPage]);
 
-  // Filter and sort students by class, plan, and sort option
+  // Filter and sort students by class, plan, sport, and sort option
   const filteredStudents = useMemo(() => {
     let result = students;
 
@@ -309,6 +311,11 @@ export function StudentList() {
     // Filter by plan
     if (planFilter) {
       result = result.filter(s => s.planId === planFilter);
+    }
+
+    // Filter by sport
+    if (sportFilter) {
+      result = result.filter(s => getStudentSports(s).includes(sportFilter as SportId));
     }
 
     // Filter by account link status
@@ -389,15 +396,35 @@ export function StudentList() {
     [updateFilter]
   );
 
-  // Get belt options based on category filter
+  // Get belt/grade options based on sport and category filter
   const currentBeltOptions = useMemo(() => {
+    if (sportFilter && sportFilter !== 'bjj') {
+      // For non-BJJ sports, show grades from that sport definition
+      const sportGrades = getGradesForSport(sportFilter as SportId, 'adult');
+      const sportLabel = SPORTS[sportFilter as SportId]?.gradeSystem === 'armband' ? 'Prajied' : 'Faixa';
+      return [
+        { value: '' as const, label: `Todas as ${sportLabel}s` },
+        ...sportGrades.map(g => ({ value: g.id as BeltColor | KidsBeltColor | '', label: g.label })),
+      ];
+    }
+    // Default: BJJ belts by category
     if (filters.category === 'kids') {
       return kidsBeltOptions;
     } else if (filters.category === 'adult') {
       return adultBeltOptions;
     }
     return allBeltOptions;
-  }, [filters.category]);
+  }, [filters.category, sportFilter]);
+
+  const handleSportChange = useCallback(
+    (e: SelectChangeEvent<string>) => {
+      const newSport = e.target.value as SportId | '';
+      setSportFilter(newSport);
+      // Reset belt filter when sport changes (grades differ per sport)
+      updateFilter('belt', undefined);
+    },
+    [updateFilter]
+  );
 
   const handleClassChange = useCallback(
     (e: SelectChangeEvent<string>) => {
@@ -444,8 +471,8 @@ export function StudentList() {
   // Active filters count
   const activeFiltersCount = useMemo(() => {
     const filterCount = Object.values(filters).filter((v) => v !== undefined && v !== '').length;
-    return filterCount + (classFilter ? 1 : 0) + (planFilter ? 1 : 0) + (accountFilter ? 1 : 0);
-  }, [filters, classFilter, planFilter, accountFilter]);
+    return filterCount + (classFilter ? 1 : 0) + (planFilter ? 1 : 0) + (accountFilter ? 1 : 0) + (sportFilter ? 1 : 0);
+  }, [filters, classFilter, planFilter, accountFilter, sportFilter]);
 
   // Clear all filters including class, plan filter and search
   const handleClearFilters = useCallback(() => {
@@ -454,30 +481,57 @@ export function StudentList() {
     setClassFilter('');
     setPlanFilter('');
     setAccountFilter('');
+    setSportFilter('');
   }, [clearFilters, clearSearch]);
 
   // MenuProps for Selects inside BottomSheet (needs higher z-index)
   const selectMenuProps = isMobile ? { sx: { zIndex: 1400 } } : undefined;
 
+  // Determine if the selected sport has grades (boxing has none)
+  const selectedSportHasGrades = !sportFilter || SPORTS[sportFilter as SportId]?.gradeSystem !== 'none';
+  const gradeFilterLabel = sportFilter && SPORTS[sportFilter as SportId]?.gradeSystem === 'armband'
+    ? 'Prajied'
+    : 'Faixa';
+
   // Filter content for both desktop and mobile
   const FilterContent = (
     <>
-      {/* Belt Filter */}
+      {/* Sport Filter */}
       <FormControl size="small" sx={{ minWidth: isMobile ? '100%' : 150 }}>
-        <InputLabel>Faixa</InputLabel>
+        <InputLabel>Esporte</InputLabel>
         <Select
-          value={(filters.belt as string) || ''}
-          onChange={handleBeltChange}
-          label="Faixa"
+          value={sportFilter}
+          onChange={handleSportChange}
+          label="Esporte"
           MenuProps={selectMenuProps}
         >
-          {currentBeltOptions.map((opt) => (
+          <MenuItem value="">Todos os Esportes</MenuItem>
+          {SPORT_OPTIONS.map((opt) => (
             <MenuItem key={opt.value} value={opt.value}>
               {opt.label}
             </MenuItem>
           ))}
         </Select>
       </FormControl>
+
+      {/* Belt / Grade Filter — hidden for sports with no grade system */}
+      {selectedSportHasGrades && (
+        <FormControl size="small" sx={{ minWidth: isMobile ? '100%' : 150 }}>
+          <InputLabel>{gradeFilterLabel}</InputLabel>
+          <Select
+            value={(filters.belt as string) || ''}
+            onChange={handleBeltChange}
+            label={gradeFilterLabel}
+            MenuProps={selectMenuProps}
+          >
+            {currentBeltOptions.map((opt) => (
+              <MenuItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+      )}
 
       {/* Status Filter */}
       <FormControl size="small" sx={{ minWidth: isMobile ? '100%' : 150 }}>

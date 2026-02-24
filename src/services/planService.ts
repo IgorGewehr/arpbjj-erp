@@ -11,6 +11,7 @@ import {
 } from 'firebase/firestore';
 import { collections } from '@/lib/firebase/collections';
 import { Plan } from '@/types';
+import { ClassService } from './classService';
 
 // ============================================
 // Helper: Get the value a student pays in a plan
@@ -295,6 +296,60 @@ export class PlanService {
     const plans = await this.getPlansForStudent(studentId);
     return plans[0] || null;
   }
+
+  // ============================================
+  // Bulk: Add Students from Classes to Plan
+  // ============================================
+  /**
+   * Fetches all studentIds from the given classes, deduplicates them,
+   * and batch-adds everyone not already in the plan.
+   *
+   * @returns { added: string[], skipped: string[] }
+   *   - added: studentIds newly enrolled into the plan
+   *   - skipped: studentIds already in the plan (no duplicate added)
+   */
+  async addStudentsFromClasses(
+    planId: string,
+    classIds: string[]
+  ): Promise<{ added: string[]; skipped: string[] }> {
+    if (classIds.length === 0) return { added: [], skipped: [] };
+
+    const plan = await this.getById(planId);
+    if (!plan) throw new Error('Plan not found');
+
+    const classService = new ClassService(this.academyId);
+
+    // Collect all student IDs from selected classes
+    const allStudentIds = new Set<string>();
+    for (const classId of classIds) {
+      const cls = await classService.getById(classId);
+      if (cls) {
+        cls.studentIds.forEach((id) => allStudentIds.add(id));
+      }
+    }
+
+    const existingIds = new Set(plan.studentIds);
+    const added: string[] = [];
+    const skipped: string[] = [];
+
+    for (const studentId of allStudentIds) {
+      if (existingIds.has(studentId)) {
+        skipped.push(studentId);
+      } else {
+        added.push(studentId);
+      }
+    }
+
+    if (added.length > 0) {
+      const docRef = collections.plan(this.academyId, planId);
+      await updateDoc(docRef, {
+        studentIds: [...plan.studentIds, ...added],
+        updatedAt: Timestamp.fromDate(new Date()),
+      });
+    }
+
+    return { added, skipped };
+  }
 }
 
 // ============================================
@@ -324,6 +379,8 @@ export const planService = {
   getStudentsByPlan: (planId: string) => new PlanService(DEFAULT_ACADEMY_ID).getStudentsByPlan(planId),
   getPlansForStudent: (studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).getPlansForStudent(studentId),
   getPlanForStudent: (studentId: string) => new PlanService(DEFAULT_ACADEMY_ID).getPlanForStudent(studentId),
+  addStudentsFromClasses: (planId: string, classIds: string[]) =>
+    new PlanService(DEFAULT_ACADEMY_ID).addStudentsFromClasses(planId, classIds),
 };
 
 export default planService;

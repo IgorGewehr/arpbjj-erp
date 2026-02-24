@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback, ReactNode } from 'react';
-import { Box, useTheme, useMediaQuery } from '@mui/material';
+import { useState, useCallback, useEffect, useRef, ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
+import { Box, LinearProgress, useTheme, useMediaQuery } from '@mui/material';
 import { Sidebar, SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from './Sidebar';
 import { TopBar } from './TopBar';
 import { MobileBottomNav } from './MobileBottomNav';
@@ -35,9 +36,34 @@ export function AppLayout({ children }: AppLayoutProps) {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialCollapsedState);
+  const [isNavigating, setIsNavigating] = useState(false);
+  const pathname = usePathname();
+  const pushStatePatched = useRef(false);
 
   // Get academy settings for branding
   const { academy } = useAcademy();
+
+  // Intercept history.pushState to detect navigation start
+  useEffect(() => {
+    if (pushStatePatched.current) return;
+    pushStatePatched.current = true;
+
+    const originalPushState = window.history.pushState;
+    window.history.pushState = function (...args: Parameters<typeof window.history.pushState>) {
+      setIsNavigating(true);
+      return originalPushState.apply(window.history, args);
+    };
+
+    return () => {
+      window.history.pushState = originalPushState;
+      pushStatePatched.current = false;
+    };
+  }, []);
+
+  // Hide progress bar when navigation completes (pathname changed)
+  useEffect(() => {
+    setIsNavigating(false);
+  }, [pathname]);
 
   // Get overdue payments count for BottomNav badge
   const { overduePayments } = useFinancial();
@@ -65,6 +91,21 @@ export function AppLayout({ children }: AppLayoutProps) {
 
   return (
     <Box sx={{ display: 'flex', minHeight: '100vh' }}>
+      {/* Global Navigation Progress Bar */}
+      <LinearProgress
+        sx={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          zIndex: theme.zIndex.tooltip + 1,
+          height: 3,
+          opacity: isNavigating ? 1 : 0,
+          transition: 'opacity 0.25s ease-out',
+          pointerEvents: 'none',
+        }}
+      />
+
       {/* Sidebar */}
       <Sidebar
         mobileOpen={mobileOpen}

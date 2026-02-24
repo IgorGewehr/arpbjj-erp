@@ -13,6 +13,7 @@ import {
   MenuItem as MuiMenuItem,
   ListItemIcon,
   ListItemText,
+  CircularProgress,
 } from '@mui/material';
 import { Phone, AlertCircle, ChevronRight, Target, MoreVertical } from 'lucide-react';
 import { Student, StudentStatus } from '@/types';
@@ -109,11 +110,16 @@ export function StudentCard({
     setOptimisticStatus(null);
   }, [student.status]);
 
+  // Navigating state — shows overlay spinner immediately on click
+  const [isNavigating, setIsNavigating] = useState(false);
+
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const menuOpen = Boolean(menuAnchor);
 
   const handleClick = useCallback(() => {
-    onClick?.(student);
+    if (!onClick) return;
+    setIsNavigating(true);
+    onClick(student);
   }, [onClick, student]);
 
   const handleWhatsApp = useCallback((e: React.MouseEvent) => {
@@ -157,10 +163,30 @@ export function StudentCard({
       <Card
         sx={{
           borderRadius: 2,
-          opacity: displayStatus === 'inactive' ? 0.6 : 1,
+          opacity: displayStatus === 'inactive' ? 0.6 : isNavigating ? 0.7 : 1,
           position: 'relative',
+          transition: 'opacity 0.15s ease',
+          pointerEvents: isNavigating ? 'none' : 'auto',
         }}
       >
+        {/* Navigation overlay — shows immediately on click */}
+        {isNavigating && (
+          <Box
+            sx={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'flex-end',
+              pr: 2,
+              zIndex: 2,
+              bgcolor: 'rgba(255,255,255,0.3)',
+              borderRadius: 2,
+            }}
+          >
+            <CircularProgress size={20} thickness={4} />
+          </Box>
+        )}
         <CardActionArea onClick={handleClick} sx={{ p: 2, pr: 12 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             {/* Avatar */}
@@ -299,13 +325,32 @@ export function StudentCard({
     <Card
       sx={{
         borderRadius: 3,
-        opacity: displayStatus === 'inactive' ? 0.6 : 1,
+        opacity: displayStatus === 'inactive' ? 0.6 : isNavigating ? 0.7 : 1,
         position: 'relative',
         height: { xs: 145, sm: 165 },
         display: 'flex',
         flexDirection: 'column',
+        transition: 'opacity 0.15s ease',
+        pointerEvents: isNavigating ? 'none' : 'auto',
       }}
     >
+      {/* Navigation overlay — shows immediately on click */}
+      {isNavigating && (
+        <Box
+          sx={{
+            position: 'absolute',
+            inset: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 2,
+            bgcolor: 'rgba(255,255,255,0.45)',
+            borderRadius: 3,
+          }}
+        >
+          <CircularProgress size={28} thickness={4} />
+        </Box>
+      )}
       <CardActionArea onClick={handleClick} sx={{ p: { xs: 1.5, sm: 2.5 }, pr: { xs: 5, sm: 6 }, height: '100%' }}>
         <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: { xs: 1.5, sm: 2 }, height: '100%' }}>
           {/* Avatar */}

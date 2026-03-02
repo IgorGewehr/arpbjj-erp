@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Box,
@@ -24,7 +24,11 @@ import {
   Trophy,
   BarChart3,
   Settings,
+  Store,
+  Wallet,
+  Receipt,
 } from 'lucide-react';
+import { useAcademy } from '@/contexts/AcademyContext';
 
 // ============================================
 // Types
@@ -51,11 +55,13 @@ const primaryNavItems: NavItem[] = [
 ];
 
 // ============================================
-// Secondary Navigation Items (More Menu)
+// Secondary Navigation Items (More Menu) - base items
+// Loja, Carteira and Cobranca are added dynamically
 // ============================================
-const secondaryNavItems: NavItem[] = [
+const baseSecondaryNavItems: NavItem[] = [
   { label: 'Turmas', icon: Calendar, path: '/turmas' },
   { label: 'Competicoes', icon: Trophy, path: '/competicoes' },
+  { label: 'Cobranca', icon: Receipt, path: '/cobranca' },
   { label: 'Relatorios', icon: BarChart3, path: '/relatorios' },
   { label: 'Configuracoes', icon: Settings, path: '/configuracoes' },
 ];
@@ -72,7 +78,25 @@ export function MobileBottomNav({ overdueCount = 0 }: MobileBottomNavProps) {
   const theme = useTheme();
   const pathname = usePathname();
   const router = useRouter();
+  const { academy } = useAcademy();
   const [moreAnchor, setMoreAnchor] = useState<null | HTMLElement>(null);
+
+  // Dynamic secondary items based on academy settings
+  const secondaryNavItems = useMemo(() => {
+    const items = [...baseSecondaryNavItems];
+    // Insert Carteira after Cobranca (index 2) if AbacatePay enabled
+    const cobrancaIndex = items.findIndex(i => i.path === '/cobranca');
+    let insertIndex = cobrancaIndex + 1;
+    if (academy?.abacatePayEnabled) {
+      items.splice(insertIndex, 0, { label: 'Carteira', icon: Wallet, path: '/carteira' });
+      insertIndex++;
+    }
+    // Insert Loja after Carteira/Cobranca if store enabled
+    if (academy?.storeEnabled) {
+      items.splice(insertIndex, 0, { label: 'Loja', icon: Store, path: '/loja' });
+    }
+    return items;
+  }, [academy?.storeEnabled, academy?.abacatePayEnabled]);
 
   const handleNavigate = useCallback((path: string) => {
     router.push(path);

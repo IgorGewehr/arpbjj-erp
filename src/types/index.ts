@@ -224,6 +224,7 @@ export interface Student {
   }>;
 
   // Multi-sport fields (optional — backward compat: absent = assume BJJ)
+  primarySport?: import('@/lib/constants/sports').SportId;  // Main sport (shown on card when no filter)
   sports?: import('@/lib/constants/sports').SportId[];  // List of sports this student practices
   sportData?: {
     [sport: string]: {
@@ -1324,6 +1325,14 @@ import type { SportId } from '@/lib/constants/sports';
  */
 export function getStudentSports(student: Student): SportId[] {
   return student.sports?.length ? (student.sports as SportId[]) : ['bjj'];
+}
+
+/**
+ * Returns the primary sport for a student.
+ * If `primarySport` is set, returns it; otherwise falls back to the first sport.
+ */
+export function getStudentPrimarySport(student: Student): SportId {
+  return (student.primarySport as SportId) || getStudentSports(student)[0];
 }
 
 /**

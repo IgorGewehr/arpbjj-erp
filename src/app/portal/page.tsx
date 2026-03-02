@@ -31,29 +31,11 @@ import { createAttendanceService } from '@/services/attendanceService';
 import { createCompetitionService } from '@/services/competitionService';
 import { createCheckinService, isInCheckinWindow } from '@/services/checkinService';
 import { useAcademySettings } from '@/hooks/useAcademySettings';
-import { BeltDisplay } from '@/components/shared/BeltDisplay';
+import { GradeDisplay } from '@/components/shared/GradeDisplay';
 import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { PullToRefresh, FadeInView, ScaleOnPress } from '@/components/mobile';
-
-const BELT_LABELS: Record<string, string> = {
-  white: 'Branca',
-  blue: 'Azul',
-  purple: 'Roxa',
-  brown: 'Marrom',
-  black: 'Preta',
-  grey: 'Cinza',
-  'grey-white': 'Cinza/Branca',
-  'grey-black': 'Cinza/Preta',
-  yellow: 'Amarela',
-  'yellow-white': 'Amarela/Branca',
-  'yellow-black': 'Amarela/Preta',
-  orange: 'Laranja',
-  'orange-white': 'Laranja/Branca',
-  'orange-black': 'Laranja/Preta',
-  green: 'Verde',
-  'green-white': 'Verde/Branca',
-  'green-black': 'Verde/Preta',
-};
+import { getStudentSports, getStudentGrade, getStudentPrimarySport } from '@/types';
+import { SPORTS, SportId } from '@/lib/constants/sports';
 
 const DAY_LABELS = ['Domingo', 'Segunda', 'Terca', 'Quarta', 'Quinta', 'Sexta', 'Sabado'];
 
@@ -536,12 +518,38 @@ export default function PortalHomePage() {
             >
               {greeting}, {displayName}!
             </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-              <BeltDisplay belt={student?.currentBelt || 'white'} stripes={student?.currentStripes || 0} size="small" />
-              <Typography variant="body2" color="text.secondary" sx={{ fontSize: { xs: '0.8rem', sm: '0.875rem' } }}>
-                Faixa {BELT_LABELS[student?.currentBelt || 'white']}
-                {(student?.currentStripes || 0) > 0 && ` • ${student?.currentStripes} grau${(student?.currentStripes || 0) > 1 ? 's' : ''}`}
-              </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mt: 0.5, flexWrap: 'wrap' }}>
+              {student && [...getStudentSports(student)].sort((a, b) => {
+                const primary = getStudentPrimarySport(student);
+                if (a === primary) return -1;
+                if (b === primary) return 1;
+                return 0;
+              }).map((sportId) => {
+                const gradeInfo = getStudentGrade(student, sportId);
+                if (!gradeInfo) return null;
+                const sport = SPORTS[sportId];
+                if (!sport || sport.gradeSystem === 'none') return null;
+                const multiSport = getStudentSports(student).length > 1;
+                return (
+                  <Box key={sportId} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                    <GradeDisplay
+                      sportId={sportId}
+                      grade={gradeInfo.currentGrade}
+                      stripes={gradeInfo.currentStripes}
+                      size="small"
+                      showLabel
+                    />
+                    {multiSport && (
+                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem', fontWeight: 500 }}>
+                        {sport.labelShort}
+                      </Typography>
+                    )}
+                  </Box>
+                );
+              })}
+              {!student && (
+                <GradeDisplay sportId="bjj" grade="white" stripes={0} size="small" />
+              )}
             </Box>
           </Box>
         </FadeInView>

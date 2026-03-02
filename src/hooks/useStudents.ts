@@ -239,6 +239,36 @@ export function useStudents(options: UseStudentsOptions = {}) {
   });
 
   // ============================================
+  // Update Sport Grade Mutation
+  // ============================================
+  const updateSportGradeMutation = useMutation({
+    mutationFn: async ({
+      id,
+      sportId,
+      newGrade,
+      newStripes,
+      promotedBy,
+      notes,
+    }: {
+      id: string;
+      sportId: string;
+      newGrade: string;
+      newStripes: number;
+      promotedBy?: string;
+      notes?: string;
+    }) => {
+      return studentService.updateSportGrade(id, sportId, newGrade, newStripes, promotedBy, notes);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.students] });
+      success('Graduação atualizada!');
+    },
+    onError: () => {
+      showError('Erro ao atualizar graduação');
+    },
+  });
+
+  // ============================================
   // Search Students
   // ============================================
   const searchMutation = useMutation({
@@ -331,6 +361,7 @@ export function useStudents(options: UseStudentsOptions = {}) {
     updateStudent: updateMutation.mutateAsync,
     deleteStudent: deleteMutation.mutateAsync,
     updateBelt: updateBeltMutation.mutateAsync,
+    updateSportGrade: updateSportGradeMutation.mutateAsync,
     searchStudents: searchMutation.mutateAsync,
 
     // Loading states

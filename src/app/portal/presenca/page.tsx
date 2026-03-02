@@ -1,7 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
-import { Box, Typography, Skeleton } from '@mui/material';
+import { useMemo, useState } from 'react';
+import { Box, Typography, Skeleton, Chip } from '@mui/material';
 import { CheckCircle, Calendar } from 'lucide-react';
 import { usePermissions } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
@@ -9,13 +9,17 @@ import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import { useQuery } from '@tanstack/react-query';
 import { createAttendanceService } from '@/services/attendanceService';
 import { createStudentService } from '@/services/studentService';
+import { createClassService } from '@/services/classService';
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
+import { getClassSport } from '@/types';
+import { SportId, SPORTS } from '@/lib/constants/sports';
 
 export default function PortalPresencaPage() {
   const { linkedStudentIds } = usePermissions();
   const { academyId } = useAcademy();
   const studentId = linkedStudentIds[0];
+  const [sportFilter, setSportFilter] = useState<SportId | ''>('');
 
   const { data: student } = useQuery({
     queryKey: ['student', studentId, academyId],
@@ -37,24 +41,67 @@ export default function PortalPresencaPage() {
     enabled: !!studentId && !!academyId,
   });
 
+  // Fetch student classes to build classId → sport map
+  const { data: studentClasses } = useQuery({
+    queryKey: ['studentClasses', studentId, academyId],
+    queryFn: () => {
+      if (!academyId) return [];
+      const classService = createClassService(academyId);
+      return classService.getByStudent(studentId);
+    },
+    enabled: !!studentId && !!academyId,
+  });
+
   // Ensure attendanceRecords is always an array
   const records = Array.isArray(attendanceRecords) ? attendanceRecords : [];
+
+  // Build classId → sport map
+  const classSportMap = useMemo(() => {
+    const map: Record<string, SportId> = {};
+    if (studentClasses) {
+      studentClasses.forEach((cls) => {
+        map[cls.id] = getClassSport(cls);
+      });
+    }
+    return map;
+  }, [studentClasses]);
+
+  // Discover which sports the student has attendance in
+  const attendanceSports = useMemo(() => {
+    const sports = new Set<SportId>();
+    records.forEach((r) => {
+      const sport = classSportMap[r.classId] || 'bjj';
+      sports.add(sport);
+    });
+    return [...sports];
+  }, [records, classSportMap]);
+
+  const showSportFilter = attendanceSports.length > 1;
+
+  // Filter records by sport
+  const filteredRecords = useMemo(() => {
+    if (!sportFilter) return records;
+    return records.filter((r) => {
+      const sport = classSportMap[r.classId] || 'bjj';
+      return sport === sportFilter;
+    });
+  }, [records, sportFilter, classSportMap]);
 
   // Calculate stats - include initialAttendanceCount (previous workouts from other gyms/periods)
   const stats = useMemo(() => {
     const now = new Date();
-    const thisMonth = records.filter((a) => {
+    const thisMonth = filteredRecords.filter((a) => {
       const date = new Date(a.date);
       return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
     });
 
-    const initialCount = student?.initialAttendanceCount || 0;
+    const initialCount = !sportFilter ? (student?.initialAttendanceCount || 0) : 0;
 
     return {
-      total: records.length + initialCount,
+      total: filteredRecords.length + initialCount,
       thisMonth: thisMonth.length,
     };
-  }, [records, student?.initialAttendanceCount]);
+  }, [filteredRecords, student?.initialAttendanceCount, sportFilter]);
 
   // Calendar data for current month
   const calendarDays = useMemo(() => {
@@ -65,9 +112,9 @@ export default function PortalPresencaPage() {
 
     return days.map((day) => ({
       date: day,
-      hasAttendance: records.some((a) => isSameDay(new Date(a.date), day)),
+      hasAttendance: filteredRecords.some((a) => isSameDay(new Date(a.date), day)),
     }));
-  }, [records]);
+  }, [filteredRecords]);
 
   if (isLoading) {
     return (
@@ -88,6 +135,29 @@ export default function PortalPresencaPage() {
     <Box>
       {/* Academy indicator for multi-academy users */}
       <AcademyIndicator label="Presencas de" icon={<CheckCircle size={16} />} />
+
+      {/* Sport Filter Chips */}
+      {showSportFilter && (
+        <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+          <Chip
+            label="Todos"
+            size="small"
+            variant={sportFilter === '' ? 'filled' : 'outlined'}
+            color={sportFilter === '' ? 'primary' : 'default'}
+            onClick={() => setSportFilter('')}
+          />
+          {attendanceSports.map((sportId) => (
+            <Chip
+              key={sportId}
+              label={SPORTS[sportId]?.labelShort || sportId}
+              size="small"
+              variant={sportFilter === sportId ? 'filled' : 'outlined'}
+              color={sportFilter === sportId ? 'primary' : 'default'}
+              onClick={() => setSportFilter(sportId)}
+            />
+          ))}
+        </Box>
+      )}
 
       {/* Stats Cards */}
       <Box
@@ -248,7 +318,7 @@ export default function PortalPresencaPage() {
           Histórico recente
         </Typography>
 
-        {records.length === 0 ? (
+        {filteredRecords.length === 0 ? (
           <Box
             sx={{
               py: 4,
@@ -265,52 +335,66 @@ export default function PortalPresencaPage() {
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            {records.slice(0, 15).map((record) => (
-              <Box
-                key={record.id}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: { xs: 1.5, sm: 2 },
-                  p: { xs: 1.5, sm: 2 },
-                  borderRadius: 2,
-                  bgcolor: '#fff',
-                  border: '1px solid',
-                  borderColor: 'grey.200',
-                }}
-              >
+            {filteredRecords.slice(0, 15).map((record) => {
+              const recordSport = classSportMap[record.classId];
+              const sportLabel = recordSport && showSportFilter ? SPORTS[recordSport]?.labelShort : null;
+              return (
                 <Box
+                  key={record.id}
                   sx={{
-                    width: { xs: 32, sm: 36 },
-                    height: { xs: 32, sm: 36 },
-                    borderRadius: '50%',
-                    bgcolor: '#DCFCE7',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
+                    gap: { xs: 1.5, sm: 2 },
+                    p: { xs: 1.5, sm: 2 },
+                    borderRadius: 2,
+                    bgcolor: '#fff',
+                    border: '1px solid',
+                    borderColor: 'grey.200',
                   }}
                 >
-                  <CheckCircle size={16} color="#16A34A" />
-                </Box>
-                <Box sx={{ flex: 1, minWidth: 0 }}>
-                  <Typography
-                    variant="body2"
-                    fontWeight={500}
-                    sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' } }}
+                  <Box
+                    sx={{
+                      width: { xs: 32, sm: 36 },
+                      height: { xs: 32, sm: 36 },
+                      borderRadius: '50%',
+                      bgcolor: '#DCFCE7',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      flexShrink: 0,
+                    }}
                   >
-                    {format(new Date(record.date), "d 'de' MMMM", { locale: ptBR })}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
-                  >
-                    {record.className || 'Treino'}
-                  </Typography>
+                    <CheckCircle size={16} color="#16A34A" />
+                  </Box>
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Typography
+                      variant="body2"
+                      fontWeight={500}
+                      sx={{ fontSize: { xs: '0.85rem', sm: '0.9rem' } }}
+                    >
+                      {format(new Date(record.date), "d 'de' MMMM", { locale: ptBR })}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                      <Typography
+                        variant="caption"
+                        color="text.secondary"
+                        sx={{ fontSize: { xs: '0.7rem', sm: '0.75rem' } }}
+                      >
+                        {record.className || 'Treino'}
+                      </Typography>
+                      {sportLabel && (
+                        <Chip
+                          label={sportLabel}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: '0.6rem', height: 18, '& .MuiChip-label': { px: 0.75 } }}
+                        />
+                      )}
+                    </Box>
+                  </Box>
                 </Box>
-              </Box>
-            ))}
+              );
+            })}
           </Box>
         )}
         </Box>

@@ -20,11 +20,15 @@ import {
   Skeleton,
   CircularProgress,
 } from '@mui/material';
-import { ArrowLeft, Save, User, X, Plus, CreditCard, GraduationCap, MapPin, Shield, Heart } from 'lucide-react';
+import { ArrowLeft, Save, User, X, Plus, CreditCard, GraduationCap, MapPin, Shield, Heart, Award } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { useStudent, useStudents, usePlans, useClasses } from '@/hooks';
-import { BeltColor, KidsBeltColor, StudentCategory, StudentStatus, Stripes } from '@/types';
+import { BeltColor, KidsBeltColor, StudentCategory, StudentStatus, Stripes, getStudentSports, getStudentPrimarySport, getClassSport } from '@/types';
+import { SportId, SPORTS, getGradesForSport } from '@/lib/constants/sports';
+import { GradeDisplay } from '@/components/shared/GradeDisplay';
+import { createClassService } from '@/services/classService';
+import { useAcademy } from '@/contexts/AcademyContext';
 import {
   InputField,
   PhoneInput,
@@ -40,11 +44,12 @@ import {
 import { ADULT_BELT_OPTIONS, KIDS_BELT_OPTIONS } from '@/lib/constants/belts';
 
 // ============================================
-// Tabs Configuration
+// Tabs Configuration (base — sport tabs are injected dynamically)
 // ============================================
-const formTabs = [
+const BASE_TABS_BEFORE = [
   { key: 'personal', label: 'Dados Pessoais', icon: User },
-  { key: 'jiujitsu', label: 'Jiu-Jitsu', icon: Shield },
+];
+const BASE_TABS_AFTER = [
   { key: 'plans', label: 'Plano e Turmas', icon: CreditCard },
   { key: 'address', label: 'Endereço', icon: MapPin },
   { key: 'health', label: 'Saúde', icon: Heart },
@@ -81,6 +86,13 @@ interface BeltHistoryEntry {
   notes: string;
 }
 
+interface SportGradeEntry {
+  currentGrade: string;
+  currentStripes: number;
+  startDate: string;
+  gradeHistory: Array<{ grade: string; stripes: number; date: string; notes: string }>;
+}
+
 interface FormData {
   fullName: string;
   nickname: string;
@@ -113,6 +125,8 @@ interface FormData {
   weight: string;
   initialAttendanceCount: string;
   beltHistory: BeltHistoryEntry[];
+  sportGrades: Record<string, SportGradeEntry>;
+  primarySport: string;
   bloodType: string;
   healthNotes: string;
   allergies: string[];
@@ -153,6 +167,7 @@ export default function StudentEditPage() {
   const params = useParams();
   const router = useRouter();
   const studentId = params.id as string;
+  const { academyId } = useAcademy();
 
   const { student, isLoading } = useStudent(studentId);
   const { updateStudent, isUpdating } = useStudents({ autoLoad: false });
@@ -166,6 +181,33 @@ export default function StudentEditPage() {
   const [formData, setFormData] = useState<FormData | null>(null);
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [newAllergy, setNewAllergy] = useState('');
+
+  // Derive effective sports from student or classes
+  const [classSports, setClassSports] = useState<SportId[]>([]);
+  useEffect(() => {
+    if (!studentId || !academyId || student?.sports?.length) return;
+    const classService = createClassService(academyId);
+    classService.getByStudent(studentId).then((cls) => {
+      const sports = [...new Set(cls.map((c) => getClassSport(c)))];
+      if (sports.length > 0) setClassSports(sports);
+    }).catch(() => {/* silent */});
+  }, [studentId, academyId, student?.sports?.length]);
+
+  const effectiveSports = useMemo((): SportId[] => {
+    if (student?.sports?.length) return student.sports as SportId[];
+    if (classSports.length) return classSports;
+    return ['bjj'];
+  }, [student?.sports, classSports]);
+
+  // Dynamic tabs: [Personal] [BJJ] [Muay Thai] [Karatê] ... [Plans] [Address] [Health]
+  const formTabs = useMemo(() => {
+    const sportTabs = effectiveSports.map((sportId) => ({
+      key: `sport_${sportId}`,
+      label: SPORTS[sportId]?.labelShort || sportId,
+      icon: sportId === 'bjj' ? Shield : Award,
+    }));
+    return [...BASE_TABS_BEFORE, ...sportTabs, ...BASE_TABS_AFTER];
+  }, [effectiveSports]);
 
   // Load student's current plans and classes
   useEffect(() => {
@@ -181,6 +223,24 @@ export default function StudentEditPage() {
   // Initialize form data from student
   useEffect(() => {
     if (student && !formData) {
+      // Build sportGrades from student.sportData for non-BJJ sports
+      const sportGrades: Record<string, SportGradeEntry> = {};
+      effectiveSports.forEach((sportId) => {
+        if (sportId === 'bjj') return; // BJJ uses legacy fields
+        const data = student.sportData?.[sportId];
+        sportGrades[sportId] = {
+          currentGrade: data?.currentGrade || 'white',
+          currentStripes: data?.currentStripes || 0,
+          startDate: data?.startDate ? formatDateForInput(data.startDate) : '',
+          gradeHistory: data?.gradeHistory?.map((h: any) => ({
+            grade: h.grade,
+            stripes: h.stripes,
+            date: h.date ? formatDateForInput(h.date) : '',
+            notes: h.notes || '',
+          })) || [],
+        };
+      });
+
       setFormData({
         fullName: student.fullName,
         nickname: student.nickname || '',
@@ -218,6 +278,8 @@ export default function StudentEditPage() {
           date: formatDateForInput(entry.date),
           notes: entry.notes || '',
         })) || [],
+        sportGrades,
+        primarySport: student.primarySport || getStudentPrimarySport(student),
         bloodType: student.bloodType || '',
         healthNotes: student.healthNotes || '',
         allergies: student.allergies || [],
@@ -226,7 +288,7 @@ export default function StudentEditPage() {
         emergencyContactRelationship: student.emergencyContact?.relationship || '',
       });
     }
-  }, [student, formData]);
+  }, [student, formData, effectiveSports]);
 
   // ============================================
   // Calculate form progress
@@ -257,7 +319,7 @@ export default function StudentEditPage() {
       ...tab,
       hasErrors: tab.key === 'personal' && formData ? !formData.fullName.trim() : false,
     }));
-  }, [formData]);
+  }, [formData, formTabs]);
 
   // ============================================
   // Handle Field Change
@@ -265,6 +327,21 @@ export default function StudentEditPage() {
   const handleChange = useCallback((field: keyof FormData, value: string | string[] | number | BeltHistoryEntry[]) => {
     setFormData(prev => prev ? { ...prev, [field]: value } : null);
     setErrors(prev => ({ ...prev, [field]: undefined }));
+  }, []);
+
+  // Handle sport grade field change (for non-BJJ sports)
+  const handleSportGradeChange = useCallback((sportId: string, field: keyof SportGradeEntry, value: any) => {
+    setFormData(prev => {
+      if (!prev) return null;
+      const current = prev.sportGrades[sportId] || { currentGrade: 'white', currentStripes: 0, startDate: '', gradeHistory: [] };
+      return {
+        ...prev,
+        sportGrades: {
+          ...prev.sportGrades,
+          [sportId]: { ...current, [field]: value },
+        },
+      };
+    });
   }, []);
 
   // ============================================
@@ -347,6 +424,27 @@ export default function StudentEditPage() {
               notes: entry.notes || undefined,
             }))
           : undefined,
+        // Multi-sport: persist sportData, sports array, and primary sport
+        primarySport: (formData.primarySport || 'bjj') as SportId,
+        sports: effectiveSports,
+        sportData: Object.keys(formData.sportGrades).length > 0
+          ? Object.fromEntries(
+              Object.entries(formData.sportGrades).map(([sportId, sg]) => [
+                sportId,
+                {
+                  currentGrade: sg.currentGrade,
+                  currentStripes: sg.currentStripes,
+                  startDate: sg.startDate ? new Date(sg.startDate) : undefined,
+                  gradeHistory: sg.gradeHistory.filter(h => h.date).map(h => ({
+                    grade: h.grade,
+                    stripes: h.stripes,
+                    date: new Date(h.date),
+                    notes: h.notes || undefined,
+                  })),
+                },
+              ])
+            )
+          : undefined,
         bloodType: formData.bloodType || undefined,
         healthNotes: formData.healthNotes.trim() || undefined,
         allergies: formData.allergies.length > 0 ? formData.allergies : undefined,
@@ -362,7 +460,7 @@ export default function StudentEditPage() {
     } catch {
       // Error handled by mutation
     }
-  }, [formData, validateForm, updateStudent, studentId, router]);
+  }, [formData, validateForm, updateStudent, studentId, router, effectiveSports]);
 
   // Loading state
   if (isLoading || !formData) {
@@ -577,10 +675,11 @@ export default function StudentEditPage() {
               </FormTabPanel>
 
               {/* ====================================== */}
-              {/* Tab: Jiu-Jitsu */}
+              {/* Tab: BJJ (dynamic — only if student practices BJJ) */}
               {/* ====================================== */}
-              <FormTabPanel tabKey="jiujitsu" activeTab={activeTab}>
-                <FormSection title="Graduação" icon={Shield}>
+              {effectiveSports.includes('bjj') && (
+              <FormTabPanel tabKey="sport_bjj" activeTab={activeTab}>
+                <FormSection title="Graduação — Jiu-Jitsu" icon={Shield}>
                   <Grid container spacing={2.5}>
                     <Grid size={{ xs: 12, md: 3 }}>
                       <FormControl fullWidth>
@@ -692,6 +791,26 @@ export default function StudentEditPage() {
                         helperText="Total de treinos já realizados"
                       />
                     </Grid>
+
+                    {effectiveSports.length > 1 && (
+                      <Grid size={{ xs: 12, md: 4 }}>
+                        <FormControl fullWidth>
+                          <InputLabel>Esporte principal</InputLabel>
+                          <Select
+                            value={formData.primarySport}
+                            onChange={(e) => handleChange('primarySport', e.target.value)}
+                            label="Esporte principal"
+                            sx={{ borderRadius: 1.5 }}
+                          >
+                            {effectiveSports.map((sportId) => (
+                              <MenuItem key={sportId} value={sportId}>
+                                {SPORTS[sportId]?.label || sportId}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                    )}
 
                     {formData.status !== 'active' && (
                       <Grid size={{ xs: 12, md: 8 }}>
@@ -810,8 +929,213 @@ export default function StudentEditPage() {
                     Adicionar Graduação
                   </Button>
                 </Box>
-
               </FormTabPanel>
+              )}
+
+              {/* ====================================== */}
+              {/* Tabs: Other Sports (Muay Thai, Karatê, etc.) */}
+              {/* ====================================== */}
+              {effectiveSports.filter(s => s !== 'bjj').map((sportId) => {
+                const sport = SPORTS[sportId];
+                if (!sport) return null;
+                const sg = formData.sportGrades[sportId] || { currentGrade: 'white', currentStripes: 0, startDate: '', gradeHistory: [] };
+                const grades = getGradesForSport(sportId as SportId, 'adult');
+                const selectedGrade = grades.find(g => g.id === sg.currentGrade);
+                const maxStripes = selectedGrade?.maxStripes || 0;
+
+                return (
+                  <FormTabPanel key={sportId} tabKey={`sport_${sportId}`} activeTab={activeTab}>
+                    {sport.gradeSystem === 'none' ? (
+                      <FormSection title={`${sport.label}`} icon={Award}>
+                        <Typography variant="body2" color="text.secondary">
+                          Este esporte não possui sistema de graduação.
+                        </Typography>
+                      </FormSection>
+                    ) : (
+                      <>
+                        <FormSection title={`Graduação — ${sport.label}`} icon={Award}>
+                          <Grid container spacing={2.5}>
+                            {/* Grade preview */}
+                            <Grid size={{ xs: 12 }}>
+                              <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1 }}>
+                                <GradeDisplay
+                                  sportId={sportId as SportId}
+                                  grade={sg.currentGrade}
+                                  stripes={sg.currentStripes}
+                                  size="large"
+                                  showLabel
+                                />
+                              </Box>
+                            </Grid>
+
+                            {/* Grade select */}
+                            <Grid size={{ xs: 12, md: 5 }}>
+                              <FormControl fullWidth>
+                                <InputLabel>{sport.gradeSystem === 'armband' ? 'Prajied' : 'Faixa'}</InputLabel>
+                                <Select
+                                  value={sg.currentGrade}
+                                  onChange={(e) => handleSportGradeChange(sportId, 'currentGrade', e.target.value)}
+                                  label={sport.gradeSystem === 'armband' ? 'Prajied' : 'Faixa'}
+                                  sx={{ borderRadius: 1.5 }}
+                                >
+                                  {grades.map(g => (
+                                    <MenuItem key={g.id} value={g.id}>{g.label}</MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                            </Grid>
+
+                            {/* Stripes select (only if sport supports stripes and grade allows them) */}
+                            {sport.supportsStripes && maxStripes > 0 && (
+                              <Grid size={{ xs: 12, md: 3 }}>
+                                <FormControl fullWidth>
+                                  <InputLabel>{sport.gradeSystem === 'armband' ? 'Pontas' : 'Graus'}</InputLabel>
+                                  <Select
+                                    value={sg.currentStripes}
+                                    onChange={(e) => handleSportGradeChange(sportId, 'currentStripes', Number(e.target.value))}
+                                    label={sport.gradeSystem === 'armband' ? 'Pontas' : 'Graus'}
+                                    sx={{ borderRadius: 1.5 }}
+                                  >
+                                    {Array.from({ length: maxStripes + 1 }, (_, i) => i).map(s => (
+                                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                                    ))}
+                                  </Select>
+                                </FormControl>
+                              </Grid>
+                            )}
+
+                            {/* Start date in this sport */}
+                            <Grid size={{ xs: 12, md: 4 }}>
+                              <TextField
+                                label={`Início no ${sport.label}`}
+                                type="date"
+                                value={sg.startDate}
+                                onChange={(e) => handleSportGradeChange(sportId, 'startDate', e.target.value)}
+                                fullWidth
+                                slotProps={{ inputLabel: { shrink: true } }}
+                                sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
+                              />
+                            </Grid>
+                          </Grid>
+                        </FormSection>
+
+                        <FormDivider label="Histórico de Graduações" spacing="medium" />
+
+                        <Box sx={{ mb: 2 }}>
+                          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                            Adicione graduações anteriores
+                          </Typography>
+
+                          {sg.gradeHistory.map((entry, index) => (
+                            <Paper key={index} variant="outlined" sx={{ p: 2, mb: 2, borderRadius: 2 }}>
+                              <Grid container spacing={2} alignItems="center">
+                                <Grid size={{ xs: 12, md: 3 }}>
+                                  <FormControl fullWidth size="small">
+                                    <InputLabel>{sport.gradeSystem === 'armband' ? 'Prajied' : 'Faixa'}</InputLabel>
+                                    <Select
+                                      value={entry.grade}
+                                      onChange={(e) => {
+                                        const newHistory = [...sg.gradeHistory];
+                                        newHistory[index] = { ...newHistory[index], grade: e.target.value };
+                                        handleSportGradeChange(sportId, 'gradeHistory', newHistory);
+                                      }}
+                                      label={sport.gradeSystem === 'armband' ? 'Prajied' : 'Faixa'}
+                                      sx={{ borderRadius: 1.5 }}
+                                    >
+                                      {grades.map(g => (
+                                        <MenuItem key={g.id} value={g.id}>{g.label}</MenuItem>
+                                      ))}
+                                    </Select>
+                                  </FormControl>
+                                </Grid>
+                                {sport.supportsStripes && (
+                                  <Grid size={{ xs: 6, md: 2 }}>
+                                    <FormControl fullWidth size="small">
+                                      <InputLabel>Graus</InputLabel>
+                                      <Select
+                                        value={entry.stripes}
+                                        onChange={(e) => {
+                                          const newHistory = [...sg.gradeHistory];
+                                          newHistory[index] = { ...newHistory[index], stripes: Number(e.target.value) };
+                                          handleSportGradeChange(sportId, 'gradeHistory', newHistory);
+                                        }}
+                                        label="Graus"
+                                        sx={{ borderRadius: 1.5 }}
+                                      >
+                                        {[0, 1, 2, 3, 4].map(s => (
+                                          <MenuItem key={s} value={s}>{s}</MenuItem>
+                                        ))}
+                                      </Select>
+                                    </FormControl>
+                                  </Grid>
+                                )}
+                                <Grid size={{ xs: 6, md: 3 }}>
+                                  <TextField
+                                    label="Data"
+                                    type="date"
+                                    size="small"
+                                    value={entry.date}
+                                    onChange={(e) => {
+                                      const newHistory = [...sg.gradeHistory];
+                                      newHistory[index] = { ...newHistory[index], date: e.target.value };
+                                      handleSportGradeChange(sportId, 'gradeHistory', newHistory);
+                                    }}
+                                    fullWidth
+                                    slotProps={{ inputLabel: { shrink: true } }}
+                                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
+                                  />
+                                </Grid>
+                                <Grid size={{ xs: 10, md: 3 }}>
+                                  <TextField
+                                    label="Observação"
+                                    size="small"
+                                    value={entry.notes}
+                                    onChange={(e) => {
+                                      const newHistory = [...sg.gradeHistory];
+                                      newHistory[index] = { ...newHistory[index], notes: e.target.value };
+                                      handleSportGradeChange(sportId, 'gradeHistory', newHistory);
+                                    }}
+                                    fullWidth
+                                    placeholder="Ex: Promovido por Mestre X"
+                                    sx={{ '& .MuiOutlinedInput-root': { borderRadius: 1.5 } }}
+                                  />
+                                </Grid>
+                                <Grid size={{ xs: 2, md: 1 }}>
+                                  <IconButton
+                                    onClick={() => {
+                                      const newHistory = sg.gradeHistory.filter((_, i) => i !== index);
+                                      handleSportGradeChange(sportId, 'gradeHistory', newHistory);
+                                    }}
+                                    color="error"
+                                    size="small"
+                                  >
+                                    <X size={18} />
+                                  </IconButton>
+                                </Grid>
+                              </Grid>
+                            </Paper>
+                          ))}
+
+                          <Button
+                            startIcon={<Plus size={18} />}
+                            onClick={() => {
+                              handleSportGradeChange(sportId, 'gradeHistory', [
+                                ...sg.gradeHistory,
+                                { grade: 'white', stripes: 0, date: '', notes: '' }
+                              ]);
+                            }}
+                            variant="outlined"
+                            size="small"
+                            sx={{ borderRadius: 2 }}
+                          >
+                            Adicionar Graduação
+                          </Button>
+                        </Box>
+                      </>
+                    )}
+                  </FormTabPanel>
+                );
+              })}
 
               {/* ====================================== */}
               {/* Tab: Plano e Turmas */}

@@ -33,6 +33,25 @@ const docToStudent = (doc: DocumentSnapshot): Student => {
     date: entry.date instanceof Timestamp ? entry.date.toDate() : new Date(entry.date),
   }));
 
+  // Convert sportData dates (Timestamps → Date)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const sportData: Student['sportData'] = data.sportData
+    ? Object.fromEntries(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        Object.entries(data.sportData).map(([sport, sd]: [string, any]) => [
+          sport,
+          {
+            ...sd,
+            startDate: sd.startDate instanceof Timestamp ? sd.startDate.toDate() : sd.startDate ? new Date(sd.startDate) : undefined,
+            gradeHistory: sd.gradeHistory?.map((entry: { date: Timestamp | Date; [key: string]: unknown }) => ({
+              ...entry,
+              date: entry.date instanceof Timestamp ? entry.date.toDate() : new Date(entry.date),
+            })),
+          },
+        ])
+      )
+    : undefined;
+
   return {
     id: doc.id,
     fullName: data.fullName,
@@ -53,6 +72,8 @@ const docToStudent = (doc: DocumentSnapshot): Student => {
         : undefined,
     currentBelt: data.currentBelt,
     currentStripes: data.currentStripes,
+    sports: data.sports,
+    sportData,
     category: data.category,
     teamId: data.teamId,
     weight: data.weight,
@@ -573,6 +594,74 @@ class StudentService {
   }
 
   // ============================================
+  // Update Sport Grade
+  // ============================================
+  async updateSportGrade(
+    id: string,
+    sportId: string,
+    newGrade: string,
+    newStripes: number,
+    promotedBy?: string,
+    notes?: string
+  ): Promise<Student> {
+    const student = await this.getById(id);
+    if (!student) throw new Error('Student not found');
+
+    const updateData: Partial<Student> = {};
+    const now = new Date();
+
+    if (sportId === 'bjj') {
+      // Legacy support for BJJ
+      updateData.currentBelt = newGrade as any;
+      updateData.currentStripes = newStripes as any;
+      updateData.beltHistory = [
+        ...(student.beltHistory || []),
+        {
+          belt: newGrade as any,
+          stripes: newStripes as any,
+          date: now,
+          notes,
+        },
+      ];
+    } else {
+      // New multi-sport support format
+      const currentSportData = student.sportData?.[sportId] || {
+        currentGrade: newGrade,
+        currentStripes: newStripes,
+        startDate: now,
+        gradeHistory: [],
+      };
+
+      updateData.sportData = {
+        ...(student.sportData || {}),
+        [sportId]: {
+          ...currentSportData,
+          currentGrade: newGrade,
+          currentStripes: newStripes,
+          gradeHistory: [
+            ...(currentSportData.gradeHistory || []),
+            {
+              grade: newGrade,
+              stripes: newStripes,
+              date: now,
+              notes,
+              promotedBy,
+            },
+          ],
+        },
+      };
+
+      // Ensure sport is included in the sports array
+      const currentSports = student.sports || [];
+      if (!currentSports.includes(sportId as any)) {
+        updateData.sports = [...currentSports, sportId as any];
+      }
+    }
+
+    return this.update(id, updateData);
+  }
+
+  // ============================================
   // Sync Attendance Counts for all students
   // (Run once to populate attendanceCount field for existing students)
   // ============================================
@@ -665,6 +754,8 @@ export const studentService = {
   getDashboardStats: () => new StudentService(DEFAULT_ACADEMY_ID).getDashboardStats(),
   updateBelt: (...args: Parameters<StudentService['updateBelt']>) =>
     new StudentService(DEFAULT_ACADEMY_ID).updateBelt(...args),
+  updateSportGrade: (...args: Parameters<StudentService['updateSportGrade']>) =>
+    new StudentService(DEFAULT_ACADEMY_ID).updateSportGrade(...args),
   syncAttendanceCounts: () => new StudentService(DEFAULT_ACADEMY_ID).syncAttendanceCounts(),
 };
 

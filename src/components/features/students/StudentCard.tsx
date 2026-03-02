@@ -16,15 +16,17 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { Phone, AlertCircle, ChevronRight, Target, MoreVertical } from 'lucide-react';
-import { Student, StudentStatus } from '@/types';
+import { Student, StudentStatus, getStudentPrimarySport, getStudentGrade } from '@/types';
+import { SportId } from '@/lib/constants/sports';
 import { getBeltChipColor } from '@/lib/theme';
-import { BeltDisplay } from '@/components/shared/BeltDisplay';
+import { GradeDisplay } from '@/components/shared/GradeDisplay';
 
 // ============================================
 // Props Interface
 // ============================================
 interface StudentCardProps {
   student: Student;
+  displaySport?: SportId;
   onClick?: (student: Student) => void;
   onWhatsApp?: (student: Student) => void;
   onStatusChange?: (student: Student, newStatus: StudentStatus) => void;
@@ -92,6 +94,7 @@ const statusConfig: Record<Student['status'], { label: string; color: 'success' 
 // ============================================
 export function StudentCard({
   student,
+  displaySport,
   onClick,
   onWhatsApp,
   onStatusChange,
@@ -100,6 +103,10 @@ export function StudentCard({
   // Calculate total attendance count
   const totalAttendance = (student.attendanceCount || 0) + (student.initialAttendanceCount || 0);
   const beltColor = getBeltChipColor(student.currentBelt);
+
+  // Compute effective sport for grade display
+  const effectiveSport: SportId = displaySport || getStudentPrimarySport(student);
+  const gradeInfo = getStudentGrade(student, effectiveSport);
 
   // Optimistic status — updates immediately on click, syncs back when prop changes
   const [optimisticStatus, setOptimisticStatus] = useState<StudentStatus | null>(null);
@@ -226,11 +233,14 @@ export function StudentCard({
                 {student.fullName}
               </Typography>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-                <BeltDisplay
-                  belt={student.currentBelt}
-                  stripes={student.currentStripes}
-                  size="small"
-                />
+                {gradeInfo && (
+                  <GradeDisplay
+                    sportId={effectiveSport}
+                    grade={gradeInfo.currentGrade}
+                    stripes={gradeInfo.currentStripes}
+                    size="small"
+                  />
+                )}
                 <Chip
                   label={status.label}
                   size="small"
@@ -404,14 +414,17 @@ export function StudentCard({
               {student.fullName}
             </Typography>
 
-            {/* Faixa */}
-            <Box sx={{ mt: { xs: 0.25, sm: 0.5 } }}>
-              <BeltDisplay
-                belt={student.currentBelt}
-                stripes={student.currentStripes}
-                size="small"
-              />
-            </Box>
+            {/* Faixa / Graduação */}
+            {gradeInfo && (
+              <Box sx={{ mt: { xs: 0.25, sm: 0.5 } }}>
+                <GradeDisplay
+                  sportId={effectiveSport}
+                  grade={gradeInfo.currentGrade}
+                  stripes={gradeInfo.currentStripes}
+                  size="small"
+                />
+              </Box>
+            )}
 
             {/* Tags + Attendance Count */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>

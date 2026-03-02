@@ -61,12 +61,15 @@ import {
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
+import { GradeDisplay } from '@/components/shared/GradeDisplay';
 import { useStudent, useStudents, useFinancial, usePlans, useAssessment, useStudentAssessment } from '@/hooks';
 import { getBeltChipColor } from '@/lib/theme';
 import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode, FinancialPaymentLink, Plan } from '@/types';
+import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode, FinancialPaymentLink, Plan, getClassSport, getStudentGrade, getStudentPrimarySport } from '@/types';
+import { SPORTS, getGradesForSport, getGradeLabel, SportId } from '@/lib/constants/sports';
 import { createFinancialService, createAttendanceService, createStudentService } from '@/services';
+import { createClassService } from '@/services/classService';
 import { getStudentDueDay } from '@/services/planService';
 import { createAbacatePayService } from '@/services/abacatePayService';
 import { Attendance } from '@/types';
@@ -280,7 +283,7 @@ export default function StudentProfilePage() {
   const { academy } = useAcademy();
   const { success: showSuccess, error: showError } = useFeedback();
   const { student, isLoading, refresh: refreshStudent } = useStudent(studentId);
-  const { updateBelt } = useStudents({ autoLoad: false });
+  const { updateBelt, updateSportGrade } = useStudents({ autoLoad: false });
   const { markAsPaid, isMarkingPaid } = useFinancial({ autoLoad: false });
   const { plans, setCustomValue, removeCustomValue, isSettingCustomValue, setCustomDueDay, removeCustomDueDay } = usePlans();
 
@@ -317,6 +320,8 @@ export default function StudentProfilePage() {
   // Attendance state
   const [attendanceRecords, setAttendanceRecords] = useState<Attendance[]>([]);
   const [loadingAttendance, setLoadingAttendance] = useState(false);
+  const [attendanceSportFilter, setAttendanceSportFilter] = useState<SportId | ''>('');
+  const [attendanceClasses, setAttendanceClasses] = useState<{ id: string; sport: SportId }[]>([]);
 
   // Financial state
   const [studentFinancials, setStudentFinancials] = useState<Financial[]>([]);
@@ -364,6 +369,37 @@ export default function StudentProfilePage() {
   const isKidsStudent = student?.category === 'kids';
   const beltOptions = isKidsStudent ? kidsBeltOptions : adultBeltOptions;
 
+  // Derive sports from classes if student.sports is missing
+  const [classSports, setClassSports] = useState<SportId[]>([]);
+  useEffect(() => {
+    if (!studentId || !academy?.id || student?.sports?.length) return;
+    const classService = createClassService(academy.id);
+    classService.getByStudent(studentId).then((classes) => {
+      const sports = [...new Set(classes.map((c) => getClassSport(c)))];
+      if (sports.length > 0) {
+        setClassSports(sports);
+        // Sync back to student document so future loads are instant
+        const studentService = createStudentService(academy.id);
+        studentService.update(studentId, { sports }).catch(() => {/* silent */});
+      }
+    }).catch(() => {/* silent */});
+  }, [studentId, academy?.id, student?.sports?.length]);
+
+  // Effective sports: from student doc, or derived from classes, or fallback to BJJ
+  // Sorted so the primary sport comes first
+  const effectiveSports = useMemo(() => {
+    const sports: SportId[] = student?.sports?.length
+      ? (student.sports as SportId[])
+      : classSports.length ? classSports : ['bjj'];
+    if (!student) return sports;
+    const primary = getStudentPrimarySport(student);
+    return [...sports].sort((a, b) => {
+      if (a === primary) return -1;
+      if (b === primary) return 1;
+      return 0;
+    });
+  }, [student, classSports]);
+
   // Build tabs based on category and plan status
   const tabs = useMemo(() => {
     const baseTabs = ['Informacoes', 'Presenca'];
@@ -371,12 +407,18 @@ export default function StudentProfilePage() {
     if (studentHasPlan) {
       baseTabs.push('Financeiro');
     }
-    baseTabs.push('Graduacao');
+
+    // Add a graduation tab for each sport the student practices
+    effectiveSports.forEach((sportId) => {
+      const sportName = SPORTS[sportId]?.label || sportId;
+      baseTabs.push(`Graduação - ${sportName}`);
+    });
+
     if (isKidsStudent) {
       baseTabs.push('Comportamento');
     }
     return baseTabs;
-  }, [isKidsStudent, studentHasPlan]);
+  }, [isKidsStudent, studentHasPlan, effectiveSports]);
 
   // Load student attendance when tab changes to Presenca
   useEffect(() => {
@@ -390,8 +432,37 @@ export default function StudentProfilePage() {
       }).catch(() => {
         setLoadingAttendance(false);
       });
+      // Also load classes to build classId→sport map for attendance filtering
+      const classService = createClassService(academy.id);
+      classService.getByStudent(studentId).then((classes) => {
+        setAttendanceClasses(classes.map((c) => ({ id: c.id, sport: getClassSport(c) })));
+      }).catch(() => {/* silent */});
     }
   }, [activeTab, studentId, tabs, academy?.id]);
+
+  // Attendance classId→sport map and filtered records
+  const attendanceClassSportMap = useMemo(() => {
+    const map: Record<string, SportId> = {};
+    attendanceClasses.forEach((c) => { map[c.id] = c.sport; });
+    return map;
+  }, [attendanceClasses]);
+
+  const attendanceSportsList = useMemo(() => {
+    const sports = new Set<SportId>();
+    attendanceRecords.forEach((r) => {
+      sports.add(attendanceClassSportMap[r.classId] || 'bjj');
+    });
+    return [...sports];
+  }, [attendanceRecords, attendanceClassSportMap]);
+
+  const filteredAttendanceRecords = useMemo(() => {
+    if (!attendanceSportFilter) return attendanceRecords;
+    return attendanceRecords.filter((r) => {
+      return (attendanceClassSportMap[r.classId] || 'bjj') === attendanceSportFilter;
+    });
+  }, [attendanceRecords, attendanceSportFilter, attendanceClassSportMap]);
+
+  const showAttendanceSportFilter = attendanceSportsList.length > 1;
 
   // Load student financials when tab changes to Financeiro
   useEffect(() => {
@@ -592,27 +663,37 @@ export default function StudentProfilePage() {
   }, [pixPaymentLink?.pixCode, showSuccess]);
 
   // Handle graduation
-  const handleOpenGraduationDialog = useCallback(() => {
+  const [graduationSportId, setGraduationSportId] = useState<SportId | null>(null);
+
+  const handleOpenGraduationDialog = useCallback((sportId: SportId) => {
     if (student) {
-      setNewBelt(student.currentBelt);
-      setNewStripes(student.currentStripes);
+      setGraduationSportId(sportId);
+      const gradeInfo = getStudentGrade(student, sportId);
+      setNewBelt((gradeInfo?.currentGrade || 'white') as any);
+      setNewStripes((gradeInfo?.currentStripes || 0) as Stripes);
       setGraduationDialogOpen(true);
     }
   }, [student]);
 
   const handleSaveGraduation = useCallback(async () => {
-    if (!student) return;
+    if (!student || !graduationSportId) return;
     setSavingGraduation(true);
     try {
-      await updateBelt({ id: studentId, belt: newBelt, stripes: newStripes });
+      await updateSportGrade({
+        id: studentId,
+        sportId: graduationSportId,
+        newGrade: newBelt,
+        newStripes: newStripes
+      });
       refreshStudent();
       setGraduationDialogOpen(false);
+      setGraduationSportId(null);
     } catch {
       // Error handled by hook
     } finally {
       setSavingGraduation(false);
     }
-  }, [student, studentId, newBelt, newStripes, updateBelt, refreshStudent]);
+  }, [student, studentId, graduationSportId, newBelt, newStripes, updateSportGrade, refreshStudent]);
 
   // Handle generate link code
   const handleGenerateLinkCode = useCallback(async () => {
@@ -709,17 +790,17 @@ export default function StudentProfilePage() {
         <AppLayout>
           <Box sx={{ p: { xs: 2, sm: 3 } }}>
             <Paper sx={{ p: 6, textAlign: 'center', borderRadius: 3 }}>
-            <User size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
-            <Typography variant="h6" gutterBottom>
-              Aluno nao encontrado
-            </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
-              O aluno que voce esta procurando nao existe ou foi removido.
-            </Typography>
-            <Button variant="contained" onClick={handleBack}>
-              Voltar para Lista
-            </Button>
-          </Paper>
+              <User size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
+              <Typography variant="h6" gutterBottom>
+                Aluno nao encontrado
+              </Typography>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                O aluno que voce esta procurando nao existe ou foi removido.
+              </Typography>
+              <Button variant="contained" onClick={handleBack}>
+                Voltar para Lista
+              </Button>
+            </Paper>
           </Box>
         </AppLayout>
       </ProtectedRoute>
@@ -769,14 +850,25 @@ export default function StudentProfilePage() {
                   {student.fullName}
                 </Typography>
 
-                {/* Belt */}
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', my: 2 }}>
-                  <BeltDisplay
-                    belt={student.currentBelt}
-                    stripes={student.currentStripes}
-                    size="large"
-                    showLabel
-                  />
+                {/* Belts / Grades */}
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, my: 2 }}>
+                  {effectiveSports.map((sportId) => {
+                    const gradeInfo = getStudentGrade(student, sportId);
+                    if (!gradeInfo?.currentGrade) return null;
+                    const grade = gradeInfo.currentGrade;
+                    const stripes = gradeInfo.currentStripes;
+
+                    return (
+                      <GradeDisplay
+                        key={sportId}
+                        sportId={sportId}
+                        grade={grade}
+                        stripes={stripes}
+                        size="large"
+                        showLabel
+                      />
+                    );
+                  })}
                 </Box>
 
                 {/* Status */}
@@ -786,17 +878,17 @@ export default function StudentProfilePage() {
                     student.status === 'active'
                       ? 'Ativo'
                       : student.status === 'injured'
-                      ? 'Lesionado'
-                      : student.status === 'suspended'
-                      ? 'Suspenso'
-                      : 'Inativo'
+                        ? 'Lesionado'
+                        : student.status === 'suspended'
+                          ? 'Suspenso'
+                          : 'Inativo'
                   }
                   color={
                     student.status === 'active'
                       ? 'success'
                       : student.status === 'injured'
-                      ? 'warning'
-                      : 'default'
+                        ? 'warning'
+                        : 'default'
                   }
                   size="small"
                   sx={{ mb: 3 }}
@@ -897,9 +989,14 @@ export default function StudentProfilePage() {
               <Paper sx={{ borderRadius: 3 }}>
                 {/* Tabs */}
                 <Box sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                  <Tabs value={activeTab} onChange={handleTabChange}>
+                  <Tabs
+                    value={activeTab}
+                    onChange={handleTabChange}
+                    variant="scrollable"
+                    scrollButtons="auto"
+                  >
                     {tabs.map((tab, index) => (
-                      <Tab key={index} label={tab === 'Informacoes' ? 'Informacoes' : tab === 'Presenca' ? 'Presenca' : tab === 'Graduacao' ? 'Graduacao' : tab} />
+                      <Tab key={index} label={tab} />
                     ))}
                   </Tabs>
                 </Box>
@@ -1067,6 +1164,29 @@ export default function StudentProfilePage() {
                 {/* Tab: Presenca */}
                 <TabPanel value={activeTab} index={tabs.indexOf('Presenca')}>
                   <Box sx={{ px: 3 }}>
+                    {/* Sport Filter Chips */}
+                    {showAttendanceSportFilter && (
+                      <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+                        <Chip
+                          label="Todos"
+                          size="small"
+                          variant={attendanceSportFilter === '' ? 'filled' : 'outlined'}
+                          color={attendanceSportFilter === '' ? 'primary' : 'default'}
+                          onClick={() => setAttendanceSportFilter('')}
+                        />
+                        {attendanceSportsList.map((sportId) => (
+                          <Chip
+                            key={sportId}
+                            label={SPORTS[sportId]?.labelShort || sportId}
+                            size="small"
+                            variant={attendanceSportFilter === sportId ? 'filled' : 'outlined'}
+                            color={attendanceSportFilter === sportId ? 'primary' : 'default'}
+                            onClick={() => setAttendanceSportFilter(sportId)}
+                          />
+                        ))}
+                      </Box>
+                    )}
+
                     {/* Stats */}
                     <Grid container spacing={2} sx={{ mb: 3 }}>
                       <Grid size={{ xs: 12, sm: 6 }}>
@@ -1077,9 +1197,9 @@ export default function StudentProfilePage() {
                               <Typography variant="body2" color="primary.dark">Total de Presenças</Typography>
                             </Box>
                             <Typography variant="h5" fontWeight={700} color="primary.dark">
-                              {totalAttendanceCount !== null ? totalAttendanceCount : '-'}
+                              {!attendanceSportFilter && totalAttendanceCount !== null ? totalAttendanceCount : filteredAttendanceRecords.length}
                             </Typography>
-                            {student?.initialAttendanceCount ? (
+                            {!attendanceSportFilter && student?.initialAttendanceCount ? (
                               <Typography variant="caption" color="text.secondary">
                                 ({attendanceRecords.length} no sistema + {student.initialAttendanceCount} anteriores)
                               </Typography>
@@ -1099,7 +1219,7 @@ export default function StudentProfilePage() {
                               <Typography variant="body2" color="success.dark">Este Mês</Typography>
                             </Box>
                             <Typography variant="h5" fontWeight={700} color="success.dark">
-                              {attendanceRecords.filter(a => {
+                              {filteredAttendanceRecords.filter(a => {
                                 const date = new Date(a.date);
                                 const now = new Date();
                                 return date.getMonth() === now.getMonth() && date.getFullYear() === now.getFullYear();
@@ -1120,13 +1240,13 @@ export default function StudentProfilePage() {
                       <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                         <CircularProgress />
                       </Box>
-                    ) : attendanceRecords.length === 0 ? (
+                    ) : filteredAttendanceRecords.length === 0 ? (
                       <Box sx={{ textAlign: 'center', py: 4 }}>
                         <ClipboardCheck size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
                         <Typography variant="body2" color="text.secondary">
                           Nenhuma presença registrada no sistema
                         </Typography>
-                        {student?.initialAttendanceCount ? (
+                        {!attendanceSportFilter && student?.initialAttendanceCount ? (
                           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
                             (Possui {student.initialAttendanceCount} treinos anteriores cadastrados)
                           </Typography>
@@ -1134,45 +1254,59 @@ export default function StudentProfilePage() {
                       </Box>
                     ) : (
                       <List disablePadding>
-                        {attendanceRecords.map((record) => (
-                          <ListItem
-                            key={record.id}
-                            sx={{
-                              px: 2,
-                              py: 1.5,
-                              borderRadius: 2,
-                              mb: 1,
-                              bgcolor: 'action.hover',
-                            }}
-                          >
-                            <Box
+                        {filteredAttendanceRecords.map((record) => {
+                          const recordSport = attendanceClassSportMap[record.classId];
+                          const sportLabel = recordSport && showAttendanceSportFilter ? SPORTS[recordSport]?.labelShort : null;
+                          return (
+                            <ListItem
+                              key={record.id}
                               sx={{
-                                width: 36,
-                                height: 36,
-                                borderRadius: '50%',
-                                bgcolor: 'success.100',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                mr: 2,
+                                px: 2,
+                                py: 1.5,
+                                borderRadius: 2,
+                                mb: 1,
+                                bgcolor: 'action.hover',
                               }}
                             >
-                              <CheckCircle size={18} color="#16A34A" />
-                            </Box>
-                            <ListItemText
-                              primary={
-                                <Typography variant="body2" fontWeight={600}>
-                                  {format(new Date(record.date), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
-                                </Typography>
-                              }
-                              secondary={
-                                <Typography variant="caption" color="text.secondary">
-                                  {record.className || 'Treino'}
-                                </Typography>
-                              }
-                            />
-                          </ListItem>
-                        ))}
+                              <Box
+                                sx={{
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: '50%',
+                                  bgcolor: 'success.100',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  mr: 2,
+                                }}
+                              >
+                                <CheckCircle size={18} color="#16A34A" />
+                              </Box>
+                              <ListItemText
+                                primary={
+                                  <Typography variant="body2" fontWeight={600}>
+                                    {format(new Date(record.date), "EEEE, d 'de' MMMM 'de' yyyy", { locale: ptBR })}
+                                  </Typography>
+                                }
+                                secondary={
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                                    <Typography variant="caption" color="text.secondary">
+                                      {record.className || 'Treino'}
+                                    </Typography>
+                                    {sportLabel && (
+                                      <Chip
+                                        label={sportLabel}
+                                        size="small"
+                                        variant="outlined"
+                                        sx={{ fontSize: '0.6rem', height: 18, '& .MuiChip-label': { px: 0.75 } }}
+                                      />
+                                    )}
+                                  </Box>
+                                }
+                              />
+                            </ListItem>
+                          );
+                        })}
                       </List>
                     )}
                   </Box>
@@ -1180,280 +1314,311 @@ export default function StudentProfilePage() {
 
                 {/* Tab: Financeiro - Only shown if student has a plan */}
                 {studentHasPlan && (
-                <TabPanel value={activeTab} index={tabs.indexOf('Financeiro')}>
-                  <Box sx={{ px: 3 }}>
-                    {/* Plan & Value Section */}
-                    {studentPlans.length > 0 && (
-                      <Box sx={{ mb: 3 }}>
-                        <Typography variant="overline" color="text.secondary" fontWeight={600} sx={{ letterSpacing: 0.5 }}>
-                          Plano e Valor
-                        </Typography>
-                        {studentPlans.map((plan) => {
-                          const studentValue = plan.customValues?.[studentId] ?? plan.monthlyValue;
-                          const hasCustomValue = plan.customValues?.[studentId] !== undefined;
-                          const studentDueDay = getStudentDueDay(plan, studentId);
-                          const hasCustomDueDay = plan.customDueDays?.[studentId] !== undefined;
-                          return (
-                            <Card key={plan.id} sx={{ mt: 1, mb: 1, borderRadius: 2 }} variant="outlined">
-                              <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Box>
-                                    <Typography variant="subtitle2" fontWeight={600}>{plan.name}</Typography>
-                                    <Typography variant="caption" color="text.secondary">
-                                      Valor padrão: R$ {plan.monthlyValue.toLocaleString('pt-BR')}
-                                    </Typography>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                      <Typography variant="body2" fontWeight={700} color={hasCustomValue ? 'success.main' : 'text.primary'}>
-                                        Valor do aluno: R$ {studentValue.toLocaleString('pt-BR')}
+                  <TabPanel value={activeTab} index={tabs.indexOf('Financeiro')}>
+                    <Box sx={{ px: 3 }}>
+                      {/* Plan & Value Section */}
+                      {studentPlans.length > 0 && (
+                        <Box sx={{ mb: 3 }}>
+                          <Typography variant="overline" color="text.secondary" fontWeight={600} sx={{ letterSpacing: 0.5 }}>
+                            Plano e Valor
+                          </Typography>
+                          {studentPlans.map((plan) => {
+                            const studentValue = plan.customValues?.[studentId] ?? plan.monthlyValue;
+                            const hasCustomValue = plan.customValues?.[studentId] !== undefined;
+                            const studentDueDay = getStudentDueDay(plan, studentId);
+                            const hasCustomDueDay = plan.customDueDays?.[studentId] !== undefined;
+                            return (
+                              <Card key={plan.id} sx={{ mt: 1, mb: 1, borderRadius: 2 }} variant="outlined">
+                                <CardContent sx={{ py: 2, '&:last-child': { pb: 2 } }}>
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <Box>
+                                      <Typography variant="subtitle2" fontWeight={600}>{plan.name}</Typography>
+                                      <Typography variant="caption" color="text.secondary">
+                                        Valor padrão: R$ {plan.monthlyValue.toLocaleString('pt-BR')}
                                       </Typography>
-                                      {hasCustomValue && (
-                                        <Chip
-                                          label="Valor personalizado"
-                                          size="small"
-                                          color="success"
-                                          sx={{ height: 20, fontSize: '0.6rem' }}
-                                        />
-                                      )}
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                        <Typography variant="body2" fontWeight={700} color={hasCustomValue ? 'success.main' : 'text.primary'}>
+                                          Valor do aluno: R$ {studentValue.toLocaleString('pt-BR')}
+                                        </Typography>
+                                        {hasCustomValue && (
+                                          <Chip
+                                            label="Valor personalizado"
+                                            size="small"
+                                            color="success"
+                                            sx={{ height: 20, fontSize: '0.6rem' }}
+                                          />
+                                        )}
+                                      </Box>
+                                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
+                                        <Typography variant="body2" fontWeight={700} color={hasCustomDueDay ? 'success.main' : 'text.primary'}>
+                                          Vencimento: dia {studentDueDay}
+                                        </Typography>
+                                        {hasCustomDueDay && (
+                                          <Chip
+                                            label="Personalizado"
+                                            size="small"
+                                            color="success"
+                                            sx={{ height: 20, fontSize: '0.6rem' }}
+                                          />
+                                        )}
+                                      </Box>
                                     </Box>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-                                      <Typography variant="body2" fontWeight={700} color={hasCustomDueDay ? 'success.main' : 'text.primary'}>
-                                        Vencimento: dia {studentDueDay}
-                                      </Typography>
-                                      {hasCustomDueDay && (
-                                        <Chip
-                                          label="Personalizado"
-                                          size="small"
-                                          color="success"
-                                          sx={{ height: 20, fontSize: '0.6rem' }}
-                                        />
-                                      )}
-                                    </Box>
+                                    <IconButton
+                                      size="small"
+                                      onClick={() => {
+                                        setCustomValuePlan(plan);
+                                        setCustomValueInput(studentValue.toString());
+                                        setCustomDueDayInput(studentDueDay.toString());
+                                        setCustomValueDialogOpen(true);
+                                      }}
+                                    >
+                                      <Edit size={16} />
+                                    </IconButton>
                                   </Box>
-                                  <IconButton
-                                    size="small"
-                                    onClick={() => {
-                                      setCustomValuePlan(plan);
-                                      setCustomValueInput(studentValue.toString());
-                                      setCustomDueDayInput(studentDueDay.toString());
-                                      setCustomValueDialogOpen(true);
-                                    }}
-                                  >
-                                    <Edit size={16} />
-                                  </IconButton>
-                                </Box>
-                              </CardContent>
-                            </Card>
-                          );
-                        })}
-                      </Box>
-                    )}
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
+                        </Box>
+                      )}
 
-                    {/* Financial Stats */}
-                    <Grid container spacing={2} sx={{ mb: 3 }}>
-                      <Grid size={{ xs: 12, sm: 4 }}>
-                        <Card sx={{ bgcolor: 'success.50', borderRadius: 2 }}>
-                          <CardContent sx={{ py: 2 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                              <CheckCircle size={18} color="#16A34A" />
-                              <Typography variant="body2" color="success.dark">Pago</Typography>
-                            </Box>
-                            <Typography variant="h5" fontWeight={700} color="success.dark">
-                              R$ {financialStats.paidAmount.toLocaleString('pt-BR')}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {financialStats.paidCount} pagamentos
-                            </Typography>
-                          </CardContent>
-                        </Card>
+                      {/* Financial Stats */}
+                      <Grid container spacing={2} sx={{ mb: 3 }}>
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                          <Card sx={{ bgcolor: 'success.50', borderRadius: 2 }}>
+                            <CardContent sx={{ py: 2 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                <CheckCircle size={18} color="#16A34A" />
+                                <Typography variant="body2" color="success.dark">Pago</Typography>
+                              </Box>
+                              <Typography variant="h5" fontWeight={700} color="success.dark">
+                                R$ {financialStats.paidAmount.toLocaleString('pt-BR')}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {financialStats.paidCount} pagamentos
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                          <Card sx={{ bgcolor: 'warning.50', borderRadius: 2 }}>
+                            <CardContent sx={{ py: 2 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                <Clock size={18} color="#CA8A04" />
+                                <Typography variant="body2" color="warning.dark">Pendente</Typography>
+                              </Box>
+                              <Typography variant="h5" fontWeight={700} color="warning.dark">
+                                R$ {financialStats.pendingAmount.toLocaleString('pt-BR')}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {financialStats.pendingCount} pendentes
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
+                        <Grid size={{ xs: 12, sm: 4 }}>
+                          <Card sx={{ bgcolor: 'error.50', borderRadius: 2 }}>
+                            <CardContent sx={{ py: 2 }}>
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+                                <AlertCircle size={18} color="#DC2626" />
+                                <Typography variant="body2" color="error.dark">Atrasado</Typography>
+                              </Box>
+                              <Typography variant="h5" fontWeight={700} color="error.dark">
+                                R$ {financialStats.overdueAmount.toLocaleString('pt-BR')}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                {financialStats.overdueCount} atrasados
+                              </Typography>
+                            </CardContent>
+                          </Card>
+                        </Grid>
                       </Grid>
-                      <Grid size={{ xs: 12, sm: 4 }}>
-                        <Card sx={{ bgcolor: 'warning.50', borderRadius: 2 }}>
-                          <CardContent sx={{ py: 2 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                              <Clock size={18} color="#CA8A04" />
-                              <Typography variant="body2" color="warning.dark">Pendente</Typography>
-                            </Box>
-                            <Typography variant="h5" fontWeight={700} color="warning.dark">
-                              R$ {financialStats.pendingAmount.toLocaleString('pt-BR')}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {financialStats.pendingCount} pendentes
-                            </Typography>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                      <Grid size={{ xs: 12, sm: 4 }}>
-                        <Card sx={{ bgcolor: 'error.50', borderRadius: 2 }}>
-                          <CardContent sx={{ py: 2 }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                              <AlertCircle size={18} color="#DC2626" />
-                              <Typography variant="body2" color="error.dark">Atrasado</Typography>
-                            </Box>
-                            <Typography variant="h5" fontWeight={700} color="error.dark">
-                              R$ {financialStats.overdueAmount.toLocaleString('pt-BR')}
-                            </Typography>
-                            <Typography variant="caption" color="text.secondary">
-                              {financialStats.overdueCount} atrasados
-                            </Typography>
-                          </CardContent>
-                        </Card>
-                      </Grid>
-                    </Grid>
 
-                    <Divider sx={{ mb: 2 }} />
+                      <Divider sx={{ mb: 2 }} />
 
-                    {/* Financial List */}
-                    {loadingFinancials ? (
-                      <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                        <CircularProgress />
-                      </Box>
-                    ) : studentFinancials.length === 0 ? (
-                      <Box sx={{ textAlign: 'center', py: 4 }}>
-                        <DollarSign size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
-                        <Typography variant="body2" color="text.secondary">
-                          Nenhum registro financeiro
-                        </Typography>
-                      </Box>
-                    ) : (
-                      <List disablePadding>
-                        {studentFinancials.map((payment) => (
-                          <ListItem
-                            key={payment.id}
-                            sx={{
-                              px: 2,
-                              py: 1.5,
-                              bgcolor: payment.status === 'overdue' ? 'error.50' : payment.status === 'pending' ? 'warning.50' : 'transparent',
-                              borderRadius: 2,
-                              mb: 1,
-                            }}
-                            secondaryAction={
-                              payment.status !== 'paid' && payment.status !== 'cancelled' && (
-                                <Box sx={{ display: 'flex', gap: 1 }}>
-                                  {abacatePayEnabled && (
+                      {/* Financial List */}
+                      {loadingFinancials ? (
+                        <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+                          <CircularProgress />
+                        </Box>
+                      ) : studentFinancials.length === 0 ? (
+                        <Box sx={{ textAlign: 'center', py: 4 }}>
+                          <DollarSign size={48} style={{ color: '#9ca3af', marginBottom: 16 }} />
+                          <Typography variant="body2" color="text.secondary">
+                            Nenhum registro financeiro
+                          </Typography>
+                        </Box>
+                      ) : (
+                        <List disablePadding>
+                          {studentFinancials.map((payment) => (
+                            <ListItem
+                              key={payment.id}
+                              sx={{
+                                px: 2,
+                                py: 1.5,
+                                bgcolor: payment.status === 'overdue' ? 'error.50' : payment.status === 'pending' ? 'warning.50' : 'transparent',
+                                borderRadius: 2,
+                                mb: 1,
+                              }}
+                              secondaryAction={
+                                payment.status !== 'paid' && payment.status !== 'cancelled' && (
+                                  <Box sx={{ display: 'flex', gap: 1 }}>
+                                    {abacatePayEnabled && (
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="primary"
+                                        startIcon={<QrCode size={14} />}
+                                        onClick={() => handleGeneratePix(payment)}
+                                      >
+                                        Gerar PIX
+                                      </Button>
+                                    )}
                                     <Button
                                       size="small"
-                                      variant="outlined"
-                                      color="primary"
-                                      startIcon={<QrCode size={14} />}
-                                      onClick={() => handleGeneratePix(payment)}
+                                      variant="contained"
+                                      color="success"
+                                      startIcon={<CreditCard size={14} />}
+                                      onClick={() => handleOpenPaymentDialog(payment)}
                                     >
-                                      Gerar PIX
+                                      Dar Baixa
                                     </Button>
-                                  )}
-                                  <Button
-                                    size="small"
-                                    variant="contained"
-                                    color="success"
-                                    startIcon={<CreditCard size={14} />}
-                                    onClick={() => handleOpenPaymentDialog(payment)}
-                                  >
-                                    Dar Baixa
-                                  </Button>
-                                </Box>
-                              )
-                            }
-                          >
-                            <ListItemText
-                              primaryTypographyProps={{ component: 'div' }}
-                              secondaryTypographyProps={{ component: 'div' }}
-                              primary={
-                                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                  <Typography variant="body2" fontWeight={600}>
-                                    {payment.description}
-                                  </Typography>
-                                  <Chip
-                                    label={payment.status === 'paid' ? 'Pago' : payment.status === 'pending' ? 'Pendente' : payment.status === 'overdue' ? 'Atrasado' : 'Cancelado'}
-                                    size="small"
-                                    color={payment.status === 'paid' ? 'success' : payment.status === 'pending' ? 'warning' : payment.status === 'overdue' ? 'error' : 'default'}
-                                    sx={{ height: 20, fontSize: '0.65rem' }}
-                                  />
-                                </Box>
+                                  </Box>
+                                )
                               }
-                              secondary={
-                                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
-                                  <Typography variant="caption" color="text.secondary">
-                                    Venc: {format(payment.dueDate, 'dd/MM/yyyy')}
-                                    {payment.paymentDate && ` | Pago: ${format(payment.paymentDate, 'dd/MM/yyyy')}`}
-                                  </Typography>
-                                  <Typography variant="body2" fontWeight={700}>
-                                    R$ {payment.amount.toLocaleString('pt-BR')}
-                                  </Typography>
-                                </Box>
-                              }
-                            />
-                          </ListItem>
-                        ))}
-                      </List>
-                    )}
-                  </Box>
-                </TabPanel>
+                            >
+                              <ListItemText
+                                primaryTypographyProps={{ component: 'div' }}
+                                secondaryTypographyProps={{ component: 'div' }}
+                                primary={
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <Typography variant="body2" fontWeight={600}>
+                                      {payment.description}
+                                    </Typography>
+                                    <Chip
+                                      label={payment.status === 'paid' ? 'Pago' : payment.status === 'pending' ? 'Pendente' : payment.status === 'overdue' ? 'Atrasado' : 'Cancelado'}
+                                      size="small"
+                                      color={payment.status === 'paid' ? 'success' : payment.status === 'pending' ? 'warning' : payment.status === 'overdue' ? 'error' : 'default'}
+                                      sx={{ height: 20, fontSize: '0.65rem' }}
+                                    />
+                                  </Box>
+                                }
+                                secondary={
+                                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Venc: {format(payment.dueDate, 'dd/MM/yyyy')}
+                                      {payment.paymentDate && ` | Pago: ${format(payment.paymentDate, 'dd/MM/yyyy')}`}
+                                    </Typography>
+                                    <Typography variant="body2" fontWeight={700}>
+                                      R$ {payment.amount.toLocaleString('pt-BR')}
+                                    </Typography>
+                                  </Box>
+                                }
+                              />
+                            </ListItem>
+                          ))}
+                        </List>
+                      )}
+                    </Box>
+                  </TabPanel>
                 )}
 
-                {/* Tab: Graduacao */}
-                <TabPanel value={activeTab} index={tabs.indexOf('Graduacao')}>
-                  <Box sx={{ px: 3 }}>
-                    {/* Current Belt */}
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
-                      <Box>
-                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                          Faixa Atual
-                        </Typography>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                          <BeltDisplay
-                            belt={student.currentBelt}
-                            stripes={student.currentStripes}
-                            size="large"
-                            showLabel
-                          />
-                        </Box>
-                      </Box>
-                      <Button
-                        variant="contained"
-                        startIcon={<TrendingUp size={18} />}
-                        onClick={handleOpenGraduationDialog}
-                      >
-                        Graduar
-                      </Button>
-                    </Box>
+                {/* Tabs: Graduação por Esporte */}
+                {effectiveSports.map((sportId) => {
+                  const sportName = SPORTS[sportId]?.label || sportId;
+                  const tabName = `Graduação - ${sportName}`;
+                  const tabIndex = tabs.indexOf(tabName);
 
-                    <Divider sx={{ mb: 3 }} />
+                  if (tabIndex === -1) return null;
 
-                    {/* Belt Progression */}
-                    <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
-                      Progressao de Faixas - {isKidsStudent ? 'Kids' : 'Adulto'}
-                    </Typography>
-                    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-                      {beltOptions.map((belt, index) => {
-                        const isCurrent = belt.value === student.currentBelt;
-                        const isPassed = beltOptions.findIndex(b => b.value === student.currentBelt) > index;
-                        return (
-                          <Box
-                            key={belt.value}
-                            sx={{
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              gap: 1,
-                              p: 2,
-                              borderRadius: 2,
-                              bgcolor: isCurrent ? 'primary.50' : isPassed ? 'success.50' : 'action.hover',
-                              border: isCurrent ? '2px solid' : 'none',
-                              borderColor: 'primary.main',
-                              opacity: isPassed || isCurrent ? 1 : 0.5,
+                  const gradeInfo = getStudentGrade(student, sportId);
+                  const currentGrade = gradeInfo?.currentGrade;
+                  const currentStripes = gradeInfo?.currentStripes || 0;
+
+                  const sportGrades = getGradesForSport(sportId, isKidsStudent ? 'kids' : 'adult');
+
+                  return (
+                    <TabPanel key={sportId} value={activeTab} index={tabIndex}>
+                      <Box sx={{ px: 3 }}>
+                        {/* Current Grade */}
+                        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
+                          <Box>
+                            <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                              Graduação Atual
+                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                              {currentGrade ? (
+                                <GradeDisplay
+                                  sportId={sportId}
+                                  grade={currentGrade}
+                                  stripes={currentStripes}
+                                  size="large"
+                                  showLabel
+                                />
+                              ) : (
+                                <Typography variant="body1" color="text.secondary">
+                                  Nenhuma graduação registrada
+                                </Typography>
+                              )}
+                            </Box>
+                          </Box>
+                          <Button
+                            variant="contained"
+                            startIcon={<TrendingUp size={18} />}
+                            onClick={() => {
+                              handleOpenGraduationDialog(sportId);
                             }}
                           >
-                            <BeltDisplay belt={belt.value} stripes={isCurrent ? student.currentStripes : 0} size="medium" />
-                            <Typography variant="caption" fontWeight={isCurrent ? 700 : 400}>
-                              {belt.label}
-                            </Typography>
-                            {isPassed && <CheckCircle size={16} color="#16A34A" />}
-                            {isCurrent && <Typography variant="caption" color="primary">Atual</Typography>}
-                          </Box>
-                        );
-                      })}
-                    </Box>
-                  </Box>
-                </TabPanel>
+                            Graduar
+                          </Button>
+                        </Box>
+
+                        <Divider sx={{ mb: 3 }} />
+
+                        {/* Grade Progression */}
+                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+                          Progressão - {isKidsStudent ? 'Kids' : 'Adulto'}
+                        </Typography>
+                        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
+                          {sportGrades.map((gradeDef, index) => {
+                            const isCurrent = gradeDef.id === currentGrade;
+                            const isPassed = currentGrade ? sportGrades.findIndex(g => g.id === currentGrade) > index : false;
+
+                            return (
+                              <Box
+                                key={gradeDef.id}
+                                sx={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  alignItems: 'center',
+                                  gap: 1,
+                                  p: 2,
+                                  borderRadius: 2,
+                                  bgcolor: isCurrent ? 'primary.50' : isPassed ? 'success.50' : 'action.hover',
+                                  border: isCurrent ? '2px solid' : 'none',
+                                  borderColor: 'primary.main',
+                                  opacity: isPassed || isCurrent ? 1 : 0.5,
+                                }}
+                              >
+                                <GradeDisplay
+                                  sportId={sportId}
+                                  grade={gradeDef.id}
+                                  stripes={isCurrent ? currentStripes : 0}
+                                  size="medium"
+                                />
+                                <Typography variant="caption" fontWeight={isCurrent ? 700 : 400}>
+                                  {gradeDef.label}
+                                </Typography>
+                                {isPassed && <CheckCircle size={16} color="#16A34A" />}
+                                {isCurrent && <Typography variant="caption" color="primary">Atual</Typography>}
+                              </Box>
+                            );
+                          })}
+                        </Box>
+                      </Box>
+                    </TabPanel>
+                  );
+                })}
 
                 {/* Tab: Comportamento (Kids only) */}
                 {isKidsStudent && (
@@ -1796,45 +1961,65 @@ export default function StudentProfilePage() {
         </Dialog>
 
         {/* Graduation Dialog */}
-        <Dialog open={graduationDialogOpen} onClose={() => setGraduationDialogOpen(false)} maxWidth="xs" fullWidth>
-          <DialogTitle>Atualizar Graduacao</DialogTitle>
+        <Dialog open={graduationDialogOpen} onClose={() => {
+          setGraduationDialogOpen(false);
+          setGraduationSportId(null);
+        }} maxWidth="xs" fullWidth>
+          <DialogTitle>Atualizar Graduação {graduationSportId ? `- ${SPORTS[graduationSportId]?.label}` : ''}</DialogTitle>
           <DialogContent>
-            <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'center' }}>
-                <BeltDisplay belt={newBelt} stripes={newStripes} size="large" showLabel />
+            {graduationSportId && (
+              <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <GradeDisplay
+                    sportId={graduationSportId}
+                    grade={newBelt}
+                    stripes={newStripes}
+                    size="large"
+                    showLabel
+                  />
+                </Box>
+                <FormControl fullWidth>
+                  <InputLabel>Nova Graduação</InputLabel>
+                  <Select
+                    value={newBelt}
+                    label="Nova Graduação"
+                    onChange={(e) => setNewBelt(e.target.value as any)}
+                  >
+                    {getGradesForSport(graduationSportId, isKidsStudent ? 'kids' : 'adult').map((opt) => (
+                      <MenuItem key={opt.id} value={opt.id}>
+                        {opt.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                {SPORTS[graduationSportId]?.supportsStripes && (
+                  <FormControl fullWidth>
+                    <InputLabel>Graus</InputLabel>
+                    <Select
+                      value={newStripes}
+                      label="Graus"
+                      onChange={(e) => setNewStripes(Number(e.target.value) as Stripes)}
+                    >
+                      {[0, 1, 2, 3, 4].map((stripe) => {
+                        const maxStripe = getGradesForSport(graduationSportId, isKidsStudent ? 'kids' : 'adult').find(g => g.id === newBelt)?.maxStripes || 0;
+                        if (stripe > maxStripe) return null;
+                        return (
+                          <MenuItem key={stripe} value={stripe}>
+                            {stripe} grau{stripe !== 1 ? 's' : ''}
+                          </MenuItem>
+                        );
+                      })}
+                    </Select>
+                  </FormControl>
+                )}
               </Box>
-              <FormControl fullWidth>
-                <InputLabel>Nova Faixa</InputLabel>
-                <Select
-                  value={newBelt}
-                  label="Nova Faixa"
-                  onChange={(e) => setNewBelt(e.target.value as BeltColor | KidsBeltColor)}
-                >
-                  {beltOptions.map((opt) => (
-                    <MenuItem key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-              <FormControl fullWidth>
-                <InputLabel>Graus</InputLabel>
-                <Select
-                  value={newStripes}
-                  label="Graus"
-                  onChange={(e) => setNewStripes(e.target.value as Stripes)}
-                >
-                  {[0, 1, 2, 3, 4].map((stripe) => (
-                    <MenuItem key={stripe} value={stripe}>
-                      {stripe} grau{stripe !== 1 ? 's' : ''}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Box>
+            )}
           </DialogContent>
           <DialogActions sx={{ px: 3, py: 2 }}>
-            <Button onClick={() => setGraduationDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={() => {
+              setGraduationDialogOpen(false);
+              setGraduationSportId(null);
+            }}>Cancelar</Button>
             <Button
               variant="contained"
               onClick={handleSaveGraduation}

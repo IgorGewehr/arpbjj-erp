@@ -835,6 +835,7 @@ export function StudentList() {
               <ScaleOnPress key={student.id}>
                 <StudentCard
                   student={student}
+                  displaySport={sportFilter || undefined}
                   onClick={handleStudentClick}
                   onStatusChange={handleCardStatusChange}
                   compact={viewMode === 'list'}

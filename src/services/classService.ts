@@ -10,6 +10,7 @@ import {
   Timestamp,
   DocumentSnapshot,
   CollectionReference,
+  arrayUnion,
 } from 'firebase/firestore';
 import { collections } from '@/lib/firebase/collections';
 import { Class, StudentCategory } from '@/types';
@@ -82,6 +83,19 @@ export class ClassService {
     }
 
     return docToClass(docSnap);
+  }
+
+  // ============================================
+  // Get Classes by Student ID
+  // ============================================
+  async getByStudent(studentId: string): Promise<Class[]> {
+    const q = query(
+      this.classesRef,
+      where('studentIds', 'array-contains', studentId),
+      where('isActive', '==', true)
+    );
+    const snapshot = await getDocs(q);
+    return snapshot.docs.map(docToClass);
   }
 
   // ============================================
@@ -249,6 +263,15 @@ export class ClassService {
   }
 
   // ============================================
+  // Sync sport to student's sports array
+  // ============================================
+  private async syncStudentSport(studentId: string, sport: string | undefined): Promise<void> {
+    const sportId = sport || 'bjj';
+    const studentRef = collections.student(this.academyId, studentId);
+    await updateDoc(studentRef, { sports: arrayUnion(sportId) });
+  }
+
+  // ============================================
   // Add Student to Class
   // ============================================
   async addStudent(classId: string, studentId: string): Promise<Class> {
@@ -258,7 +281,9 @@ export class ClassService {
     const studentIds = cls.studentIds || [];
     if (!studentIds.includes(studentId)) {
       studentIds.push(studentId);
-      return this.update(classId, { studentIds });
+      const updated = await this.update(classId, { studentIds });
+      await this.syncStudentSport(studentId, cls.sport);
+      return updated;
     }
 
     return cls;
@@ -286,7 +311,9 @@ export class ClassService {
     if (studentIds.includes(studentId)) {
       return this.update(classId, { studentIds: studentIds.filter((id) => id !== studentId) });
     } else {
-      return this.update(classId, { studentIds: [...studentIds, studentId] });
+      const updated = await this.update(classId, { studentIds: [...studentIds, studentId] });
+      await this.syncStudentSport(studentId, cls.sport);
+      return updated;
     }
   }
 }

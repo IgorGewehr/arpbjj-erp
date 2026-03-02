@@ -104,7 +104,7 @@ export default function PortalComportamentoPage() {
             </Box>
 
             {/* Scores Grid */}
-            <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 1, mb: 2 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', sm: 'repeat(3, 1fr)', md: 'repeat(5, 1fr)' }, gap: { xs: 0.75, sm: 1 }, mb: 2 }}>
               {assessmentCategories.map((cat) => (
                 <Box
                   key={cat.key}

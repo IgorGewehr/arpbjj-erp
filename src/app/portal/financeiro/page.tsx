@@ -350,7 +350,7 @@ export default function PortalFinanceiroPage() {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 } }}>
+    <Box>
       {/* Academy indicator for multi-academy users */}
       <AcademyIndicator label="Pagamentos de" icon={<Receipt size={16} />} />
 

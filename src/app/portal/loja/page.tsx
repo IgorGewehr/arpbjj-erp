@@ -590,7 +590,7 @@ export default function PortalLojaPage() {
   }
 
   return (
-    <Box sx={{ p: { xs: 2, sm: 3 } }}>
+    <Box>
       {/* Academy indicator for multi-academy users */}
       <AcademyIndicator label="Loja de" icon={<Store size={16} />} />
 

@@ -13,6 +13,10 @@ import {
   Avatar,
   useTheme,
   useMediaQuery,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import { Save, History, DollarSign, ChevronRight, User } from 'lucide-react';
 import { format } from 'date-fns';
@@ -23,18 +27,12 @@ import { useAcademy } from '@/contexts/AcademyContext';
 import { createStudentService } from '@/services/studentService';
 import { createAttendanceService } from '@/services/attendanceService';
 import { createPlanService } from '@/services/planService';
-import { BeltDisplay } from '@/components/shared/BeltDisplay';
+import { GradeDisplay } from '@/components/shared/GradeDisplay';
+import { SportChip } from '@/components/shared/SportChip';
 import { AcademyIndicator } from '@/components/portal/AcademyIndicator';
 import ProfilePhotoUpload from '@/components/features/students/ProfilePhotoUpload';
-import { Student, Plan } from '@/types';
-
-const BELT_LABELS: Record<string, string> = {
-  white: 'Branca', blue: 'Azul', purple: 'Roxa', brown: 'Marrom', black: 'Preta',
-  grey: 'Cinza', 'grey-white': 'Cinza/Branca', 'grey-black': 'Cinza/Preta',
-  yellow: 'Amarela', 'yellow-white': 'Amarela/Branca', 'yellow-black': 'Amarela/Preta',
-  orange: 'Laranja', 'orange-white': 'Laranja/Branca', 'orange-black': 'Laranja/Preta',
-  green: 'Verde', 'green-white': 'Verde/Branca', 'green-black': 'Verde/Preta',
-};
+import { Student, Plan, getStudentSports, getStudentGrade, getStudentPrimarySport } from '@/types';
+import { SPORTS, SportId, getGradeLabel } from '@/lib/constants/sports';
 
 export default function StudentProfilePage() {
   const router = useRouter();
@@ -77,6 +75,7 @@ export default function StudentProfilePage() {
     emergencyPhone: '',
     emergencyRelationship: '',
     isProfilePublic: false,
+    primarySport: '' as string,
   });
 
   useEffect(() => {
@@ -113,6 +112,7 @@ export default function StudentProfilePage() {
             emergencyPhone: data.emergencyContact?.phone || '',
             emergencyRelationship: data.emergencyContact?.relationship || '',
             isProfilePublic: data.isProfilePublic ?? false,
+            primarySport: getStudentPrimarySport(data),
           });
 
           // Load all plans for this student
@@ -170,6 +170,7 @@ export default function StudentProfilePage() {
           relationship: form.emergencyRelationship.trim(),
         } : undefined,
         isProfilePublic: form.isProfilePublic,
+        ...(form.primarySport ? { primarySport: form.primarySport as SportId } : {}),
       });
       success('Perfil atualizado');
     } catch {
@@ -238,11 +239,31 @@ export default function StudentProfilePage() {
             <Typography variant="body1" fontWeight={600} noWrap sx={{ fontSize: { xs: '0.9rem', sm: '1rem' } }}>
               {student.fullName}
             </Typography>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5 }}>
-              <BeltDisplay belt={student.currentBelt} stripes={student.currentStripes} size="small" />
-              <Typography variant="caption" color="text.secondary">
-                {BELT_LABELS[student.currentBelt]} • {student.currentStripes} grau{student.currentStripes !== 1 ? 's' : ''}
-              </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 0.5, flexWrap: 'wrap' }}>
+              {getStudentSports(student).map((sportId) => {
+                const gradeInfo = getStudentGrade(student, sportId);
+                if (!gradeInfo) return null;
+                const sport = SPORTS[sportId];
+                if (!sport || sport.gradeSystem === 'none') return null;
+                const multiSport = getStudentSports(student).length > 1;
+                return (
+                  <Box key={sportId} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <GradeDisplay
+                      sportId={sportId}
+                      grade={gradeInfo.currentGrade}
+                      stripes={gradeInfo.currentStripes}
+                      size="small"
+                    />
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
+                      {getGradeLabel(sportId, gradeInfo.currentGrade)}
+                      {sport.supportsStripes && gradeInfo.currentStripes > 0
+                        ? ` • ${gradeInfo.currentStripes} grau${gradeInfo.currentStripes !== 1 ? 's' : ''}`
+                        : ''}
+                      {multiSport ? ` (${sport.labelShort})` : ''}
+                    </Typography>
+                  </Box>
+                );
+              })}
             </Box>
           </Box>
           {/* Stats inline on desktop */}
@@ -417,6 +438,34 @@ export default function StudentProfilePage() {
           <TextField label="Telefone" value={form.emergencyPhone} onChange={handleChange('emergencyPhone')} size="small" fullWidth />
           <TextField label="Parentesco" value={form.emergencyRelationship} onChange={handleChange('emergencyRelationship')} size="small" fullWidth />
         </Box>
+
+        {/* Primary Sport (only if multi-sport) */}
+        {student && getStudentSports(student).length > 1 && (
+          <>
+            <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ mb: 1.5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}>
+              Esporte principal
+            </Typography>
+            <Box sx={{ mb: 3 }}>
+              <FormControl size="small" fullWidth sx={{ maxWidth: { sm: 300 } }}>
+                <InputLabel>Esporte principal</InputLabel>
+                <Select
+                  value={form.primarySport}
+                  onChange={(e) => setForm((prev) => ({ ...prev, primarySport: e.target.value }))}
+                  label="Esporte principal"
+                >
+                  {getStudentSports(student).map((sportId) => (
+                    <MenuItem key={sportId} value={sportId}>
+                      {SPORTS[sportId]?.label || sportId}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                Escolha qual esporte sera exibido como principal no seu perfil
+              </Typography>
+            </Box>
+          </>
+        )}
 
         {/* Privacy */}
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3, p: 2, bgcolor: 'grey.50', borderRadius: 1.5 }}>

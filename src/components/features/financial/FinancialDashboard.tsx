@@ -1524,8 +1524,8 @@ export function FinancialDashboard() {
         <TabPanel value={tabValue} index={1}>
           <Box sx={{ p: { xs: 1.5, sm: 3 } }}>
             {/* Filter */}
-            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
+            <Box sx={{ display: 'flex', gap: { xs: 1, sm: 2 }, mb: 3, flexWrap: 'wrap', alignItems: 'center' }}>
+              <FormControl size="small" sx={{ flex: { xs: 1, sm: 'none' }, minWidth: { xs: 0, sm: 150 } }}>
                 <InputLabel>Status</InputLabel>
                 <Select
                   value={statusFilter}
@@ -1539,7 +1539,7 @@ export function FinancialDashboard() {
                   ))}
                 </Select>
               </FormControl>
-              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
+              <FormControl size="small" sx={{ flex: { xs: 1, sm: 'none' }, minWidth: { xs: 0, sm: 150 } }}>
                 <InputLabel>Turma</InputLabel>
                 <Select
                   value={classFilter}
@@ -1554,7 +1554,7 @@ export function FinancialDashboard() {
                   ))}
                 </Select>
               </FormControl>
-              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
+              <FormControl size="small" sx={{ flex: { xs: 1, sm: 'none' }, minWidth: { xs: 0, sm: 150 } }}>
                 <InputLabel>Plano</InputLabel>
                 <Select
                   value={planFilter}
@@ -1571,7 +1571,7 @@ export function FinancialDashboard() {
               </FormControl>
               {(statusFilter || classFilter || planFilter) && (
                 <Chip
-                  label="Limpar filtros"
+                  label="Limpar"
                   onClick={() => { setStatusFilter(''); setClassFilter(''); setPlanFilter(''); }}
                   onDelete={() => { setStatusFilter(''); setClassFilter(''); setPlanFilter(''); }}
                   size="small"
@@ -1614,8 +1614,8 @@ export function FinancialDashboard() {
         <TabPanel value={tabValue} index={2}>
           <Box sx={{ p: { xs: 1.5, sm: 3 } }}>
             {/* Filters */}
-            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
+            <Box sx={{ display: 'flex', gap: { xs: 1, sm: 2 }, mb: 3, flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ flex: { xs: 1, sm: 'none' }, minWidth: { xs: 0, sm: 150 } }}>
                 <InputLabel>Turma</InputLabel>
                 <Select
                   value={classFilter}
@@ -1630,7 +1630,7 @@ export function FinancialDashboard() {
                   ))}
                 </Select>
               </FormControl>
-              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
+              <FormControl size="small" sx={{ flex: { xs: 1, sm: 'none' }, minWidth: { xs: 0, sm: 150 } }}>
                 <InputLabel>Plano</InputLabel>
                 <Select
                   value={planFilter}
@@ -1672,8 +1672,8 @@ export function FinancialDashboard() {
         <TabPanel value={tabValue} index={3}>
           <Box sx={{ p: { xs: 1.5, sm: 3 } }}>
             {/* Filters */}
-            <Box sx={{ display: 'flex', gap: 2, mb: 3, flexWrap: 'wrap' }}>
-              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
+            <Box sx={{ display: 'flex', gap: { xs: 1, sm: 2 }, mb: 3, flexWrap: 'wrap' }}>
+              <FormControl size="small" sx={{ flex: { xs: 1, sm: 'none' }, minWidth: { xs: 0, sm: 150 } }}>
                 <InputLabel>Turma</InputLabel>
                 <Select
                   value={classFilter}
@@ -1688,7 +1688,7 @@ export function FinancialDashboard() {
                   ))}
                 </Select>
               </FormControl>
-              <FormControl size="small" sx={{ minWidth: { xs: '100%', sm: 150 } }}>
+              <FormControl size="small" sx={{ flex: { xs: 1, sm: 'none' }, minWidth: { xs: 0, sm: 150 } }}>
                 <InputLabel>Plano</InputLabel>
                 <Select
                   value={planFilter}

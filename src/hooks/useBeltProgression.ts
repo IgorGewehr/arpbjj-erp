@@ -81,11 +81,13 @@ export function useBeltProgression() {
       newBelt,
       newStripes,
       notes,
+      date,
     }: {
       studentId: string;
       newBelt: BeltColor;
       newStripes: Stripes;
       notes?: string;
+      date?: Date;
     }) => {
       if (!user) throw new Error('User not authenticated');
       return beltProgressionService.promote(
@@ -94,7 +96,8 @@ export function useBeltProgression() {
         newStripes,
         user.id,
         user.displayName,
-        notes
+        notes,
+        date
       );
     },
     onSuccess: () => {
@@ -116,16 +119,19 @@ export function useBeltProgression() {
     mutationFn: async ({
       studentId,
       notes,
+      date,
     }: {
       studentId: string;
       notes?: string;
+      date?: Date;
     }) => {
       if (!user) throw new Error('User not authenticated');
       return beltProgressionService.addStripe(
         studentId,
         user.id,
         user.displayName,
-        notes
+        notes,
+        date
       );
     },
     onSuccess: () => {
@@ -147,10 +153,12 @@ export function useBeltProgression() {
       studentId,
       newBelt,
       notes,
+      date,
     }: {
       studentId: string;
       newBelt: BeltColor;
       notes?: string;
+      date?: Date;
     }) => {
       if (!user) throw new Error('User not authenticated');
       return beltProgressionService.changeBelt(
@@ -158,7 +166,8 @@ export function useBeltProgression() {
         newBelt,
         user.id,
         user.displayName,
-        notes
+        notes,
+        date
       );
     },
     onSuccess: () => {

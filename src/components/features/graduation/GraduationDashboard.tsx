@@ -132,19 +132,21 @@ export function GraduationDashboard() {
   // Handle Confirm Promotion
   // ============================================
   const handleConfirmPromotion = useCallback(
-    async (type: 'stripe' | 'belt', notes?: string) => {
+    async (type: 'stripe' | 'belt', notes?: string, date?: Date) => {
       if (!selectedStudent) return;
 
       if (type === 'stripe') {
         await addStripe({
           studentId: selectedStudent.student.id,
           notes,
+          date,
         });
       } else {
         await changeBelt({
           studentId: selectedStudent.student.id,
           newBelt: selectedStudent.nextPromotion.belt,
           notes,
+          date,
         });
       }
 

@@ -283,7 +283,8 @@ export class AchievementService {
     toBelt: BeltColor | KidsBeltColor,
     fromStripes: Stripes,
     toStripes: Stripes,
-    createdBy?: string
+    createdBy?: string,
+    date?: Date
   ): Promise<Achievement> {
     const isStripesOnly = fromBelt === toBelt;
     const title = isStripesOnly
@@ -299,7 +300,7 @@ export class AchievementService {
         description: isStripesOnly
           ? `Recebeu o ${toStripes}º grau na faixa ${getBeltName(toBelt)}`
           : `Graduou de ${getBeltName(fromBelt)} para ${getBeltName(toBelt)}`,
-        date: new Date(),
+        date: date ?? new Date(),
         fromBelt,
         toBelt,
         fromStripes,

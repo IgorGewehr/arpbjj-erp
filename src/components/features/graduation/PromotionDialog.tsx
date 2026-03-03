@@ -25,7 +25,7 @@ interface PromotionDialogProps {
   student: Student;
   nextPromotion: { belt: BeltColor; stripes: Stripes };
   onClose: () => void;
-  onConfirm: (type: 'stripe' | 'belt', notes?: string) => void;
+  onConfirm: (type: 'stripe' | 'belt', notes?: string, date?: Date) => void;
   isLoading?: boolean;
   getBeltLabel: (belt: BeltColor) => string;
 }
@@ -67,11 +67,13 @@ export function PromotionDialog({
   getBeltLabel,
 }: PromotionDialogProps) {
   const [notes, setNotes] = useState('');
+  const [graduationDate, setGraduationDate] = useState('');
 
   // Reset form when dialog opens
   useEffect(() => {
     if (open) {
       setNotes('');
+      setGraduationDate(new Date().toISOString().split('T')[0]);
     }
   }, [open]);
 
@@ -81,8 +83,9 @@ export function PromotionDialog({
   const isStripePromotion = student.currentBelt === nextPromotion.belt;
 
   const handleConfirm = useCallback(() => {
-    onConfirm(isStripePromotion ? 'stripe' : 'belt', notes || undefined);
-  }, [onConfirm, isStripePromotion, notes]);
+    const date = graduationDate ? new Date(graduationDate + 'T12:00:00') : undefined;
+    onConfirm(isStripePromotion ? 'stripe' : 'belt', notes || undefined, date);
+  }, [onConfirm, isStripePromotion, notes, graduationDate]);
 
   const getInitials = (name: string) => {
     const parts = name.split(' ');
@@ -205,6 +208,17 @@ export function PromotionDialog({
                 : 'O aluno sera promovido para a proxima faixa, iniciando com 0 graus.'}
             </Typography>
           </Box>
+
+          {/* Graduation Date */}
+          <TextField
+            label="Data da Graduacao"
+            type="date"
+            value={graduationDate}
+            onChange={(e) => setGraduationDate(e.target.value)}
+            fullWidth
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ mb: 2 }}
+          />
 
           {/* Notes */}
           <TextField

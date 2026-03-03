@@ -222,7 +222,8 @@ export class BeltProgressionService {
     newStripes: Stripes,
     promotedBy: string,
     promotedByName: string,
-    notes?: string
+    notes?: string,
+    promotionDate?: Date
   ): Promise<BeltProgression> {
     const student = await this.studentService.getById(studentId);
     if (!student) {
@@ -231,6 +232,7 @@ export class BeltProgressionService {
 
     const totalClasses = await this.attendanceService.getStudentAttendanceCount(studentId);
     const now = new Date();
+    const effectivePromotionDate = promotionDate ?? now;
 
     // Build progression data carefully to avoid undefined values
     const progressionData: Record<string, unknown> = {
@@ -239,7 +241,7 @@ export class BeltProgressionService {
       previousStripes: student.currentStripes,
       newBelt,
       newStripes,
-      promotionDate: Timestamp.fromDate(now),
+      promotionDate: Timestamp.fromDate(effectivePromotionDate),
       totalClasses,
       promotedBy,
       promotedByName,
@@ -262,7 +264,8 @@ export class BeltProgressionService {
       newBelt,
       student.currentStripes,
       newStripes,
-      promotedBy
+      promotedBy,
+      effectivePromotionDate
     );
 
     const newDoc = await getDoc(docRef);
@@ -276,7 +279,8 @@ export class BeltProgressionService {
     studentId: string,
     promotedBy: string,
     promotedByName: string,
-    notes?: string
+    notes?: string,
+    promotionDate?: Date
   ): Promise<BeltProgression> {
     const student = await this.studentService.getById(studentId);
     if (!student) {
@@ -295,7 +299,8 @@ export class BeltProgressionService {
       newStripes,
       promotedBy,
       promotedByName,
-      notes
+      notes,
+      promotionDate
     );
   }
 
@@ -307,7 +312,8 @@ export class BeltProgressionService {
     newBelt: BeltColor,
     promotedBy: string,
     promotedByName: string,
-    notes?: string
+    notes?: string,
+    promotionDate?: Date
   ): Promise<BeltProgression> {
     return this.promote(
       studentId,
@@ -315,7 +321,8 @@ export class BeltProgressionService {
       0,
       promotedBy,
       promotedByName,
-      notes
+      notes,
+      promotionDate
     );
   }
 
@@ -439,9 +446,9 @@ export const beltProgressionService = {
   getById: (id: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getById(id),
   checkEligibility: (studentId: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).checkEligibility(studentId),
   getEligibleStudents: () => new BeltProgressionService(DEFAULT_ACADEMY_ID).getEligibleStudents(),
-  promote: (studentId: string, newBelt: BeltColor, newStripes: Stripes, promotedBy: string, promotedByName: string, notes?: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).promote(studentId, newBelt, newStripes, promotedBy, promotedByName, notes),
-  addStripe: (studentId: string, promotedBy: string, promotedByName: string, notes?: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).addStripe(studentId, promotedBy, promotedByName, notes),
-  changeBelt: (studentId: string, newBelt: BeltColor, promotedBy: string, promotedByName: string, notes?: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).changeBelt(studentId, newBelt, promotedBy, promotedByName, notes),
+  promote: (studentId: string, newBelt: BeltColor, newStripes: Stripes, promotedBy: string, promotedByName: string, notes?: string, promotionDate?: Date) => new BeltProgressionService(DEFAULT_ACADEMY_ID).promote(studentId, newBelt, newStripes, promotedBy, promotedByName, notes, promotionDate),
+  addStripe: (studentId: string, promotedBy: string, promotedByName: string, notes?: string, promotionDate?: Date) => new BeltProgressionService(DEFAULT_ACADEMY_ID).addStripe(studentId, promotedBy, promotedByName, notes, promotionDate),
+  changeBelt: (studentId: string, newBelt: BeltColor, promotedBy: string, promotedByName: string, notes?: string, promotionDate?: Date) => new BeltProgressionService(DEFAULT_ACADEMY_ID).changeBelt(studentId, newBelt, promotedBy, promotedByName, notes, promotionDate),
   getBeltDistribution: () => new BeltProgressionService(DEFAULT_ACADEMY_ID).getBeltDistribution(),
   getRecentPromotions: (limitCount = 10) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getRecentPromotions(limitCount),
   getStudentJourney: (studentId: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getStudentJourney(studentId),

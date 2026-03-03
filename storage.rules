@@ -102,6 +102,20 @@ service firebase.storage {
     }
 
     // ============================================
+    // Academy Branding (logo, backgrounds, etc.)
+    // ============================================
+    match /academies/{academyId}/branding/{imageId} {
+      // Only admins can upload/update branding images
+      allow write: if isAuthenticated()
+                   && isValidSize()
+                   && isImage()
+                   && isAcademyAdmin(academyId);
+
+      // Anyone in the academy can read branding images
+      allow read: if belongsToAcademy(academyId);
+    }
+
+    // ============================================
     // Store Product Images
     // ============================================
     match /academies/{academyId}/products/{imageId} {

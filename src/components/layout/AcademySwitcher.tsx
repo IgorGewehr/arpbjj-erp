@@ -89,10 +89,6 @@ export function AcademySwitcher({ variant = 'full' }: AcademySwitcherProps) {
             sx={{
               fontWeight: 600,
               color: 'text.primary',
-              maxWidth: 150,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
             }}
           >
             {academy?.name || 'Academia'}
@@ -138,10 +134,6 @@ export function AcademySwitcher({ variant = 'full' }: AcademySwitcherProps) {
             variant="subtitle2"
             sx={{
               fontWeight: 600,
-              maxWidth: 120,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
             }}
           >
             {academy?.name || 'Academia'}

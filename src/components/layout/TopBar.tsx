@@ -405,9 +405,8 @@ export function TopBar({ onMenuClick, sidebarWidth = 0 }: TopBarProps) {
           </Box>
         </ClickAwayListener>
 
-        {/* Spacer + Academy Switcher + Spacer - Only on Desktop */}
-        <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />
-        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
+        {/* Academy Switcher + Spacer - Only on Desktop */}
+        <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', ml: 2 }}>
           <AcademySwitcher variant="full" />
         </Box>
         <Box sx={{ flex: 1, display: { xs: 'none', md: 'block' } }} />

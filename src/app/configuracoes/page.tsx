@@ -365,6 +365,7 @@ function useSettingsData() {
       await refreshAcademy();
       success('Configuracoes salvas!');
     } catch (err) {
+      console.error('Error saving settings:', err);
       error('Erro ao salvar configuracoes');
     } finally {
       setSaving(false);
@@ -408,7 +409,7 @@ function AcademyTab() {
     setUploading(field);
     try {
       const timestamp = Date.now();
-      const storageRef = ref(storage, `academy/${field}_${timestamp}`);
+      const storageRef = ref(storage, `academies/${academyId}/branding/${field}_${timestamp}`);
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
 
@@ -615,7 +616,7 @@ function AppearanceTab() {
   const theme = useTheme();
   const { error, success } = useFeedback();
   const [uploading, setUploading] = useState<ImageUploadField | null>(null);
-  const { settings, setSettings, saving, loading, handleSave } = useSettingsData();
+  const { settings, setSettings, saving, loading, handleSave, academyId } = useSettingsData();
 
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>, field: ImageUploadField) => {
     const file = event.target.files?.[0];
@@ -634,7 +635,7 @@ function AppearanceTab() {
     setUploading(field);
     try {
       const timestamp = Date.now();
-      const storageRef = ref(storage, `academy/${field}_${timestamp}`);
+      const storageRef = ref(storage, `academies/${academyId}/branding/${field}_${timestamp}`);
       await uploadBytes(storageRef, file);
       const downloadURL = await getDownloadURL(storageRef);
 

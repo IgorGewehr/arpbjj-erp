@@ -3,7 +3,7 @@
 // MarcusJJ / GraduaBJJ
 // ============================================
 
-export type SportId = 'bjj' | 'muaythai' | 'karate' | 'judo' | 'kickboxing' | 'boxing';
+export type SportId = 'bjj' | 'muaythai' | 'karate' | 'judo' | 'kickboxing' | 'boxing' | 'mma';
 export type GradeSystem = 'belt' | 'armband' | 'none';
 
 export interface GradeDefinition {
@@ -159,6 +159,16 @@ export const SPORTS: Record<SportId, SportDefinition> = {
     adultGrades: [],
     icon: 'CircleDot',
   },
+  mma: {
+    id: 'mma',
+    label: 'MMA',
+    labelShort: 'MMA',
+    gradeSystem: 'none',
+    supportsKids: false,
+    supportsStripes: false,
+    adultGrades: [],
+    icon: 'Swords',
+  },
 };
 
 // ============================================
@@ -171,6 +181,7 @@ export const SPORT_OPTIONS: { value: SportId; label: string; labelShort: string 
   { value: 'judo', label: 'Judô', labelShort: 'JDO' },
   { value: 'kickboxing', label: 'Kickboxing', labelShort: 'KB' },
   { value: 'boxing', label: 'Boxe', labelShort: 'BOX' },
+  { value: 'mma', label: 'MMA', labelShort: 'MMA' },
 ];
 
 // ============================================

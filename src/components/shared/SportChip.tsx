@@ -14,6 +14,7 @@ const SPORT_CHIP_COLORS: Record<SportId, { bg: string; text: string }> = {
   kickboxing: { bg: '#16A34A22', text: '#16A34A' },
   boxing: { bg: '#17171722', text: '#374151' },
   mma: { bg: '#B4530022', text: '#B45300' },
+  lutalivre: { bg: '#0891B222', text: '#0891B2' },
 };
 
 // ============================================

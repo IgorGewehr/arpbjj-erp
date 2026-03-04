@@ -3,7 +3,7 @@
 // MarcusJJ / GraduaBJJ
 // ============================================
 
-export type SportId = 'bjj' | 'muaythai' | 'karate' | 'judo' | 'kickboxing' | 'boxing' | 'mma';
+export type SportId = 'bjj' | 'muaythai' | 'karate' | 'judo' | 'kickboxing' | 'boxing' | 'mma' | 'lutalivre';
 export type GradeSystem = 'belt' | 'armband' | 'none';
 
 export interface GradeDefinition {
@@ -58,6 +58,20 @@ const BJJ_KIDS_GRADES: GradeDefinition[] = [
   { id: 'green', label: 'Verde', color: '#16A34A', maxStripes: 4, kidsOnly: true },
   { id: 'green-white', label: 'Verde/Branca', color: '#16A34A', maxStripes: 4, kidsOnly: true },
   { id: 'green-black', label: 'Verde/Preta', color: '#16A34A', maxStripes: 4, kidsOnly: true },
+];
+
+// ============================================
+// Luta Livre Grades (FNLL)
+// ============================================
+const LUTA_LIVRE_GRADES: GradeDefinition[] = [
+  { id: 'white', label: 'Branca', color: '#F5F5F5', maxStripes: 4 },
+  { id: 'yellow', label: 'Amarela', color: '#FBBF24', maxStripes: 4 },
+  { id: 'orange', label: 'Laranja', color: '#F97316', maxStripes: 4 },
+  { id: 'green', label: 'Verde', color: '#16A34A', maxStripes: 4 },
+  { id: 'blue', label: 'Azul', color: '#1E40AF', maxStripes: 4 },
+  { id: 'purple', label: 'Roxa', color: '#7C3AED', maxStripes: 4 },
+  { id: 'brown', label: 'Marrom', color: '#78350F', maxStripes: 4 },
+  { id: 'black', label: 'Preta', color: '#171717', maxStripes: 4, isBlackBelt: true },
 ];
 
 // ============================================
@@ -169,6 +183,16 @@ export const SPORTS: Record<SportId, SportDefinition> = {
     adultGrades: [],
     icon: 'Swords',
   },
+  lutalivre: {
+    id: 'lutalivre',
+    label: 'Luta Livre',
+    labelShort: 'LL',
+    gradeSystem: 'belt',
+    supportsKids: false,
+    supportsStripes: true,
+    adultGrades: LUTA_LIVRE_GRADES,
+    icon: 'Grip',
+  },
 };
 
 // ============================================
@@ -182,6 +206,7 @@ export const SPORT_OPTIONS: { value: SportId; label: string; labelShort: string 
   { value: 'kickboxing', label: 'Kickboxing', labelShort: 'KB' },
   { value: 'boxing', label: 'Boxe', labelShort: 'BOX' },
   { value: 'mma', label: 'MMA', labelShort: 'MMA' },
+  { value: 'lutalivre', label: 'Luta Livre', labelShort: 'LL' },
 ];
 
 // ============================================

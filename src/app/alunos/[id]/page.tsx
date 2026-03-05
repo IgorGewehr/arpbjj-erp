@@ -362,12 +362,12 @@ export default function StudentProfilePage() {
     }).catch(() => {/* silent */});
   }, [studentId, academy?.id, student?.sports?.length]);
 
-  // Effective sports: from student doc, or derived from classes, or fallback to BJJ
+  // Effective sports: from student doc, or derived from classes (no BJJ fallback)
   // Sorted so the primary sport comes first
   const effectiveSports = useMemo(() => {
     const sports: SportId[] = student?.sports?.length
       ? (student.sports as SportId[])
-      : classSports.length ? classSports : ['bjj'];
+      : classSports;
     if (!student) return sports;
     const primary = getStudentPrimarySport(student);
     return [...sports].sort((a, b) => {

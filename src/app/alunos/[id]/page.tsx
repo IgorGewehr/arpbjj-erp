@@ -192,29 +192,6 @@ function StarRating({ value, onChange, label, description, disabled }: StarRatin
 }
 
 // ============================================
-// Belt Labels
-// ============================================
-const beltLabels: Record<string, string> = {
-  white: 'Branca',
-  blue: 'Azul',
-  purple: 'Roxa',
-  brown: 'Marrom',
-  black: 'Preta',
-  grey: 'Cinza',
-  'grey-white': 'Cinza/Branca',
-  'grey-black': 'Cinza/Preta',
-  yellow: 'Amarela',
-  'yellow-white': 'Amarela/Branca',
-  'yellow-black': 'Amarela/Preta',
-  orange: 'Laranja',
-  'orange-white': 'Laranja/Branca',
-  'orange-black': 'Laranja/Preta',
-  green: 'Verde',
-  'green-white': 'Verde/Branca',
-  'green-black': 'Verde/Preta',
-};
-
-// ============================================
 // Tab Panel Component
 // ============================================
 interface TabPanelProps {
@@ -812,141 +789,172 @@ export default function StudentProfilePage() {
       <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 4 }}>
-            <IconButton onClick={handleBack}>
-              <ArrowLeft size={24} />
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: { xs: 2, sm: 4 } }}>
+            <IconButton onClick={handleBack} size="small">
+              <ArrowLeft size={20} />
             </IconButton>
-            <Typography variant="h4" fontWeight={700}>
+            <Typography variant="h4" fontWeight={700} sx={{ fontSize: { xs: '1.4rem', sm: '2.125rem' } }}>
               Perfil do Aluno
             </Typography>
           </Box>
 
-          <Grid container spacing={3}>
+          <Grid container spacing={{ xs: 2, sm: 3 }}>
             {/* Left Column - Profile Card */}
             <Grid size={{ xs: 12, md: 4 }}>
-              <Paper sx={{ p: 3, borderRadius: 3, textAlign: 'center' }}>
-                {/* Avatar */}
-                <Avatar
-                  src={student.photoUrl}
+              <Paper sx={{ p: { xs: 2, sm: 3 }, borderRadius: 3 }}>
+                {/* Mobile: horizontal layout; Desktop: vertical centered */}
+                <Box
                   sx={{
-                    width: 120,
-                    height: 120,
-                    bgcolor: beltColor.bg,
-                    color: beltColor.text,
-                    fontSize: '2.5rem',
-                    fontWeight: 600,
-                    mx: 'auto',
-                    mb: 2,
+                    display: 'flex',
+                    flexDirection: { xs: 'row', md: 'column' },
+                    alignItems: { xs: 'center', md: 'center' },
+                    gap: { xs: 2, md: 0 },
+                    textAlign: { xs: 'left', md: 'center' },
+                    mb: { xs: 2, md: 0 },
                   }}
                 >
-                  {student.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
-                </Avatar>
+                  {/* Avatar */}
+                  <Avatar
+                    src={student.photoUrl}
+                    sx={{
+                      width: { xs: 72, md: 120 },
+                      height: { xs: 72, md: 120 },
+                      bgcolor: beltColor.bg,
+                      color: beltColor.text,
+                      fontSize: { xs: '1.5rem', md: '2.5rem' },
+                      fontWeight: 600,
+                      mx: { xs: 0, md: 'auto' },
+                      mb: { xs: 0, md: 2 },
+                      flexShrink: 0,
+                    }}
+                  >
+                    {student.fullName.split(' ').map((n) => n[0]).slice(0, 2).join('')}
+                  </Avatar>
 
-                {/* Name */}
-                <Typography variant="h5" fontWeight={700} gutterBottom>
-                  {student.nickname || student.fullName.split(' ')[0]}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" gutterBottom>
-                  {student.fullName}
-                </Typography>
+                  {/* Name + Grades */}
+                  <Box sx={{ flex: { xs: 1, md: 'none' }, minWidth: 0 }}>
+                    <Typography
+                      variant="h5"
+                      fontWeight={700}
+                      gutterBottom
+                      sx={{ fontSize: { xs: '1.1rem', md: '1.5rem' }, mb: 0.5 }}
+                    >
+                      {student.nickname || student.fullName.split(' ')[0]}
+                    </Typography>
+                    <Typography
+                      variant="body2"
+                      color="text.secondary"
+                      gutterBottom
+                      noWrap
+                      sx={{ display: { xs: 'block', md: 'block' } }}
+                    >
+                      {student.fullName}
+                    </Typography>
 
-                {/* Belts / Grades */}
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, my: 2 }}>
-                  {effectiveSports.map((sportId) => {
-                    const gradeInfo = getStudentGrade(student, sportId);
-                    if (!gradeInfo?.currentGrade) return null;
-                    const grade = gradeInfo.currentGrade;
-                    const stripes = gradeInfo.currentStripes;
-
-                    return (
-                      <GradeDisplay
-                        key={sportId}
-                        sportId={sportId}
-                        grade={grade}
-                        stripes={stripes}
-                        size="large"
-                        showLabel
-                      />
-                    );
-                  })}
+                    {/* Grades — inline on mobile */}
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        flexDirection: { xs: 'row', md: 'column' },
+                        alignItems: { xs: 'center', md: 'center' },
+                        justifyContent: { xs: 'flex-start', md: 'center' },
+                        gap: 1,
+                        flexWrap: 'wrap',
+                        mt: { xs: 0.5, md: 2 },
+                        mb: { xs: 0, md: 2 },
+                      }}
+                    >
+                      {effectiveSports.map((sportId) => {
+                        const gradeInfo = getStudentGrade(student, sportId);
+                        if (!gradeInfo?.currentGrade) return null;
+                        return (
+                          <GradeDisplay
+                            key={sportId}
+                            sportId={sportId}
+                            grade={gradeInfo.currentGrade}
+                            stripes={gradeInfo.currentStripes}
+                            size="medium"
+                            showLabel
+                          />
+                        );
+                      })}
+                    </Box>
+                  </Box>
                 </Box>
 
-                {/* Status */}
-                <Chip
-                  icon={student.status === 'active' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
-                  label={
-                    student.status === 'active'
-                      ? 'Ativo'
-                      : student.status === 'injured'
-                        ? 'Lesionado'
-                        : student.status === 'suspended'
-                          ? 'Suspenso'
-                          : 'Inativo'
-                  }
-                  color={
-                    student.status === 'active'
-                      ? 'success'
-                      : student.status === 'injured'
-                        ? 'warning'
-                        : 'default'
-                  }
-                  size="small"
-                  sx={{ mb: 3 }}
-                />
-
-                {/* Training Time */}
+                {/* Status + Training Time */}
                 <Box
                   sx={{
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'center',
                     gap: 1,
-                    mb: 3,
-                    p: 2,
-                    bgcolor: 'action.hover',
-                    borderRadius: 2,
+                    flexWrap: 'wrap',
+                    mb: 2,
+                    justifyContent: { xs: 'flex-start', md: 'center' },
                   }}
                 >
-                  <Clock size={18} />
-                  <Box sx={{ textAlign: 'left' }}>
-                    <Typography variant="caption" color="text.secondary">
-                      Tempo de treino
-                    </Typography>
-                    <Typography variant="body2" fontWeight={600}>
-                      {trainingTime}
-                    </Typography>
-                  </Box>
+                  <Chip
+                    icon={student.status === 'active' ? <CheckCircle size={14} /> : <AlertCircle size={14} />}
+                    label={
+                      student.status === 'active'
+                        ? 'Ativo'
+                        : student.status === 'injured'
+                          ? 'Lesionado'
+                          : student.status === 'suspended'
+                            ? 'Suspenso'
+                            : 'Inativo'
+                    }
+                    color={
+                      student.status === 'active'
+                        ? 'success'
+                        : student.status === 'injured'
+                          ? 'warning'
+                          : 'default'
+                    }
+                    size="small"
+                  />
+                  {trainingTime && (
+                    <Chip
+                      icon={<Clock size={12} />}
+                      label={trainingTime}
+                      size="small"
+                      variant="outlined"
+                    />
+                  )}
                 </Box>
 
                 {/* Actions */}
                 <Box sx={{ display: 'flex', gap: 1 }}>
                   <Button
                     variant="contained"
-                    startIcon={<Phone size={18} />}
+                    startIcon={<Phone size={16} />}
                     onClick={handleWhatsApp}
                     fullWidth
                     color="success"
+                    size="small"
                   >
                     WhatsApp
                   </Button>
                   <Button
                     variant="outlined"
-                    startIcon={<Edit size={18} />}
+                    startIcon={<Edit size={16} />}
                     onClick={handleEdit}
                     fullWidth
+                    size="small"
                   >
                     Editar
                   </Button>
                 </Box>
 
                 {/* Delete Button */}
-                <Box sx={{ mt: 2 }}>
+                <Box sx={{ mt: 1 }}>
                   <Button
                     variant="outlined"
                     color="error"
-                    startIcon={<Trash2 size={18} />}
+                    startIcon={<Trash2 size={16} />}
                     onClick={() => setDeleteDialogOpen(true)}
                     fullWidth
+                    size="small"
                   >
                     Excluir Aluno
                   </Button>
@@ -954,25 +962,26 @@ export default function StudentProfilePage() {
 
                 {/* Link Code Button */}
                 {!student.linkedUserId && (
-                  <Box sx={{ mt: 2 }}>
+                  <Box sx={{ mt: 1 }}>
                     <Button
                       variant="outlined"
                       color="secondary"
-                      startIcon={generatingCode ? <CircularProgress size={18} /> : <Link size={18} />}
+                      startIcon={generatingCode ? <CircularProgress size={16} /> : <Link size={16} />}
                       onClick={handleGenerateLinkCode}
                       fullWidth
                       disabled={generatingCode}
+                      size="small"
                     >
                       {generatingCode ? 'Gerando...' : 'Gerar Código de Acesso'}
                     </Button>
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1, textAlign: 'center' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5, textAlign: 'center' }}>
                       Gere um código para o aluno criar sua conta
                     </Typography>
                   </Box>
                 )}
 
                 {student.linkedUserId && (
-                  <Box sx={{ mt: 2, p: 1.5, bgcolor: 'success.50', borderRadius: 2, textAlign: 'center' }}>
+                  <Box sx={{ mt: 1, p: 1.5, bgcolor: 'success.50', borderRadius: 2, textAlign: 'center' }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
                       <CheckCircle size={16} color="#16A34A" />
                       <Typography variant="body2" color="success.dark" fontWeight={600}>
@@ -1003,8 +1012,8 @@ export default function StudentProfilePage() {
 
                 {/* Tab: Informacoes */}
                 <TabPanel value={activeTab} index={0}>
-                  <Box sx={{ px: 3 }}>
-                    <Grid container spacing={4}>
+                  <Box sx={{ px: { xs: 1.5, sm: 3 } }}>
+                    <Grid container spacing={{ xs: 2, sm: 4 }}>
                       {/* Personal Info */}
                       <Grid size={{ xs: 12, md: 6 }}>
                         <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
@@ -1041,27 +1050,56 @@ export default function StudentProfilePage() {
                         )}
                       </Grid>
 
-                      {/* Jiu-Jitsu Info */}
+                      {/* Sports Info — dynamic per sport */}
                       <Grid size={{ xs: 12, md: 6 }}>
-                        <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
-                          JIU-JITSU
-                        </Typography>
+                        {effectiveSports.map((sportId, idx) => {
+                          const sportDef = SPORTS[sportId];
+                          const gradeInfo = getStudentGrade(student, sportId);
+                          const sportStartDate =
+                            student.sportData?.[sportId]?.startDate ??
+                            (idx === 0 ? student.startDate : undefined);
+                          const hasGrade = sportDef.gradeSystem !== 'none';
 
-                        <InfoItem
-                          icon={Calendar}
-                          label="Inicio do Treino"
-                          value={format(student.startDate, 'dd/MM/yyyy', { locale: ptBR })}
-                        />
-                        <InfoItem
-                          icon={Award}
-                          label="Faixa Atual"
-                          value={`${beltLabels[student.currentBelt]} - ${student.currentStripes} grau`}
-                        />
-                        <InfoItem
-                          icon={User}
-                          label="Categoria"
-                          value={student.category === 'kids' ? 'Kids' : 'Adulto'}
-                        />
+                          return (
+                            <Box key={sportId}>
+                              {idx > 0 && <Divider sx={{ my: 2 }} />}
+                              <Typography variant="subtitle2" color="text.secondary" sx={{ mb: 2 }}>
+                                {sportDef.label.toUpperCase()}
+                              </Typography>
+
+                              {sportStartDate && (
+                                <InfoItem
+                                  icon={Calendar}
+                                  label="Início do Treino"
+                                  value={format(sportStartDate, 'dd/MM/yyyy', { locale: ptBR })}
+                                />
+                              )}
+
+                              {hasGrade && gradeInfo && (
+                                <InfoItem
+                                  icon={Award}
+                                  label={sportId === 'bjj' ? 'Faixa Atual' : 'Graduação Atual'}
+                                  value={
+                                    sportDef.supportsStripes
+                                      ? `${getGradeLabel(sportId, gradeInfo.currentGrade)} - ${gradeInfo.currentStripes} grau`
+                                      : getGradeLabel(sportId, gradeInfo.currentGrade)
+                                  }
+                                />
+                              )}
+
+                              {sportId === 'bjj' && (
+                                <InfoItem
+                                  icon={User}
+                                  label="Categoria"
+                                  value={student.category === 'kids' ? 'Kids' : 'Adulto'}
+                                />
+                              )}
+                            </Box>
+                          );
+                        })}
+
+                        <Divider sx={{ my: 2 }} />
+
                         <InfoItem
                           icon={ClipboardCheck}
                           label="Total de Treinos"
@@ -1163,7 +1201,7 @@ export default function StudentProfilePage() {
 
                 {/* Tab: Presenca */}
                 <TabPanel value={activeTab} index={tabs.indexOf('Presenca')}>
-                  <Box sx={{ px: 3 }}>
+                  <Box sx={{ px: { xs: 1.5, sm: 3 } }}>
                     {/* Sport Filter Chips */}
                     {showAttendanceSportFilter && (
                       <Box sx={{ display: 'flex', gap: 1, mb: 2, flexWrap: 'wrap' }}>
@@ -1315,7 +1353,7 @@ export default function StudentProfilePage() {
                 {/* Tab: Financeiro - Only shown if student has a plan */}
                 {studentHasPlan && (
                   <TabPanel value={activeTab} index={tabs.indexOf('Financeiro')}>
-                    <Box sx={{ px: 3 }}>
+                    <Box sx={{ px: { xs: 1.5, sm: 3 } }}>
                       {/* Plan & Value Section */}
                       {studentPlans.length > 0 && (
                         <Box sx={{ mb: 3 }}>
@@ -1539,7 +1577,7 @@ export default function StudentProfilePage() {
 
                   return (
                     <TabPanel key={sportId} value={activeTab} index={tabIndex}>
-                      <Box sx={{ px: 3 }}>
+                      <Box sx={{ px: { xs: 1.5, sm: 3 } }}>
                         {/* Current Grade */}
                         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 4 }}>
                           <Box>

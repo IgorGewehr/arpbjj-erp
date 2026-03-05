@@ -346,28 +346,27 @@ export default function StudentProfilePage() {
   const isKidsStudent = student?.category === 'kids';
   const beltOptions = isKidsStudent ? kidsBeltOptions : adultBeltOptions;
 
-  // Derive sports from classes if student.sports is missing
+  // Always derive sports from current class memberships (keeps student.sports in sync)
   const [classSports, setClassSports] = useState<SportId[]>([]);
+  const [classSportsLoaded, setClassSportsLoaded] = useState(false);
   useEffect(() => {
-    if (!studentId || !academy?.id || student?.sports?.length) return;
+    if (!studentId || !academy?.id) return;
     const classService = createClassService(academy.id);
     classService.getByStudent(studentId).then((classes) => {
-      const sports = [...new Set(classes.map((c) => getClassSport(c)))];
-      if (sports.length > 0) {
-        setClassSports(sports);
-        // Sync back to student document so future loads are instant
-        const studentService = createStudentService(academy.id);
-        studentService.update(studentId, { sports }).catch(() => {/* silent */});
-      }
-    }).catch(() => {/* silent */});
-  }, [studentId, academy?.id, student?.sports?.length]);
+      const sports = [...new Set(classes.map((c) => getClassSport(c)))] as SportId[];
+      setClassSports(sports);
+      setClassSportsLoaded(true);
+      // Sync back to keep student.sports current (including clearing stale values)
+      const studentService = createStudentService(academy.id);
+      studentService.update(studentId, { sports }).catch(() => {/* silent */});
+    }).catch(() => { setClassSportsLoaded(true); });
+  }, [studentId, academy?.id]);
 
-  // Effective sports: from student doc, or derived from classes (no BJJ fallback)
+  // Effective sports: current class-derived sports (always fresh)
   // Sorted so the primary sport comes first
   const effectiveSports = useMemo(() => {
-    const sports: SportId[] = student?.sports?.length
-      ? (student.sports as SportId[])
-      : classSports;
+    if (!classSportsLoaded) return [];  // wait for classes to load before deciding
+    const sports: SportId[] = classSports;
     if (!student) return sports;
     const primary = getStudentPrimarySport(student);
     return [...sports].sort((a, b) => {

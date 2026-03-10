@@ -518,6 +518,7 @@ export function useBillingReminders() {
   return {
     // Data
     overdueStages: overdueStages ?? {
+      'D+0': [],
       'D+1': [],
       'D+3': [],
       'D+7': [],

@@ -76,6 +76,7 @@ import {
 // Stage Config
 // ============================================
 const STAGE_LABELS: Record<BillingStage, string> = {
+  'D+0': 'Vence Hoje',
   'D+1': 'D+1',
   'D+3': 'D+3',
   'D+7': 'D+7',
@@ -83,7 +84,8 @@ const STAGE_LABELS: Record<BillingStage, string> = {
   'D+30': 'D+30+',
 };
 
-const STAGE_COLORS: Record<BillingStage, 'warning' | 'warning' | 'error' | 'error' | 'error'> = {
+const STAGE_COLORS: Record<BillingStage, 'info' | 'warning' | 'error'> = {
+  'D+0': 'info',
   'D+1': 'warning',
   'D+3': 'warning',
   'D+7': 'error',
@@ -99,7 +101,7 @@ const CONTACT_TYPE_LABELS: Record<ContactType, string> = {
   system: 'Sistema',
 };
 
-const STAGES_ORDER: BillingStage[] = ['D+1', 'D+3', 'D+7', 'D+15', 'D+30'];
+const STAGES_ORDER: BillingStage[] = ['D+0', 'D+1', 'D+3', 'D+7', 'D+15', 'D+30'];
 
 // ============================================
 // Helper: Format currency
@@ -127,7 +129,8 @@ const getStageFromDays = (daysOverdue: number): BillingStage => {
   if (daysOverdue >= 15) return 'D+15';
   if (daysOverdue >= 7) return 'D+7';
   if (daysOverdue >= 3) return 'D+3';
-  return 'D+1';
+  if (daysOverdue >= 1) return 'D+1';
+  return 'D+0';
 };
 
 // ============================================

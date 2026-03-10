@@ -353,6 +353,9 @@ function getEffectiveEmail(contact: StudentContactInfo): string | null {
 
 // Default WhatsApp templates with placeholders: {nome}, {valor}, {vencimento}, {dias}, {academia}
 const DEFAULT_WA_TEMPLATES: Record<string, string> = {
+  'D+0': 'Oi {nome}! Passando rapidinho para lembrar que hoje, dia ' +
+    '{vencimento}, vence sua mensalidade de R$ {valor} com a {academia}. ' +
+    'Contamos com voce! Qualquer duvida, estamos a disposicao.',
   'D+1': 'Ola {nome}, sua mensalidade de R$ {valor} da {academia} ' +
     'venceu ontem ({vencimento}). Por favor, regularize o pagamento ' +
     'para continuar treinando normalmente.',
@@ -372,6 +375,7 @@ const DEFAULT_WA_TEMPLATES: Record<string, string> = {
 };
 
 const DEFAULT_EMAIL_SUBJECTS: Record<string, string> = {
+  'D+0': '{academia} - Lembrete: Sua mensalidade vence hoje',
   'D+1': '{academia} - Mensalidade Vencida',
   'D+3': '{academia} - Mensalidade Atrasada - {dias} dias',
   'D+7': '{academia} - URGENTE: Mensalidade Atrasada',
@@ -803,7 +807,7 @@ export const scheduledOverdueCheck = functions.pubsub
     const academiesSnapshot = await db.collection('academies').get();
 
     // Billing stages: only send reminders on exact day thresholds
-    const BILLING_STAGE_DAYS = [1, 3, 7, 15, 30];
+    const BILLING_STAGE_DAYS = [0, 1, 3, 7, 15, 30];
 
     for (const academyDoc of academiesSnapshot.docs) {
       const academyId = academyDoc.id;
@@ -854,6 +858,7 @@ export const scheduledOverdueCheck = functions.pubsub
         else if (daysOverdue >= 15) stage = 'D+15';
         else if (daysOverdue >= 7) stage = 'D+7';
         else if (daysOverdue >= 3) stage = 'D+3';
+        else if (daysOverdue === 0) stage = 'D+0';
 
         // Only send escalated reminders on exact stage days (or D+30 daily)
         const isStageDay = BILLING_STAGE_DAYS.includes(daysOverdue) || daysOverdue >= 30;

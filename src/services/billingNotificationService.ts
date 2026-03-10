@@ -18,6 +18,7 @@ import {
 // Placeholders: {nome}, {valor}, {vencimento}, {dias}, {academia}
 // ============================================
 export const DEFAULT_WHATSAPP_TEMPLATES: Record<BillingStage, string> = {
+  'D+0': 'Oi {nome}! Passando rapidinho para lembrar que hoje, dia {vencimento}, vence sua mensalidade de {valor} com a {academia}. Contamos com voce! Qualquer duvida, estamos a disposicao.',
   'D+1': 'Ola {nome}! Aqui e a {academia}. Identificamos que sua mensalidade de {valor} venceu em {vencimento}. Caso ja tenha efetuado o pagamento, por favor desconsidere esta mensagem. Caso contrario, solicitamos a regularizacao. Obrigado!',
   'D+3': 'Ola {nome}! Sua mensalidade de {valor} da {academia} esta com 3 dias de atraso (vencimento: {vencimento}). Por favor, regularize sua situacao o mais breve possivel. Em caso de duvidas, estamos a disposicao!',
   'D+7': 'Ola {nome}, sua mensalidade de {valor} da {academia} esta com {dias} dias de atraso. Precisamos que regularize sua situacao para manter seus treinos em dia. Entre em contato conosco para combinar o pagamento.',
@@ -26,6 +27,7 @@ export const DEFAULT_WHATSAPP_TEMPLATES: Record<BillingStage, string> = {
 };
 
 export const DEFAULT_EMAIL_SUBJECT_TEMPLATES: Record<BillingStage, string> = {
+  'D+0': 'Lembrete: Sua mensalidade vence hoje - {academia}',
   'D+1': 'Lembrete de Pagamento - {academia}',
   'D+3': 'Pagamento Atrasado - {academia}',
   'D+7': 'Pagamento Urgente - {academia}',
@@ -34,6 +36,7 @@ export const DEFAULT_EMAIL_SUBJECT_TEMPLATES: Record<BillingStage, string> = {
 };
 
 export const DEFAULT_EMAIL_BODY_TEMPLATES: Record<BillingStage, string> = {
+  'D+0': 'Ola {nome},\n\nPassamos apenas para lembrar que hoje, dia {vencimento}, vence sua mensalidade no valor de {valor} com a {academia}.\n\nSe voce ja efetuou o pagamento, obrigado e pode desconsiderar este aviso!\n\nCaso ainda nao tenha pago, contamos com voce para manter tudo em dia.\n\nAtenciosamente,\n{academia}',
   'D+1': 'Prezado(a) {nome},\n\nIdentificamos que sua mensalidade no valor de {valor} com vencimento em {vencimento} ainda nao foi quitada.\n\nCaso ja tenha efetuado o pagamento, por favor desconsidere esta mensagem.\n\nCaso contrario, solicitamos que regularize sua situacao o mais breve possivel.\n\nAtenciosamente,\n{academia}',
   'D+3': 'Prezado(a) {nome},\n\nSua mensalidade no valor de {valor} da {academia} esta com 3 dias de atraso (vencimento: {vencimento}).\n\nPor favor, regularize sua situacao o mais breve possivel.\n\nEm caso de duvidas ou dificuldades, estamos a disposicao para ajudar.\n\nAtenciosamente,\n{academia}',
   'D+7': 'Prezado(a) {nome},\n\nGostaramos de informar que sua mensalidade no valor de {valor} esta com {dias} dias de atraso.\n\nPrecisamos que regularize sua situacao para manter seus treinos em dia. Entre em contato conosco para combinar a melhor forma de pagamento.\n\nAtenciosamente,\n{academia}',

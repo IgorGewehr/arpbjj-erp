@@ -94,6 +94,7 @@ const classifyStage = (daysOverdue: number): BillingStage | null => {
   if (daysOverdue >= 7) return 'D+7';
   if (daysOverdue >= 3) return 'D+3';
   if (daysOverdue >= 1) return 'D+1';
+  if (daysOverdue === 0) return 'D+0';
   return null;
 };
 
@@ -103,6 +104,7 @@ const classifyStage = (daysOverdue: number): BillingStage | null => {
 const DEFAULT_SETTINGS: BillingReminderSettings = {
   enabled: true,
   stages: [
+    { stage: 'D+0', days: 0, enabled: true, notifyAdmin: false, notifyStudent: true },
     { stage: 'D+1', days: 1, enabled: true, notifyAdmin: true, notifyStudent: true },
     { stage: 'D+3', days: 3, enabled: true, notifyAdmin: true, notifyStudent: true },
     { stage: 'D+7', days: 7, enabled: true, notifyAdmin: true, notifyStudent: false },
@@ -133,6 +135,7 @@ export class BillingReminderService {
     const financials = snapshot.docs.map(docToFinancial);
 
     const result: Record<BillingStage, Financial[]> = {
+      'D+0': [],
       'D+1': [],
       'D+3': [],
       'D+7': [],
@@ -144,7 +147,7 @@ export class BillingReminderService {
       if (financial.status !== 'overdue' && financial.status !== 'pending') return;
 
       const daysOverdue = calculateDaysOverdue(financial.dueDate);
-      if (daysOverdue < 1) return;
+      if (daysOverdue < 0) return;
 
       const stage = classifyStage(daysOverdue);
       if (stage) {
@@ -240,6 +243,7 @@ export class BillingReminderService {
       recoveryRate: 0,
       averageDaysOverdue: 0,
       byStage: {
+        'D+0': { count: 0, amount: 0 },
         'D+1': { count: 0, amount: 0 },
         'D+3': { count: 0, amount: 0 },
         'D+7': { count: 0, amount: 0 },
@@ -255,7 +259,7 @@ export class BillingReminderService {
       if (financial.status !== 'overdue' && financial.status !== 'pending') return;
 
       const daysOverdue = calculateDaysOverdue(financial.dueDate);
-      if (daysOverdue < 1) return;
+      if (daysOverdue < 0) return;
 
       const stage = classifyStage(daysOverdue);
       if (!stage) return;

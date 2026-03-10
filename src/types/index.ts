@@ -1041,9 +1041,10 @@ export interface Checkin {
 // ============================================
 // Billing Reminder Types
 // ============================================
-export type BillingStage = 'D+1' | 'D+3' | 'D+7' | 'D+15' | 'D+30';
+export type BillingStage = 'D+0' | 'D+1' | 'D+3' | 'D+7' | 'D+15' | 'D+30';
 
 export const BILLING_STAGES: { key: BillingStage; days: number; label: string }[] = [
+  { key: 'D+0', days: 0, label: 'Vence hoje' },
   { key: 'D+1', days: 1, label: '1 dia de atraso' },
   { key: 'D+3', days: 3, label: '3 dias de atraso' },
   { key: 'D+7', days: 7, label: '7 dias de atraso' },

@@ -19,6 +19,7 @@ export interface AttendanceReportParams {
   classDays: Array<{
     date: Date;
     classNames: string[];
+    classSchedules: Array<{ name: string; startTime: string; endTime: string }>;
   }>;
   periodLabel: string; // e.g., "Março/2026"
   startDate: Date;
@@ -389,9 +390,11 @@ export function generateAttendanceReportPDF(params: AttendanceReportParams): jsP
     const dayEntryHeight = 7;
     for (let di = 0; di < sortedDays.length; di++) {
       const dayInfo = sortedDays[di];
-      const classNamesText = dayInfo.classNames.join(', ');
-      const lines = splitText(doc, classNamesText, CONTENT_WIDTH - 70);
-      const entryHeight = Math.max(dayEntryHeight, lines.length * 4 + 3);
+      // Build lines with class name + schedule time
+      const scheduleLines = dayInfo.classSchedules.length > 0
+        ? dayInfo.classSchedules.map(s => `${s.name}  ${s.startTime} - ${s.endTime}`)
+        : dayInfo.classNames;
+      const entryHeight = Math.max(dayEntryHeight, scheduleLines.length * 5 + 2);
 
       y = ensureSpace(doc, y, entryHeight);
 
@@ -418,12 +421,23 @@ export function generateAttendanceReportPDF(params: AttendanceReportParams): jsP
       doc.setTextColor(...COLOR_TEXT_SECONDARY);
       doc.text(`- ${weekday}`, MARGIN_LEFT + 22, y + 5);
 
-      // Class names
-      doc.setFont('helvetica', 'normal');
+      // Class names with schedules
       doc.setFontSize(8);
-      doc.setTextColor(...COLOR_TEXT_PRIMARY);
-      for (let li = 0; li < lines.length; li++) {
-        doc.text(lines[li], MARGIN_LEFT + 62, y + 5 + li * 4);
+      for (let li = 0; li < scheduleLines.length; li++) {
+        const lineY = y + 5 + li * 5;
+        if (dayInfo.classSchedules.length > 0) {
+          const sched = dayInfo.classSchedules[li];
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLOR_TEXT_PRIMARY);
+          doc.text(sched.name, MARGIN_LEFT + 62, lineY);
+          doc.setFont('helvetica', 'bold');
+          doc.setTextColor(...COLOR_ACCENT);
+          doc.text(`${sched.startTime} - ${sched.endTime}`, PAGE_WIDTH - MARGIN_RIGHT - 4, lineY, { align: 'right' });
+        } else {
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...COLOR_TEXT_PRIMARY);
+          doc.text(scheduleLines[li], MARGIN_LEFT + 62, lineY);
+        }
       }
 
       y += entryHeight;

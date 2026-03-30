@@ -536,22 +536,36 @@ export function StudentList() {
         };
       });
 
-      // Build class days
-      const dayMap = new Map<string, { date: Date; classNames: Set<string> }>();
+      // Build class days with schedules
+      const dayMap = new Map<string, { date: Date; classNames: Set<string>; classSchedules: Map<string, { name: string; startTime: string; endTime: string }> }>();
       for (const att of filteredAttendance) {
         const dayKey = att.date.toISOString().split('T')[0];
+        const cls = selectedClassObjs.find(c => c.id === att.classId);
+        const className = cls?.name || att.className || 'Turma';
+        const dayOfWeek = att.date.getDay();
+        const scheduleEntry = cls?.schedule?.find(s => s.dayOfWeek === dayOfWeek);
+        const scheduleInfo = {
+          name: className,
+          startTime: scheduleEntry?.startTime || '',
+          endTime: scheduleEntry?.endTime || '',
+        };
         const existing = dayMap.get(dayKey);
-        const className = selectedClassObjs.find(c => c.id === att.classId)?.name || att.className || 'Turma';
         if (existing) {
           existing.classNames.add(className);
+          if (!existing.classSchedules.has(className)) {
+            existing.classSchedules.set(className, scheduleInfo);
+          }
         } else {
-          dayMap.set(dayKey, { date: att.date, classNames: new Set([className]) });
+          const schedMap = new Map<string, { name: string; startTime: string; endTime: string }>();
+          schedMap.set(className, scheduleInfo);
+          dayMap.set(dayKey, { date: att.date, classNames: new Set([className]), classSchedules: schedMap });
         }
       }
 
       const classDays = Array.from(dayMap.values()).map(d => ({
         date: d.date,
         classNames: Array.from(d.classNames),
+        classSchedules: Array.from(d.classSchedules.values()).sort((a, b) => a.startTime.localeCompare(b.startTime)),
       }));
 
       // Period label

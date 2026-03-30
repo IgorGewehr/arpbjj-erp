@@ -602,13 +602,14 @@ class StudentService {
     newGrade: string,
     newStripes: number,
     promotedBy?: string,
-    notes?: string
+    notes?: string,
+    graduationDate?: Date
   ): Promise<Student> {
     const student = await this.getById(id);
     if (!student) throw new Error('Student not found');
 
     const updateData: Partial<Student> = {};
-    const now = new Date();
+    const date = graduationDate || new Date();
 
     if (sportId === 'bjj') {
       // Legacy support for BJJ
@@ -619,7 +620,7 @@ class StudentService {
         {
           belt: newGrade as any,
           stripes: newStripes as any,
-          date: now,
+          date,
           notes,
         },
       ];
@@ -628,7 +629,7 @@ class StudentService {
       const currentSportData = student.sportData?.[sportId] || {
         currentGrade: newGrade,
         currentStripes: newStripes,
-        startDate: now,
+        startDate: date,
         gradeHistory: [],
       };
 
@@ -643,7 +644,7 @@ class StudentService {
             {
               grade: newGrade,
               stripes: newStripes,
-              date: now,
+              date,
               notes,
               promotedBy,
             },

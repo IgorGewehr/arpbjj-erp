@@ -57,6 +57,7 @@ import {
   History,
   Trash2,
   QrCode,
+  FileText,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
@@ -68,6 +69,8 @@ import { format, differenceInMonths, differenceInYears } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BeltColor, KidsBeltColor, Stripes, PaymentMethod, Financial, LinkCode, FinancialPaymentLink, Plan, getClassSport, getStudentGrade, getStudentPrimarySport } from '@/types';
 import { SPORTS, getGradesForSport, getGradeLabel, SportId } from '@/lib/constants/sports';
+import { getBeltLabel } from '@/lib/constants/belts';
+import { generateAthleteCurriculumPDF } from '@/lib/pdfGenerator';
 import { createFinancialService, createAttendanceService, createStudentService } from '@/services';
 import { createClassService } from '@/services/classService';
 import { getStudentDueDay } from '@/services/planService';
@@ -318,7 +321,11 @@ export default function StudentProfilePage() {
   const [graduationDialogOpen, setGraduationDialogOpen] = useState(false);
   const [newBelt, setNewBelt] = useState<BeltColor | KidsBeltColor>('white');
   const [newStripes, setNewStripes] = useState<Stripes>(0);
+  const [graduationDate, setGraduationDate] = useState<string>(new Date().toISOString().split('T')[0]);
   const [savingGraduation, setSavingGraduation] = useState(false);
+
+  // Curriculum PDF state
+  const [generatingCurriculum, setGeneratingCurriculum] = useState(false);
 
   // Link code dialog state
   const [linkCodeDialogOpen, setLinkCodeDialogOpen] = useState(false);
@@ -647,6 +654,7 @@ export default function StudentProfilePage() {
       const gradeInfo = getStudentGrade(student, sportId);
       setNewBelt((gradeInfo?.currentGrade || 'white') as any);
       setNewStripes((gradeInfo?.currentStripes || 0) as Stripes);
+      setGraduationDate(new Date().toISOString().split('T')[0]);
       setGraduationDialogOpen(true);
     }
   }, [student]);
@@ -659,7 +667,8 @@ export default function StudentProfilePage() {
         id: studentId,
         sportId: graduationSportId,
         newGrade: newBelt,
-        newStripes: newStripes
+        newStripes: newStripes,
+        graduationDate: new Date(graduationDate + 'T12:00:00'),
       });
       refreshStudent();
       setGraduationDialogOpen(false);
@@ -670,6 +679,100 @@ export default function StudentProfilePage() {
       setSavingGraduation(false);
     }
   }, [student, studentId, graduationSportId, newBelt, newStripes, updateSportGrade, refreshStudent]);
+
+  // Handle generate curriculum PDF
+  const handleGenerateCurriculumPDF = useCallback(async () => {
+    if (!student) return;
+    setGeneratingCurriculum(true);
+    try {
+      // Convert photo to base64 if available
+      let photoBase64: string | undefined;
+      if (student.photoUrl) {
+        try {
+          const response = await fetch(student.photoUrl);
+          const blob = await response.blob();
+          photoBase64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(blob);
+          });
+        } catch {
+          // Photo fetch failed, proceed without
+        }
+      }
+
+      // Get student classes
+      const classService = createClassService(academy?.id || 'default');
+      const studentClasses = await classService.getByStudent(studentId);
+
+      // Build sports data
+      const sportsData = (student.sports || []).map(sportId => {
+        const sportConfig = SPORTS[sportId];
+        const sportData = student.sportData?.[sportId];
+        return {
+          sportName: sportConfig?.label || sportId,
+          currentGrade: sportData?.currentGrade ? getBeltLabel(sportData.currentGrade) : getBeltLabel(student.currentBelt),
+          currentStripes: sportData?.currentStripes ?? student.currentStripes,
+        };
+      });
+
+      // Calculate age
+      let age: number | undefined;
+      if (student.birthDate) {
+        const today = new Date();
+        const birth = student.birthDate instanceof Date ? student.birthDate : new Date(student.birthDate);
+        age = today.getFullYear() - birth.getFullYear();
+        const monthDiff = today.getMonth() - birth.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+          age--;
+        }
+      }
+
+      const doc = generateAthleteCurriculumPDF({
+        academyName: academy?.name || 'Academia',
+        student: {
+          fullName: student.fullName,
+          nickname: student.nickname,
+          photoBase64,
+          birthDate: student.birthDate ? (student.birthDate instanceof Date ? student.birthDate : new Date(student.birthDate)) : undefined,
+          age,
+          cpf: student.cpf,
+          rg: student.rg,
+          phone: student.phone,
+          email: student.email,
+          category: student.category,
+          weight: student.weight,
+          address: student.address,
+          guardian: student.guardian,
+          currentBelt: student.currentBelt,
+          currentStripes: student.currentStripes,
+          jiujitsuStartDate: student.jiujitsuStartDate ? (student.jiujitsuStartDate instanceof Date ? student.jiujitsuStartDate : new Date(student.jiujitsuStartDate)) : undefined,
+          startDate: student.startDate ? (student.startDate instanceof Date ? student.startDate : new Date(student.startDate)) : undefined,
+          attendanceCount: (student.initialAttendanceCount || 0) + (student.attendanceCount || 0),
+          bloodType: student.bloodType,
+          allergies: student.allergies,
+          healthNotes: student.healthNotes,
+          emergencyContact: student.emergencyContact,
+          beltHistory: student.beltHistory?.map(h => ({
+            belt: h.belt,
+            stripes: h.stripes,
+            date: h.date instanceof Date ? h.date : new Date(h.date),
+            notes: h.notes,
+          })),
+          sports: sportsData.length > 0 ? sportsData : undefined,
+          classes: studentClasses.map(c => c.name),
+          status: student.status,
+        },
+      });
+
+      const fileName = `Curriculo_${student.fullName.replace(/\s+/g, '_')}.pdf`;
+      doc.save(fileName);
+    } catch (err) {
+      console.error('Erro ao gerar currículo:', err);
+    } finally {
+      setGeneratingCurriculum(false);
+    }
+  }, [student, studentId, academy]);
 
   // Handle generate link code
   const handleGenerateLinkCode = useCallback(async () => {
@@ -788,13 +891,25 @@ export default function StudentProfilePage() {
       <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: { xs: 2, sm: 4 } }}>
-            <IconButton onClick={handleBack} size="small">
-              <ArrowLeft size={20} />
-            </IconButton>
-            <Typography variant="h4" fontWeight={700} sx={{ fontSize: { xs: '1.4rem', sm: '2.125rem' } }}>
-              Perfil do Aluno
-            </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: { xs: 2, sm: 4 } }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+              <IconButton onClick={handleBack} size="small">
+                <ArrowLeft size={20} />
+              </IconButton>
+              <Typography variant="h4" fontWeight={700} sx={{ fontSize: { xs: '1.4rem', sm: '2.125rem' } }}>
+                Perfil do Aluno
+              </Typography>
+            </Box>
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={handleGenerateCurriculumPDF}
+              disabled={generatingCurriculum || !student}
+              startIcon={generatingCurriculum ? <CircularProgress size={16} color="inherit" /> : <FileText size={16} />}
+              sx={{ textTransform: 'none', borderRadius: 2 }}
+            >
+              {generatingCurriculum ? 'Gerando...' : 'Currículo do Atleta'}
+            </Button>
           </Box>
 
           <Grid container spacing={{ xs: 2, sm: 3 }}>
@@ -2049,6 +2164,14 @@ export default function StudentProfilePage() {
                     </Select>
                   </FormControl>
                 )}
+                <TextField
+                  fullWidth
+                  label="Data da Graduação"
+                  type="date"
+                  value={graduationDate}
+                  onChange={(e) => setGraduationDate(e.target.value)}
+                  slotProps={{ inputLabel: { shrink: true } }}
+                />
               </Box>
             )}
           </DialogContent>

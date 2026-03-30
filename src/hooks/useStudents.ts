@@ -249,6 +249,7 @@ export function useStudents(options: UseStudentsOptions = {}) {
       newStripes,
       promotedBy,
       notes,
+      graduationDate,
     }: {
       id: string;
       sportId: string;
@@ -256,8 +257,9 @@ export function useStudents(options: UseStudentsOptions = {}) {
       newStripes: number;
       promotedBy?: string;
       notes?: string;
+      graduationDate?: Date;
     }) => {
-      return studentService.updateSportGrade(id, sportId, newGrade, newStripes, promotedBy, notes);
+      return studentService.updateSportGrade(id, sportId, newGrade, newStripes, promotedBy, notes, graduationDate);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [QUERY_KEYS.students] });

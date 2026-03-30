@@ -21,8 +21,16 @@ import {
   IconButton,
   Button,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Checkbox,
+  ListItemText,
+  ListItemButton,
+  Tooltip,
 } from '@mui/material';
-import { Search, Grid, List, Users, Filter } from 'lucide-react';
+import { Search, Grid, List, Users, Filter, FileText, Download, Calendar } from 'lucide-react';
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses, usePlans } from '@/hooks';
@@ -93,6 +101,11 @@ function getTatamiStartDate(student: Student): Date {
 }
 import { useRouter } from 'next/navigation';
 import { BottomSheet, FadeInView, ScaleOnPress } from '@/components/mobile';
+import { useAcademy } from '@/contexts/AcademyContext';
+import { createAttendanceService } from '@/services/attendanceService';
+import { generateAttendanceReportPDF } from '@/lib/pdfGenerator';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 // ============================================
 // Debounced Search Input Component (Optimized)
@@ -259,6 +272,7 @@ export function StudentList() {
   } = useStudents();
   const { classes } = useClasses();
   const { plans } = usePlans();
+  const { academyId, academy } = useAcademy();
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [classFilter, setClassFilter] = useState<string>('');
@@ -269,6 +283,19 @@ export function StudentList() {
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
   const initialViewModeSet = useRef(false);
   const loadMoreRef = useRef<HTMLDivElement>(null);
+
+  // PDF Report state
+  const [pdfDialogOpen, setPdfDialogOpen] = useState(false);
+  const [pdfSelectedClasses, setPdfSelectedClasses] = useState<string[]>([]);
+  const [pdfStartDate, setPdfStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(1);
+    return d.toISOString().split('T')[0];
+  });
+  const [pdfEndDate, setPdfEndDate] = useState<string>(() => {
+    return new Date().toISOString().split('T')[0];
+  });
+  const [pdfGenerating, setPdfGenerating] = useState(false);
 
   // Definir viewMode padrão como 'list' em telas pequenas (mobile)
   useEffect(() => {
@@ -467,6 +494,87 @@ export function StudentList() {
     // The list will auto-refresh via React Query invalidation
     // No redirect needed - stay on current page
   }, []);
+
+  const handleGenerateAttendancePDF = useCallback(async () => {
+    if (!academyId || pdfSelectedClasses.length === 0) return;
+    setPdfGenerating(true);
+    try {
+      const attendanceService = createAttendanceService(academyId);
+      const startDate = new Date(pdfStartDate + 'T00:00:00');
+      const endDate = new Date(pdfEndDate + 'T23:59:59');
+
+      // Fetch attendance for the period
+      const allAttendance = await attendanceService.getByDateRange(startDate, endDate);
+
+      // Filter by selected classes
+      const filteredAttendance = allAttendance.filter(a => pdfSelectedClasses.includes(a.classId));
+
+      // Build class data
+      const selectedClassObjs = classes.filter(c => pdfSelectedClasses.includes(c.id));
+      const classData = selectedClassObjs.map(cls => {
+        const classAttendance = filteredAttendance.filter(a => a.classId === cls.id);
+
+        // Count per student
+        const studentCounts = new Map<string, { name: string; count: number }>();
+        for (const att of classAttendance) {
+          const existing = studentCounts.get(att.studentId);
+          if (existing) {
+            existing.count++;
+          } else {
+            studentCounts.set(att.studentId, { name: att.studentName || att.studentId, count: 1 });
+          }
+        }
+
+        return {
+          id: cls.id,
+          name: cls.name,
+          instructorName: cls.instructorName,
+          students: Array.from(studentCounts.values()).map(s => ({
+            name: s.name,
+            attendanceCount: s.count,
+          })),
+        };
+      });
+
+      // Build class days
+      const dayMap = new Map<string, { date: Date; classNames: Set<string> }>();
+      for (const att of filteredAttendance) {
+        const dayKey = att.date.toISOString().split('T')[0];
+        const existing = dayMap.get(dayKey);
+        const className = selectedClassObjs.find(c => c.id === att.classId)?.name || att.className || 'Turma';
+        if (existing) {
+          existing.classNames.add(className);
+        } else {
+          dayMap.set(dayKey, { date: att.date, classNames: new Set([className]) });
+        }
+      }
+
+      const classDays = Array.from(dayMap.values()).map(d => ({
+        date: d.date,
+        classNames: Array.from(d.classNames),
+      }));
+
+      // Period label
+      const startMonth = format(startDate, 'MMMM/yyyy', { locale: ptBR });
+      const periodLabel = startMonth.charAt(0).toUpperCase() + startMonth.slice(1);
+
+      const doc = generateAttendanceReportPDF({
+        academyName: academy?.name || 'Academia',
+        classes: classData,
+        classDays,
+        periodLabel,
+        startDate,
+        endDate,
+      });
+
+      doc.save(`Relatorio_Presenca_${pdfStartDate}_${pdfEndDate}.pdf`);
+      setPdfDialogOpen(false);
+    } catch (err) {
+      console.error('Erro ao gerar PDF:', err);
+    } finally {
+      setPdfGenerating(false);
+    }
+  }, [academyId, academy, pdfSelectedClasses, pdfStartDate, pdfEndDate, classes]);
 
   // Active filters count
   const activeFiltersCount = useMemo(() => {
@@ -693,6 +801,19 @@ export function StudentList() {
             </Box>
 
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Tooltip title="Relatório de Presença (PDF)">
+                <IconButton
+                  onClick={() => setPdfDialogOpen(true)}
+                  size="small"
+                  sx={{
+                    bgcolor: 'action.hover',
+                    borderRadius: 2,
+                    '&:hover': { bgcolor: 'action.selected' },
+                  }}
+                >
+                  <FileText size={isMobile ? 16 : 18} />
+                </IconButton>
+              </Tooltip>
               <ToggleButtonGroup
                 value={viewMode}
                 exclusive
@@ -875,6 +996,108 @@ export function StudentList() {
 
       {/* Quick Register FAB */}
       <QuickRegisterFab onSuccess={handleNewStudentSuccess} />
+
+      {/* PDF Report Dialog */}
+      <Dialog open={pdfDialogOpen} onClose={() => setPdfDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <FileText size={20} />
+            Relatório de Presença
+          </Box>
+        </DialogTitle>
+        <DialogContent>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
+            <Typography variant="body2" color="text.secondary">
+              Selecione as turmas e o período para gerar o relatório em PDF.
+            </Typography>
+
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                fullWidth
+                label="Data Início"
+                type="date"
+                value={pdfStartDate}
+                onChange={(e) => setPdfStartDate(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+              <TextField
+                fullWidth
+                label="Data Fim"
+                type="date"
+                value={pdfEndDate}
+                onChange={(e) => setPdfEndDate(e.target.value)}
+                slotProps={{ inputLabel: { shrink: true } }}
+              />
+            </Box>
+
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Turmas</Typography>
+              <Paper variant="outlined" sx={{ maxHeight: 240, overflow: 'auto', borderRadius: 2 }}>
+                {classes.map((cls) => (
+                  <ListItemButton
+                    key={cls.id}
+                    dense
+                    onClick={() => {
+                      setPdfSelectedClasses(prev =>
+                        prev.includes(cls.id)
+                          ? prev.filter(id => id !== cls.id)
+                          : [...prev, cls.id]
+                      );
+                    }}
+                    sx={{ py: 0.5 }}
+                  >
+                    <Checkbox
+                      checked={pdfSelectedClasses.includes(cls.id)}
+                      size="small"
+                      sx={{ mr: 1 }}
+                    />
+                    <ListItemText
+                      primary={cls.name}
+                      secondary={cls.instructorName ? `Prof. ${cls.instructorName}` : undefined}
+                      primaryTypographyProps={{ variant: 'body2' }}
+                      secondaryTypographyProps={{ variant: 'caption' }}
+                    />
+                  </ListItemButton>
+                ))}
+                {classes.length === 0 && (
+                  <Typography variant="body2" color="text.secondary" sx={{ p: 2, textAlign: 'center' }}>
+                    Nenhuma turma encontrada
+                  </Typography>
+                )}
+              </Paper>
+              {classes.length > 0 && (
+                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                  <Button
+                    size="small"
+                    onClick={() => setPdfSelectedClasses(classes.map(c => c.id))}
+                  >
+                    Selecionar todas
+                  </Button>
+                  <Button
+                    size="small"
+                    onClick={() => setPdfSelectedClasses([])}
+                  >
+                    Limpar
+                  </Button>
+                </Box>
+              )}
+            </Box>
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2 }}>
+          <Button onClick={() => setPdfDialogOpen(false)}>
+            Cancelar
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleGenerateAttendancePDF}
+            disabled={pdfGenerating || pdfSelectedClasses.length === 0}
+            startIcon={pdfGenerating ? <CircularProgress size={16} color="inherit" /> : <Download size={16} />}
+          >
+            {pdfGenerating ? 'Gerando...' : 'Gerar PDF'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

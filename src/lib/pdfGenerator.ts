@@ -139,6 +139,19 @@ const BELT_COLORS: Record<string, string> = {
   verde: '#228B22',
 };
 
+const BELT_LABELS_PT: Record<string, string> = {
+  white: 'Branca', blue: 'Azul', purple: 'Roxa', brown: 'Marrom', black: 'Preta',
+  grey: 'Cinza', yellow: 'Amarela', orange: 'Laranja', green: 'Verde',
+  'grey-white': 'Cinza/Branca', 'yellow-white': 'Amarela/Branca',
+  'orange-white': 'Laranja/Branca', 'green-white': 'Verde/Branca',
+  'grey-black': 'Cinza/Preta', 'yellow-black': 'Amarela/Preta',
+  'orange-black': 'Laranja/Preta', 'green-black': 'Verde/Preta',
+};
+
+function getBeltLabelPt(belt: string): string {
+  return BELT_LABELS_PT[belt.toLowerCase()] || belt.charAt(0).toUpperCase() + belt.slice(1);
+}
+
 type RGB = [number, number, number];
 
 // ---------------------------------------------------------------------------
@@ -536,12 +549,19 @@ export function generateAthleteCurriculumPDF(params: AthleteCurriculumParams): j
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(...COLOR_TEXT_SECONDARY);
-    doc.text(`(${student.nickname})`, infoX, y + 14);
+    const nicknameClean = student.nickname.replace(/^\(+|\)+$/g, '');
+    doc.text(`(${nicknameClean})`, infoX, y + 14);
   }
 
-  // Belt display next to name
-  const beltY = student.nickname ? y + 18 : y + 14;
-  drawBeltBadge(doc, infoX, beltY, student.currentBelt, student.currentStripes);
+  // Belt text (no drawing, just label)
+  let nextInfoY = student.nickname ? y + 22 : y + 16;
+  const beltLabel = getBeltLabelPt(student.currentBelt);
+  const stripesText = student.currentStripes > 0 ? ` - ${student.currentStripes} grau${student.currentStripes !== 1 ? 's' : ''}` : '';
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...COLOR_ACCENT);
+  doc.text(`Faixa ${beltLabel}${stripesText}`, infoX, nextInfoY);
+  nextInfoY += 7;
 
   // Category + classes info
   const categoryLabel =
@@ -549,13 +569,19 @@ export function generateAthleteCurriculumPDF(params: AthleteCurriculumParams): j
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...COLOR_TEXT_SECONDARY);
-  doc.text(`Categoria: ${categoryLabel}`, infoX, beltY + 12);
+  doc.text(`Categoria: ${categoryLabel}`, infoX, nextInfoY);
+  nextInfoY += 6;
 
   if (student.classes && student.classes.length > 0) {
-    doc.text(`Turmas: ${student.classes.join(', ')}`, infoX, beltY + 18);
+    const turmasText = `Turmas: ${student.classes.join(', ')}`;
+    const turmasLines = splitText(doc, turmasText, CONTENT_WIDTH - photoWidth - 12);
+    for (const line of turmasLines) {
+      doc.text(line, infoX, nextInfoY);
+      nextInfoY += 5;
+    }
   }
 
-  y = Math.max(photoY + photoHeight, beltY + 24) + 6;
+  y = Math.max(photoY + photoHeight, nextInfoY) + 6;
 
   // ---- Section: DADOS PESSOAIS ----
   y = drawSectionHeader(doc, y, 'DADOS PESSOAIS');
@@ -567,11 +593,24 @@ export function generateAthleteCurriculumPDF(params: AthleteCurriculumParams): j
     ['CPF', student.cpf],
     ['RG', student.rg],
     ['Telefone', student.phone],
-    ['E-mail', student.email],
     ['Categoria', categoryLabel],
     ['Peso', student.weight != null ? `${student.weight} kg` : undefined],
   ];
   y = drawFieldGrid(doc, y, personalFields);
+
+  // Email on full-width row to avoid truncation
+  if (student.email) {
+    y = ensureSpace(doc, y, 6);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...COLOR_TEXT_SECONDARY);
+    doc.text('E-mail:', MARGIN_LEFT + 4, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(9);
+    doc.setTextColor(...COLOR_TEXT_PRIMARY);
+    doc.text(student.email, MARGIN_LEFT + 46, y);
+    y += 5.5;
+  }
   y += 4;
 
   // ---- Section: ENDERECO ----
@@ -620,16 +659,11 @@ export function generateAthleteCurriculumPDF(params: AthleteCurriculumParams): j
   y = ensureSpace(doc, y, 40);
   y = drawSectionHeader(doc, y, 'JIU-JITSU');
 
-  // Belt display row
-  y = ensureSpace(doc, y, 14);
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
-  doc.setTextColor(...COLOR_TEXT_SECONDARY);
-  doc.text('Faixa atual:', MARGIN_LEFT + 4, y + 1);
-  drawBeltBadge(doc, MARGIN_LEFT + 32, y - 4, student.currentBelt, student.currentStripes);
-  y += 10;
+  const beltLabelJiu = getBeltLabelPt(student.currentBelt);
+  const stripesTextJiu = student.currentStripes > 0 ? ` - ${student.currentStripes} grau${student.currentStripes !== 1 ? 's' : ''}` : '';
 
   const bjjFields: Array<[string, string | undefined]> = [
+    ['Faixa atual', `${beltLabelJiu}${stripesTextJiu}`],
     [
       'Inicio no Jiu-Jitsu',
       student.jiujitsuStartDate ? formatDate(student.jiujitsuStartDate) : undefined,
@@ -840,19 +874,19 @@ function drawFieldGrid(
   fields: Array<[string, string | undefined]>,
 ): number {
   const filteredFields = fields.filter(([, value]) => value != null && value !== '');
-  const labelWidth = 48;
+  const labelWidth = 42;
   const colWidth = CONTENT_WIDTH / 2;
 
   for (let i = 0; i < filteredFields.length; i += 2) {
     y = ensureSpace(doc, y, 6);
     // Left column
     const [label1, value1] = filteredFields[i];
-    drawFieldPair(doc, MARGIN_LEFT + 4, y, label1, value1!, labelWidth);
+    drawFieldPair(doc, MARGIN_LEFT + 4, y, label1, value1!, labelWidth, colWidth - 8);
 
     // Right column (if exists)
     if (i + 1 < filteredFields.length) {
       const [label2, value2] = filteredFields[i + 1];
-      drawFieldPair(doc, MARGIN_LEFT + colWidth + 4, y, label2, value2!, labelWidth);
+      drawFieldPair(doc, MARGIN_LEFT + colWidth + 4, y, label2, value2!, labelWidth, colWidth - 8);
     }
 
     y += 5.5;
@@ -869,6 +903,7 @@ function drawFieldPair(
   label: string,
   value: string,
   labelWidth: number,
+  maxColWidth: number,
 ) {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(8);
@@ -878,7 +913,7 @@ function drawFieldPair(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.setTextColor(...COLOR_TEXT_PRIMARY);
-  const maxValueWidth = CONTENT_WIDTH / 2 - labelWidth - 4;
+  const maxValueWidth = maxColWidth - labelWidth;
   const truncated = truncateText(doc, value, maxValueWidth);
   doc.text(truncated, x + labelWidth, y);
 }

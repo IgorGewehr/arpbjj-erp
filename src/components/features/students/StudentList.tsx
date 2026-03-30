@@ -1021,15 +1021,52 @@ export function StudentList() {
         </DialogTitle>
         <DialogContent>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, pt: 1 }}>
-            <Typography variant="body2" color="text.secondary">
-              Selecione as turmas e o período para gerar o relatório em PDF.
-            </Typography>
 
+            {/* Quick month selector */}
+            <Box>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>Período</Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }}>
+                {(() => {
+                  const months: Array<{ label: string; start: string; end: string }> = [];
+                  const now = new Date();
+                  for (let i = 0; i < 6; i++) {
+                    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+                    const label = format(d, 'MMM/yy', { locale: ptBR });
+                    months.push({
+                      label: label.charAt(0).toUpperCase() + label.slice(1),
+                      start: d.toISOString().split('T')[0],
+                      end: lastDay.toISOString().split('T')[0],
+                    });
+                  }
+                  return months.map((m) => {
+                    const isSelected = pdfStartDate === m.start && pdfEndDate === m.end;
+                    return (
+                      <Chip
+                        key={m.start}
+                        label={m.label}
+                        size="small"
+                        color={isSelected ? 'primary' : 'default'}
+                        variant={isSelected ? 'filled' : 'outlined'}
+                        onClick={() => {
+                          setPdfStartDate(m.start);
+                          setPdfEndDate(m.end);
+                        }}
+                        sx={{ fontWeight: isSelected ? 700 : 400 }}
+                      />
+                    );
+                  });
+                })()}
+              </Box>
+            </Box>
+
+            {/* Custom date range */}
             <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
                 fullWidth
                 label="Data Início"
                 type="date"
+                size="small"
                 value={pdfStartDate}
                 onChange={(e) => setPdfStartDate(e.target.value)}
                 slotProps={{ inputLabel: { shrink: true } }}
@@ -1038,15 +1075,37 @@ export function StudentList() {
                 fullWidth
                 label="Data Fim"
                 type="date"
+                size="small"
                 value={pdfEndDate}
                 onChange={(e) => setPdfEndDate(e.target.value)}
                 slotProps={{ inputLabel: { shrink: true } }}
               />
             </Box>
 
+            {/* Class filter */}
             <Box>
-              <Typography variant="subtitle2" sx={{ mb: 1 }}>Turmas</Typography>
-              <Paper variant="outlined" sx={{ maxHeight: 240, overflow: 'auto', borderRadius: 2 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+                <Typography variant="subtitle2">Turmas</Typography>
+                {classes.length > 0 && (
+                  <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Button
+                      size="small"
+                      sx={{ textTransform: 'none', fontSize: '0.75rem', minWidth: 0, py: 0 }}
+                      onClick={() => setPdfSelectedClasses(classes.map(c => c.id))}
+                    >
+                      Todas
+                    </Button>
+                    <Button
+                      size="small"
+                      sx={{ textTransform: 'none', fontSize: '0.75rem', minWidth: 0, py: 0 }}
+                      onClick={() => setPdfSelectedClasses([])}
+                    >
+                      Nenhuma
+                    </Button>
+                  </Box>
+                )}
+              </Box>
+              <Paper variant="outlined" sx={{ maxHeight: 200, overflow: 'auto', borderRadius: 2 }}>
                 {classes.map((cls) => (
                   <ListItemButton
                     key={cls.id}
@@ -1079,21 +1138,10 @@ export function StudentList() {
                   </Typography>
                 )}
               </Paper>
-              {classes.length > 0 && (
-                <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
-                  <Button
-                    size="small"
-                    onClick={() => setPdfSelectedClasses(classes.map(c => c.id))}
-                  >
-                    Selecionar todas
-                  </Button>
-                  <Button
-                    size="small"
-                    onClick={() => setPdfSelectedClasses([])}
-                  >
-                    Limpar
-                  </Button>
-                </Box>
+              {pdfSelectedClasses.length > 0 && (
+                <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                  {pdfSelectedClasses.length} turma{pdfSelectedClasses.length !== 1 ? 's' : ''} selecionada{pdfSelectedClasses.length !== 1 ? 's' : ''}
+                </Typography>
               )}
             </Box>
           </Box>

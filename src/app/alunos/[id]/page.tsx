@@ -63,6 +63,7 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import { GradeDisplay } from '@/components/shared/GradeDisplay';
+import { CreateChargeDialog, CreateChargeData } from '@/components/features/financial/CreateChargeDialog';
 import { useStudent, useStudents, useFinancial, usePlans, useAssessment, useStudentAssessment } from '@/hooks';
 import { getBeltChipColor } from '@/lib/theme';
 import { format, differenceInMonths, differenceInYears } from 'date-fns';
@@ -264,7 +265,7 @@ export default function StudentProfilePage() {
   const { success: showSuccess, error: showError } = useFeedback();
   const { student, isLoading, refresh: refreshStudent } = useStudent(studentId);
   const { updateBelt, updateSportGrade } = useStudents({ autoLoad: false });
-  const { markAsPaid, isMarkingPaid } = useFinancial({ autoLoad: false });
+  const { markAsPaid, isMarkingPaid, createFinancial, isCreating: isCreatingCharge } = useFinancial({ autoLoad: false });
   const { plans, setCustomValue, removeCustomValue, isSettingCustomValue, setCustomDueDay, removeCustomDueDay } = usePlans();
 
   // Check if AbacatePay is enabled
@@ -309,6 +310,9 @@ export default function StudentProfilePage() {
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState<Financial | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('pix');
+
+  // Create individual charge dialog state
+  const [createChargeDialogOpen, setCreateChargeDialogOpen] = useState(false);
 
   // PIX Payment state
   const [pixDialogOpen, setPixDialogOpen] = useState(false);
@@ -385,11 +389,7 @@ export default function StudentProfilePage() {
 
   // Build tabs based on category and plan status
   const tabs = useMemo(() => {
-    const baseTabs = ['Informacoes', 'Presenca'];
-    // Only show Financeiro tab if student has a plan linked
-    if (studentHasPlan) {
-      baseTabs.push('Financeiro');
-    }
+    const baseTabs = ['Informacoes', 'Presenca', 'Financeiro'];
 
     // Add a graduation tab for each sport the student practices
     effectiveSports.forEach((sportId) => {
@@ -585,6 +585,27 @@ export default function StudentProfilePage() {
       // Error handled by hook
     }
   }, [selectedPayment, paymentMethod, markAsPaid, studentId, academy?.id]);
+
+  // Handle create individual charge
+  const handleCreateCharge = useCallback(async (data: CreateChargeData) => {
+    await createFinancial({
+      studentId: data.studentId,
+      studentName: student?.fullName,
+      type: data.type,
+      description: data.description,
+      amount: data.amount,
+      dueDate: data.dueDate,
+      status: 'pending',
+      createdBy: '',
+    });
+    setCreateChargeDialogOpen(false);
+    // Refresh financials list
+    if (academy?.id) {
+      const financialService = createFinancialService(academy.id);
+      const updated = await financialService.getByStudent(studentId);
+      setStudentFinancials(updated);
+    }
+  }, [createFinancial, student, academy?.id, studentId]);
 
   // Handle PIX payment generation
   const handleGeneratePix = useCallback(async (payment: Financial) => {
@@ -1464,10 +1485,24 @@ export default function StudentProfilePage() {
                   </Box>
                 </TabPanel>
 
-                {/* Tab: Financeiro - Only shown if student has a plan */}
-                {studentHasPlan && (
-                  <TabPanel value={activeTab} index={tabs.indexOf('Financeiro')}>
-                    <Box sx={{ px: { xs: 1.5, sm: 3 } }}>
+                {/* Tab: Financeiro */}
+                <TabPanel value={activeTab} index={tabs.indexOf('Financeiro')}>
+                  <Box sx={{ px: { xs: 1.5, sm: 3 } }}>
+                    {/* Header with Nova Cobrança button */}
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
+                      <Typography variant="subtitle1" fontWeight={600}>
+                        Cobranças
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        size="small"
+                        startIcon={<DollarSign size={16} />}
+                        onClick={() => setCreateChargeDialogOpen(true)}
+                      >
+                        Nova Cobrança
+                      </Button>
+                    </Box>
+
                       {/* Plan & Value Section */}
                       {studentPlans.length > 0 && (
                         <Box sx={{ mb: 3 }}>
@@ -1673,7 +1708,6 @@ export default function StudentProfilePage() {
                       )}
                     </Box>
                   </TabPanel>
-                )}
 
                 {/* Tabs: Graduação por Esporte */}
                 {effectiveSports.map((sportId) => {
@@ -2426,6 +2460,18 @@ export default function StudentProfilePage() {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Create Individual Charge Dialog */}
+        {student && (
+          <CreateChargeDialog
+            open={createChargeDialogOpen}
+            onClose={() => setCreateChargeDialogOpen(false)}
+            onConfirm={handleCreateCharge}
+            preselectedStudentId={studentId}
+            preselectedStudentName={student.fullName}
+            isLoading={isCreatingCharge}
+          />
+        )}
       </AppLayout>
     </ProtectedRoute>
   );

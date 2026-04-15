@@ -63,6 +63,8 @@ import { MarkPaidDialog } from './MarkPaidDialog';
 import { RevenueChart } from './RevenueChart';
 import { GenerateTuitionsDialog } from './GenerateTuitionsDialog';
 import { PayingStudentsDialog } from './PayingStudentsDialog';
+import { CreateChargeDialog } from './CreateChargeDialog';
+import type { CreateChargeData } from './CreateChargeDialog';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import { getBeltChipColor } from '@/lib/theme';
 import { Financial, PaymentStatus, Plan, Student } from '@/types';
@@ -923,9 +925,11 @@ export function FinancialDashboard() {
     cancelPayment,
     reactivatePayment,
     generateTuitions,
+    createFinancial,
     isLoading,
     isMarkingPaid,
     isGenerating,
+    isCreating: isCreatingCharge,
     refresh,
   } = useFinancial();
 
@@ -962,6 +966,7 @@ export function FinancialDashboard() {
   const [managingPlan, setManagingPlan] = useState<Plan | null>(null);
   const [bulkEnrollPlan, setBulkEnrollPlan] = useState<Plan | null>(null);
   const [payingStudentsDialogOpen, setPayingStudentsDialogOpen] = useState(false);
+  const [createChargeDialogOpen, setCreateChargeDialogOpen] = useState(false);
 
   // ============================================
   // Current Month Navigation
@@ -1162,6 +1167,25 @@ export function FinancialDashboard() {
   }, [activeStudents, plans, selectedMonth, generateTuitions]);
 
   // ============================================
+  // Create Individual Charge Handler
+  // ============================================
+  const handleCreateCharge = useCallback(async (data: CreateChargeData) => {
+    const student = activeStudents.find((s) => s.id === data.studentId);
+    await createFinancial({
+      studentId: data.studentId,
+      studentName: student?.fullName,
+      type: data.type,
+      description: data.description,
+      amount: data.amount,
+      dueDate: data.dueDate,
+      status: 'pending',
+      createdBy: '',
+    });
+    setCreateChargeDialogOpen(false);
+    refresh();
+  }, [activeStudents, createFinancial, refresh]);
+
+  // ============================================
   // Plan Handlers
   // ============================================
   const handleCreatePlan = useCallback(() => {
@@ -1311,6 +1335,16 @@ export function FinancialDashboard() {
             sx={{ flex: { xs: 1, sm: 'none' } }}
           >
             {isMobile ? 'Pagantes' : 'Alunos Pagantes'}
+          </Button>
+          <Button
+            variant="outlined"
+            color="primary"
+            startIcon={!isMobile && <Plus size={18} />}
+            onClick={() => setCreateChargeDialogOpen(true)}
+            size="small"
+            sx={{ flex: { xs: 1, sm: 'none' } }}
+          >
+            {isMobile ? 'Cobrança' : 'Nova Cobrança'}
           </Button>
           <Button
             variant="contained"
@@ -1805,6 +1839,15 @@ export function FinancialDashboard() {
         onClose={() => setPayingStudentsDialogOpen(false)}
         students={students}
         plans={plans}
+      />
+
+      {/* Create Individual Charge Dialog */}
+      <CreateChargeDialog
+        open={createChargeDialogOpen}
+        onClose={() => setCreateChargeDialogOpen(false)}
+        onConfirm={handleCreateCharge}
+        students={activeStudents}
+        isLoading={isCreatingCharge}
       />
     </Box>
   );

@@ -15,7 +15,7 @@ export async function POST(request: NextRequest) {
   const bulkApiUrl = whatsappApiUrl.replace(/\/api\/send-whatsapp$/, '/api/send-bulk');
 
   try {
-    const payload = await request.json();
+    const payload = { ...(await request.json()), appId: 'gestao-raiz' };
 
     // Validate required fields
     if (!payload.message) {

@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const payload = await request.json();
+    const payload = { ...(await request.json()), appId: 'gestao-raiz' };
 
     // Validate required fields
     if (!payload.email || !payload.subject || !payload.message) {

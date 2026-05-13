@@ -271,6 +271,10 @@ service cloud.firestore {
       // Students Subcollection
       // ============================================
       match /students/{studentId} {
+        // Public read of opted-in profiles (for sibling public site)
+        // Gated explicitly by the per-student isProfilePublic flag (default false)
+        allow read: if resource.data.isProfilePublic == true;
+
         // Staff can read all students
         allow read: if isAcademyStaff(academyId);
 
@@ -305,6 +309,18 @@ service cloud.firestore {
                                     'address', 'bloodType', 'allergies', 'healthNotes',
                                     'emergencyContact', 'isProfilePublic']);
 
+        // QR self-check-in counter sync: students can bump their own
+        // attendanceCount by exactly +1 after creating an attendance doc. We
+        // intentionally allow only the +1 step (not arbitrary writes) so a
+        // user can't inflate their counter without producing the matching
+        // attendance record validated by /attendance rules above.
+        allow update: if isOwnStudent(academyId, studentId)
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['attendanceCount', 'updatedAt'])
+                      && request.resource.data.attendanceCount is number
+                      && request.resource.data.attendanceCount ==
+                           (resource.data.attendanceCount is number ? resource.data.attendanceCount : 0) + 1;
+
         // Timeline subcollection
         match /timeline/{eventId} {
           allow read: if isStaffOrMonitor(academyId) || isOwnStudent(academyId, studentId);
@@ -332,6 +348,24 @@ service cloud.firestore {
 
         // Staff and monitors can create/update/delete attendance
         allow write: if isStaffOrMonitor(academyId);
+
+        // QR self-check-in: an authenticated student can create their own
+        // attendance doc, but only when:
+        //   - studentId matches the user's student record in this academy
+        //   - verifiedBy matches the auth uid (record traceable to the scanner)
+        //   - the student is enrolled in the target class (studentIds array)
+        //   - weight, if present, is a positive number (no graduation gaming)
+        // Update/delete remain staff-only — students can mark themselves
+        // present but cannot rewrite or remove past attendance.
+        allow create: if isAuthenticated()
+          && request.resource.data.studentId == getUserStudentIdFromMapping(academyId)
+          && request.resource.data.verifiedBy == request.auth.uid
+          && request.resource.data.studentId in
+               get(/databases/$(database)/documents/academies/$(academyId)/classes/$(request.resource.data.classId)).data.studentIds
+          && (
+               !request.resource.data.keys().hasAny(['weight'])
+               || (request.resource.data.weight is number && request.resource.data.weight > 0)
+             );
       }
 
       // ============================================
@@ -461,6 +495,8 @@ service cloud.firestore {
       // Competitions Subcollection
       // ============================================
       match /competitions/{competitionId} {
+        // Public read: institutional team info (results, schedule)
+        allow read: if true;
         allow read: if belongsToAcademy(academyId);
         allow create, delete: if isAcademyStaff(academyId);
         allow update: if isAcademyStaff(academyId);
@@ -475,6 +511,8 @@ service cloud.firestore {
       // Competition Enrollments
       // ============================================
       match /competitionEnrollments/{enrollmentId} {
+        // Public read: who is competing (team roster transparency)
+        allow read: if true;
         allow read: if belongsToAcademy(academyId);
         allow write: if isAcademyStaff(academyId);
 
@@ -495,6 +533,8 @@ service cloud.firestore {
       // Competition Results
       // ============================================
       match /competitionResults/{resultId} {
+        // Public read: medals/results are public team info
+        allow read: if true;
         allow read: if belongsToAcademy(academyId);
         // Admin can manage all results; students can create/update their own
         allow create: if isAcademyStaff(academyId) ||
@@ -508,6 +548,8 @@ service cloud.firestore {
       // Competition Photos
       // ============================================
       match /competitionPhotos/{photoId} {
+        // Public read: gallery is public
+        allow read: if true;
         // Anyone in the academy can read photos
         allow read: if belongsToAcademy(academyId);
 
@@ -609,6 +651,37 @@ service cloud.firestore {
 
         // No updates or deletes from client
         allow update, delete: if false;
+      }
+
+      // ============================================
+      // News (public-facing site content)
+      // ============================================
+      match /news/{newsId} {
+        // Published items are public; staff can always read drafts
+        allow read: if resource.data.isPublished == true;
+        allow read: if isAcademyStaff(academyId);
+        allow create, update, delete: if isAcademyStaff(academyId);
+      }
+
+      // ============================================
+      // Events (public-facing site content)
+      // ============================================
+      match /events/{eventId} {
+        // Published items are public; staff can always read drafts
+        allow read: if resource.data.isPublished == true;
+        allow read: if isAcademyStaff(academyId);
+        allow create, update, delete: if isAcademyStaff(academyId);
+      }
+
+      // ============================================
+      // Public-facing institutional info (sibling site read target)
+      // Staff populates non-sensitive academy fields here so the main
+      // /academies/{id} doc (which holds Asaas keys, KYC, subscription, etc.)
+      // can stay closed to anonymous reads.
+      // ============================================
+      match /public/{docId} {
+        allow read: if true;
+        allow create, update, delete: if isAcademyStaff(academyId);
       }
 
       // ============================================

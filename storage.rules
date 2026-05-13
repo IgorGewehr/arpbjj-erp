@@ -76,43 +76,71 @@ service firebase.storage {
     // ============================================
     // Student Profile Photos
     // ============================================
+    // Public read enables the sibling public site to render athlete avatars
+    // for profiles flagged isProfilePublic == true (gating happens in the
+    // Firestore rules — Storage paths themselves don't carry that flag).
     match /academies/{academyId}/students/{studentId}/profile.jpg {
+      allow read: if true;
+
       // Students can upload/update their own photo
       // Admins can upload/update any student's photo
       allow write: if isAuthenticated()
                    && isValidSize()
                    && isImage()
                    && (isOwnStudent(academyId, studentId) || isAcademyAdmin(academyId));
-
-      // Anyone in the academy can read profile photos
-      allow read: if belongsToAcademy(academyId);
     }
 
     // ============================================
     // Competition Photos
     // ============================================
+    // Public read enables the sibling public site gallery.
     match /academies/{academyId}/competitions/{competitionId}/photos/{photoId} {
+      allow read: if true;
+
       // Authenticated users can upload (detailed permission check is in Firestore rules)
       allow write: if isAuthenticated()
                    && isValidPhotoSize()
                    && isImage();
-
-      // Authenticated users can read
-      allow read: if isAuthenticated();
     }
 
     // ============================================
     // Academy Branding (logo, backgrounds, etc.)
     // ============================================
+    // Public read for logos used on the public site header/hero.
     match /academies/{academyId}/branding/{imageId} {
+      allow read: if true;
+
       // Only admins can upload/update branding images
       allow write: if isAuthenticated()
                    && isValidSize()
                    && isImage()
                    && isAcademyAdmin(academyId);
+    }
 
-      // Anyone in the academy can read branding images
-      allow read: if belongsToAcademy(academyId);
+    // ============================================
+    // News cover images (public-facing site content)
+    // ============================================
+    match /academies/{academyId}/news/{imageId} {
+      allow read: if true;
+
+      // Only admins/staff can upload news cover images
+      allow write: if isAuthenticated()
+                   && isValidSize()
+                   && isImage()
+                   && isAcademyAdmin(academyId);
+    }
+
+    // ============================================
+    // Event cover images (public-facing site content)
+    // ============================================
+    match /academies/{academyId}/events/{imageId} {
+      allow read: if true;
+
+      // Only admins/staff can upload event cover images
+      allow write: if isAuthenticated()
+                   && isValidSize()
+                   && isImage()
+                   && isAcademyAdmin(academyId);
     }
 
     // ============================================

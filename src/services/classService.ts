@@ -39,6 +39,7 @@ const docToClass = (doc: DocumentSnapshot): Class => {
     maxBelt: data.maxBelt,
     maxStudents: data.maxStudents,
     isActive: data.isActive ?? true,
+    weight: typeof data.weight === 'number' ? data.weight : undefined,
     createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
     updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
   };

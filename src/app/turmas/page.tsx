@@ -50,6 +50,7 @@ import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import { SportChip } from '@/components/shared/SportChip';
 import { useClasses, useStudents } from '@/hooks';
+import { useAcademy } from '@/contexts/AcademyContext';
 import { useConfirmDialog } from '@/components/providers';
 import { Class, Student, StudentCategory, BeltColor, getClassSport } from '@/types';
 import { SportId, SPORT_OPTIONS } from '@/lib/constants/sports';
@@ -455,6 +456,7 @@ interface ClassFormData {
   category: StudentCategory;
   sport: SportId;
   maxStudents: number;
+  weight: number;
   schedule: { dayOfWeek: number; startTime: string; endTime: string }[];
 }
 
@@ -465,6 +467,7 @@ const initialFormData: ClassFormData = {
   category: 'adult',
   sport: 'bjj',
   maxStudents: 20,
+  weight: 1,
   schedule: [{ dayOfWeek: 1, startTime: '19:00', endTime: '20:30' }],
 };
 
@@ -493,6 +496,8 @@ export default function TurmasPage() {
   } = useClasses();
 
   const { students } = useStudents();
+  const { academy } = useAcademy();
+  const useClassWeights = academy?.useClassWeights === true;
   const { confirm } = useConfirmDialog();
 
   // Handle form field changes
@@ -543,6 +548,7 @@ export default function TurmasPage() {
       category: cls.category,
       sport: getClassSport(cls),
       maxStudents: cls.maxStudents || 20,
+      weight: cls.weight ?? 1,
       schedule: cls.schedule,
     });
     setDialogOpen(true);
@@ -603,7 +609,16 @@ export default function TurmasPage() {
     if (!formData.name.trim()) return;
 
     try {
-      const classPayload = {
+      const classPayload: {
+        name: string;
+        description: string;
+        instructorName: string;
+        category: StudentCategory;
+        sport: SportId;
+        maxStudents: number;
+        schedule: { dayOfWeek: number; startTime: string; endTime: string }[];
+        weight?: number;
+      } = {
         name: formData.name,
         description: formData.description,
         instructorName: formData.instructorName,
@@ -612,6 +627,11 @@ export default function TurmasPage() {
         maxStudents: formData.maxStudents,
         schedule: formData.schedule,
       };
+      // Only persist weight when the academy uses class weights, and never
+      // store the default (1) — keeps docs without the field interchangeable.
+      if (useClassWeights && formData.weight !== 1) {
+        classPayload.weight = formData.weight;
+      }
 
       if (editingClass) {
         await updateClass({
@@ -790,6 +810,23 @@ export default function TurmasPage() {
                     disabled={isSaving}
                   />
                 </Grid>
+
+                {useClassWeights && (
+                  <Grid size={{ xs: 12, sm: 6 }}>
+                    <TextField
+                      fullWidth
+                      type="number"
+                      label="Peso da turma"
+                      value={formData.weight}
+                      onChange={(e) =>
+                        handleFieldChange('weight', Number(e.target.value) || 1)
+                      }
+                      inputProps={{ min: 1, max: 10, step: 1 }}
+                      helperText="1 = padrao. Ex: aula particular = 2 (vale 2 presencas)"
+                      disabled={isSaving}
+                    />
+                  </Grid>
+                )}
 
                 <Grid size={12}>
                   <TextField

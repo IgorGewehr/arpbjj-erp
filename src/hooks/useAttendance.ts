@@ -184,7 +184,9 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
         classData.name,
         user.id,
         user.displayName,
-        selectedDate
+        selectedDate,
+        undefined,
+        classData.weight
       );
     },
     // Optimistic Update
@@ -308,7 +310,8 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
         classData.name,
         user.id,
         user.displayName,
-        selectedDate
+        selectedDate,
+        classData.weight
       );
     },
     onMutate: async ({ studentsToMark }) => {

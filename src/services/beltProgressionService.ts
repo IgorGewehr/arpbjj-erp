@@ -8,7 +8,8 @@ import {
   DocumentSnapshot,
   CollectionReference,
 } from 'firebase/firestore';
-import { collections } from '@/lib/firebase/collections';
+import { db, collections } from '@/lib/firebase';
+import { doc } from 'firebase/firestore';
 import { BeltProgression, BeltColor, Stripes, Student } from '@/types';
 import { createStudentService } from './studentService';
 import { createAchievementService } from './achievementService';
@@ -18,7 +19,11 @@ import { createAttendanceService } from './attendanceService';
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
-// Belt Progression Requirements
+// Belt Progression Requirements (legacy fallback)
+//
+// Used only when the academy hasn't configured `autoGraduationAttendances`.
+// New deployments should configure a single threshold per academy via the
+// Settings page; this table is kept as a transitional fallback.
 // ============================================
 const STRIPE_REQUIREMENTS: Record<BeltColor, number[]> = {
   white: [30, 60, 90, 120], // Classes needed for 1st, 2nd, 3rd, 4th stripe
@@ -29,6 +34,17 @@ const STRIPE_REQUIREMENTS: Record<BeltColor, number[]> = {
 };
 
 const BELT_ORDER: BeltColor[] = ['white', 'blue', 'purple', 'brown', 'black'];
+
+// ============================================
+// Academy Config Snapshot
+//
+// Lightweight snapshot used by checkEligibility / getEligibleStudents so a
+// loop over many students doesn't refetch the academy doc every iteration.
+// ============================================
+interface AcademyGraduationConfig {
+  threshold?: number;       // academy.autoGraduationAttendances
+  useClassWeights: boolean; // academy.useClassWeights
+}
 
 // ============================================
 // Helper: Convert Firestore document to BeltProgression
@@ -101,9 +117,39 @@ export class BeltProgressionService {
   }
 
   // ============================================
-  // Check Eligibility for Promotion
+  // Load academy graduation config (cached per call site if passed in)
   // ============================================
-  async checkEligibility(studentId: string): Promise<{
+  private async loadAcademyConfig(): Promise<AcademyGraduationConfig> {
+    try {
+      const academySnap = await getDoc(doc(db, 'academies', this.academyId));
+      const data = academySnap.exists() ? academySnap.data() : {};
+      const rawThreshold = data?.autoGraduationAttendances;
+      const threshold =
+        typeof rawThreshold === 'number' && rawThreshold > 0
+          ? rawThreshold
+          : undefined;
+      return {
+        threshold,
+        useClassWeights: data?.useClassWeights === true,
+      };
+    } catch {
+      return { threshold: undefined, useClassWeights: false };
+    }
+  }
+
+  // ============================================
+  // Check Eligibility for Promotion
+  //
+  // Reads the academy config to decide:
+  // - Threshold: single `autoGraduationAttendances` if set, otherwise the
+  //   legacy STRIPE_REQUIREMENTS table indexed by current belt/stripe.
+  // - Counting: weighted attendance sum when `useClassWeights` is on,
+  //   otherwise the simple document count.
+  // ============================================
+  async checkEligibility(
+    studentId: string,
+    config?: AcademyGraduationConfig
+  ): Promise<{
     eligible: boolean;
     nextPromotion: {
       belt: BeltColor;
@@ -113,6 +159,7 @@ export class BeltProgressionService {
     requiredClasses: number;
     missingClasses: number;
     message: string;
+    weighted: boolean;
   }> {
     const student = await this.studentService.getById(studentId);
     if (!student) {
@@ -123,10 +170,14 @@ export class BeltProgressionService {
         requiredClasses: 0,
         missingClasses: 0,
         message: 'Aluno não encontrado',
+        weighted: false,
       };
     }
 
-    const totalClasses = await this.attendanceService.getStudentAttendanceCount(studentId);
+    const academyConfig = config ?? (await this.loadAcademyConfig());
+    const totalClasses = academyConfig.useClassWeights
+      ? await this.attendanceService.getStudentWeightedAttendanceCount(studentId)
+      : await this.attendanceService.getStudentAttendanceCount(studentId);
     const currentBelt = student.currentBelt as BeltColor;
     const currentStripes = student.currentStripes;
 
@@ -135,14 +186,11 @@ export class BeltProgressionService {
     let nextStripes: Stripes;
 
     if (currentStripes < 4) {
-      // Next is a stripe
       nextBelt = currentBelt;
       nextStripes = (currentStripes + 1) as Stripes;
     } else {
-      // Next is a belt change
       const currentIndex = BELT_ORDER.indexOf(currentBelt);
       if (currentIndex >= BELT_ORDER.length - 1) {
-        // Already black belt with 4 stripes
         return {
           eligible: false,
           nextPromotion: null,
@@ -150,28 +198,35 @@ export class BeltProgressionService {
           requiredClasses: 0,
           missingClasses: 0,
           message: 'Grau máximo atingido',
+          weighted: academyConfig.useClassWeights,
         };
       }
       nextBelt = BELT_ORDER[currentIndex + 1];
       nextStripes = 0;
     }
 
-    // Calculate required classes
-    const requirements = STRIPE_REQUIREMENTS[currentBelt];
-    const requiredClasses = requirements[currentStripes] || 0;
-    const missingClasses = Math.max(0, requiredClasses - totalClasses);
+    let requiredClasses: number;
+    if (academyConfig.threshold !== undefined) {
+      // Single configurable threshold for any grade transition.
+      requiredClasses = academyConfig.threshold;
+    } else {
+      // Legacy fallback: per-belt requirements table.
+      const requirements = STRIPE_REQUIREMENTS[currentBelt] ?? [];
+      requiredClasses = requirements[currentStripes] || 0;
+    }
 
-    const eligible = totalClasses >= requiredClasses;
+    const missingClasses = Math.max(0, requiredClasses - totalClasses);
+    const eligible = requiredClasses > 0 && totalClasses >= requiredClasses;
 
     let message: string;
+    const unit = academyConfig.useClassWeights ? 'pontos' : 'aulas';
     if (eligible) {
-      if (nextStripes === 0) {
-        message = `Elegível para faixa ${nextBelt}!`;
-      } else {
-        message = `Elegível para ${nextStripes}º grau!`;
-      }
+      message = nextStripes === 0
+        ? `Elegível para faixa ${nextBelt}!`
+        : `Elegível para ${nextStripes}º grau!`;
     } else {
-      message = `Faltam ${missingClasses} aulas para ${nextStripes === 0 ? `faixa ${nextBelt}` : `${nextStripes}º grau`}`;
+      const target = nextStripes === 0 ? `faixa ${nextBelt}` : `${nextStripes}º grau`;
+      message = `Faltam ${missingClasses} ${unit} para ${target}`;
     }
 
     return {
@@ -181,6 +236,7 @@ export class BeltProgressionService {
       requiredClasses,
       missingClasses,
       message,
+      weighted: academyConfig.useClassWeights,
     };
   }
 
@@ -193,6 +249,7 @@ export class BeltProgressionService {
     totalClasses: number;
   }>> {
     const activeStudents = await this.studentService.getActive();
+    const config = await this.loadAcademyConfig();
     const eligible: Array<{
       student: Student;
       nextPromotion: { belt: BeltColor; stripes: Stripes };
@@ -200,7 +257,7 @@ export class BeltProgressionService {
     }> = [];
 
     for (const student of activeStudents) {
-      const eligibility = await this.checkEligibility(student.id);
+      const eligibility = await this.checkEligibility(student.id, config);
       if (eligibility.eligible && eligibility.nextPromotion) {
         eligible.push({
           student,
@@ -211,6 +268,38 @@ export class BeltProgressionService {
     }
 
     return eligible;
+  }
+
+  // ============================================
+  // Bulk Eligibility Snapshot (efficient batch read)
+  //
+  // Loads the academy config once, then resolves eligibility for every active
+  // student. Used by the students list to render the progress column.
+  // ============================================
+  async getEligibilitySnapshot(): Promise<Array<{
+    studentId: string;
+    eligible: boolean;
+    currentClasses: number;
+    requiredClasses: number;
+    missingClasses: number;
+    weighted: boolean;
+  }>> {
+    const config = await this.loadAcademyConfig();
+    const students = await this.studentService.getActive();
+    const result = await Promise.all(
+      students.map(async (s) => {
+        const e = await this.checkEligibility(s.id, config);
+        return {
+          studentId: s.id,
+          eligible: e.eligible,
+          currentClasses: e.currentClasses,
+          requiredClasses: e.requiredClasses,
+          missingClasses: e.missingClasses,
+          weighted: e.weighted,
+        };
+      })
+    );
+    return result;
   }
 
   // ============================================
@@ -446,6 +535,7 @@ export const beltProgressionService = {
   getById: (id: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).getById(id),
   checkEligibility: (studentId: string) => new BeltProgressionService(DEFAULT_ACADEMY_ID).checkEligibility(studentId),
   getEligibleStudents: () => new BeltProgressionService(DEFAULT_ACADEMY_ID).getEligibleStudents(),
+  getEligibilitySnapshot: () => new BeltProgressionService(DEFAULT_ACADEMY_ID).getEligibilitySnapshot(),
   promote: (studentId: string, newBelt: BeltColor, newStripes: Stripes, promotedBy: string, promotedByName: string, notes?: string, promotionDate?: Date) => new BeltProgressionService(DEFAULT_ACADEMY_ID).promote(studentId, newBelt, newStripes, promotedBy, promotedByName, notes, promotionDate),
   addStripe: (studentId: string, promotedBy: string, promotedByName: string, notes?: string, promotionDate?: Date) => new BeltProgressionService(DEFAULT_ACADEMY_ID).addStripe(studentId, promotedBy, promotedByName, notes, promotionDate),
   changeBelt: (studentId: string, newBelt: BeltColor, promotedBy: string, promotedByName: string, notes?: string, promotionDate?: Date) => new BeltProgressionService(DEFAULT_ACADEMY_ID).changeBelt(studentId, newBelt, promotedBy, promotedByName, notes, promotionDate),

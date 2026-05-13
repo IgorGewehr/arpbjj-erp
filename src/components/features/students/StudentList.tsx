@@ -34,20 +34,34 @@ import { Search, Grid, List, Users, Filter, FileText, Download, Calendar } from 
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses, usePlans } from '@/hooks';
+import { useQuery } from '@tanstack/react-query';
+import { createBeltProgressionService } from '@/services';
 import { Student, BeltColor, KidsBeltColor, StudentStatus, StudentCategory, getStudentSports } from '@/types';
 import { SportId, SPORT_OPTIONS, SPORTS, getGradesForSport } from '@/lib/constants/sports';
 
 // ============================================
 // Sort Options
 // ============================================
-type SortOption = 'alphabetical' | 'graduation' | 'attendance' | 'tatami_time';
+type SortOption = 'alphabetical' | 'graduation' | 'attendance' | 'tatami_time' | 'eligible_first';
 
 const sortOptions: { value: SortOption; label: string }[] = [
   { value: 'alphabetical', label: 'Ordem Alfabética' },
   { value: 'graduation', label: 'Graduação' },
   { value: 'attendance', label: 'Número de Presenças' },
   { value: 'tatami_time', label: 'Tempo de Tatame' },
+  { value: 'eligible_first', label: 'Elegíveis para graduar primeiro' },
 ];
+
+// ============================================
+// Eligibility snapshot type (shared with StudentCard)
+// ============================================
+export interface EligibilitySnapshot {
+  eligible: boolean;
+  currentClasses: number;
+  requiredClasses: number;
+  missingClasses: number;
+  weighted: boolean;
+}
 
 // Belt order maps (higher index = higher graduation)
 const adultBeltOrder: Record<string, number> = {
@@ -323,6 +337,35 @@ export function StudentList() {
     return () => observer.disconnect();
   }, [hasNextPage, isFetchingNextPage, isSearching, fetchNextPage]);
 
+  // ============================================
+  // Eligibility snapshot (only loaded when auto-graduation is enabled)
+  // ============================================
+  const autoGradEnabled = academy?.autoGraduationEnabled === true;
+  const { data: eligibilityList } = useQuery({
+    queryKey: ['eligibilitySnapshot', academyId],
+    queryFn: async () => {
+      if (!academyId) return [];
+      const service = createBeltProgressionService(academyId);
+      return service.getEligibilitySnapshot();
+    },
+    enabled: autoGradEnabled && !!academyId,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const eligibilityMap = useMemo(() => {
+    const map = new Map<string, EligibilitySnapshot>();
+    for (const e of eligibilityList ?? []) {
+      map.set(e.studentId, {
+        eligible: e.eligible,
+        currentClasses: e.currentClasses,
+        requiredClasses: e.requiredClasses,
+        missingClasses: e.missingClasses,
+        weighted: e.weighted,
+      });
+    }
+    return map;
+  }, [eligibilityList]);
+
   // Filter and sort students by class, plan, sport, and sort option
   const filteredStudents = useMemo(() => {
     let result = students;
@@ -374,13 +417,30 @@ export function StudentList() {
           const bDate = getTatamiStartDate(b);
           return new Date(aDate).getTime() - new Date(bDate).getTime();
 
+        case 'eligible_first':
+          // Eligible students float to the top, then closest-to-eligible (descending),
+          // then alphabetical as tiebreaker. Requires eligibilityMap to be loaded.
+          const aE = eligibilityMap.get(a.id);
+          const bE = eligibilityMap.get(b.id);
+          const aEl = aE?.eligible ? 1 : 0;
+          const bEl = bE?.eligible ? 1 : 0;
+          if (aEl !== bEl) return bEl - aEl;
+          const aProg = aE && aE.requiredClasses > 0
+            ? aE.currentClasses / aE.requiredClasses
+            : 0;
+          const bProg = bE && bE.requiredClasses > 0
+            ? bE.currentClasses / bE.requiredClasses
+            : 0;
+          if (aProg !== bProg) return bProg - aProg;
+          return a.fullName.localeCompare(b.fullName, 'pt-BR');
+
         default:
           return 0;
       }
     });
 
     return result;
-  }, [students, classFilter, classes, planFilter, accountFilter, sortBy]);
+  }, [students, classFilter, classes, planFilter, accountFilter, sortBy, eligibilityMap]);
 
   // Handle student click
   const handleStudentClick = useCallback(
@@ -974,6 +1034,9 @@ export function StudentList() {
                   onClick={handleStudentClick}
                   onStatusChange={handleCardStatusChange}
                   compact={viewMode === 'list'}
+                  eligibility={
+                    autoGradEnabled ? eligibilityMap.get(student.id) : undefined
+                  }
                 />
               </ScaleOnPress>
             ))}

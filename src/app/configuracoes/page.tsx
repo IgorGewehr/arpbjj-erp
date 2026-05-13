@@ -294,6 +294,7 @@ function useSettingsData() {
     pixKeyType: 'cpf',
     autoGraduationEnabled: false,
     autoGraduationAttendances: 50,
+    useClassWeights: false,
     abacatePayEnabled: false,
     asaasEnabled: false,
     storeEnabled: false,
@@ -335,6 +336,7 @@ function useSettingsData() {
             pixKeyType: data.pixKeyType || 'cpf',
             autoGraduationEnabled: data.autoGraduationEnabled || false,
             autoGraduationAttendances: data.autoGraduationAttendances || 50,
+            useClassWeights: data.useClassWeights || false,
             abacatePayEnabled: data.abacatePayEnabled || false,
             asaasEnabled: data.asaasEnabled || false,
             storeEnabled: data.storeEnabled || false,
@@ -1462,6 +1464,39 @@ function ResourcesTab() {
                 quando um aluno estiver proximo ou atingir essa marca para ganhar um novo grau.
               </Typography>
             </Alert>
+
+            <Box sx={{ mt: 3 }}>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={settings.useClassWeights}
+                    onChange={(e) =>
+                      setSettings({ ...settings, useClassWeights: e.target.checked })
+                    }
+                    color="primary"
+                  />
+                }
+                label={
+                  <Box>
+                    <Typography variant="body1" fontWeight={500}>
+                      Usar pesos por turma
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Cada turma pode valer mais de um ponto (ex: aula particular vale 2).
+                      Quando desativado, toda presenca conta 1.
+                    </Typography>
+                  </Box>
+                }
+              />
+              {settings.useClassWeights && (
+                <Alert severity="info" sx={{ mt: 2, borderRadius: 2 }}>
+                  <Typography variant="body2">
+                    Defina o peso de cada turma no formulario de edicao de turmas.
+                    Turmas sem peso configurado contam como 1.
+                  </Typography>
+                </Alert>
+              )}
+            </Box>
           </Box>
         )}
 

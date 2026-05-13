@@ -307,6 +307,11 @@ export interface Class {
   // Status
   isActive: boolean;
 
+  // Optional weight per class (only effective when academy.useClassWeights is true).
+  // 1 = normal (default). Higher values count as multiple attendances toward
+  // automatic graduation. Used by academies that run private/extra-credit classes.
+  weight?: number;
+
   // Metadata
   createdAt: Date;
   updatedAt: Date;
@@ -325,6 +330,10 @@ export interface Attendance {
   verifiedBy: string;
   verifiedByName?: string;
   notes?: string;
+  // Snapshot of Class.weight at the time of creation. Stays immutable even if
+  // the class weight changes later, so historical graduation math stays stable.
+  // Undefined means "1.0" (no special weighting).
+  weight?: number;
   createdAt: Date;
 }
 
@@ -707,6 +716,9 @@ export interface Academy {
   // Auto-graduation Settings
   autoGraduationEnabled?: boolean;
   autoGraduationAttendances?: number;   // Attendances required per stripe/belt
+  // When true, attendance count uses Class.weight per attendance instead of 1.
+  // Lets a private/special class count as multiple attendances toward graduation.
+  useClassWeights?: boolean;
 
   // Store Settings
   storeEnabled?: boolean;
@@ -1313,6 +1325,49 @@ export interface CompetitionPhoto {
   createdAt: Date;
   updatedAt: Date;
   createdBy: string;              // Firebase UID
+}
+
+// ============================================
+// News (public-facing site content)
+// ============================================
+export interface News {
+  id: string;
+  academyId: string;
+  title: string;
+  slug: string;
+  excerpt: string;          // <=200 chars
+  content: string;          // markdown
+  coverUrl?: string;
+  coverStoragePath?: string;
+  tags?: string[];
+  isPublished: boolean;
+  publishedAt?: Date;
+  authorUid: string;
+  authorName?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// ============================================
+// Academy Event (public-facing site content)
+// Renamed from "Event" to avoid clashing with the global DOM Event type.
+// ============================================
+export interface AcademyEvent {
+  id: string;
+  academyId: string;
+  title: string;
+  slug: string;
+  description: string;       // markdown
+  coverUrl?: string;
+  coverStoragePath?: string;
+  startDate: Date;
+  endDate?: Date;
+  location?: string;
+  ctaUrl?: string;           // optional registration link
+  ctaLabel?: string;
+  isPublished: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 // ============================================

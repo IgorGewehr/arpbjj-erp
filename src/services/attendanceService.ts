@@ -42,6 +42,7 @@ const docToAttendance = (doc: DocumentSnapshot): Attendance => {
     verifiedBy: data.verifiedBy,
     verifiedByName: data.verifiedByName,
     notes: data.notes,
+    weight: typeof data.weight === 'number' ? data.weight : undefined,
     // createdAt might not be set immediately when using serverTimestamp()
     createdAt: data.createdAt instanceof Timestamp
       ? data.createdAt.toDate()
@@ -187,7 +188,8 @@ export class AttendanceService {
     verifiedBy: string,
     verifiedByName: string,
     date: Date = new Date(),
-    notes?: string
+    notes?: string,
+    weight?: number
   ): Promise<Attendance> {
     // Normalize date to noon to avoid timezone issues
     const normalizedDate = new Date(date);
@@ -216,6 +218,13 @@ export class AttendanceService {
       docData.notes = notes;
     }
 
+    // Snapshot the weight so historical counts stay stable if the class
+    // weight changes later. Only persist when it's not the default (1) to
+    // keep older docs interchangeable with newly created ones.
+    if (weight !== undefined && weight !== 1) {
+      docData.weight = weight;
+    }
+
     const docRef = await addDoc(this.attendanceRef, docData);
 
     // Increment the student's attendanceCount (async, don't block main flow)
@@ -237,6 +246,7 @@ export class AttendanceService {
       verifiedBy,
       verifiedByName,
       notes,
+      weight,
       createdAt: now,
     };
 
@@ -246,6 +256,26 @@ export class AttendanceService {
     });
 
     return attendance;
+  }
+
+  // ============================================
+  // Get Weighted Attendance Count
+  //
+  // Sums Attendance.weight (defaulting to 1 for legacy docs). Use this instead
+  // of getStudentAttendanceCount when the academy has useClassWeights enabled.
+  // ============================================
+  async getStudentWeightedAttendanceCount(studentId: string): Promise<number> {
+    const q = query(
+      this.attendanceRef,
+      where('studentId', '==', studentId)
+    );
+    const snapshot = await getDocs(q);
+    let total = 0;
+    for (const doc of snapshot.docs) {
+      const w = doc.data().weight;
+      total += typeof w === 'number' && w > 0 ? w : 1;
+    }
+    return total;
   }
 
   // ============================================
@@ -365,7 +395,8 @@ export class AttendanceService {
     className: string,
     verifiedBy: string,
     verifiedByName: string,
-    date: Date = new Date()
+    date: Date = new Date(),
+    weight?: number
   ): Promise<Attendance[]> {
     // Normalize date for consistency
     const normalizedDate = new Date(date);
@@ -382,7 +413,9 @@ export class AttendanceService {
           className,
           verifiedBy,
           verifiedByName,
-          normalizedDate
+          normalizedDate,
+          undefined,
+          weight
         );
         results.push(attendance);
       } catch {

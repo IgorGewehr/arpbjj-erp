@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, useCallback } from 'react';
+import Link from 'next/link';
 import {
   Box,
   Typography,
@@ -43,6 +44,7 @@ import {
   RefreshCw,
   UserPlus,
   UserCheck,
+  QrCode,
 } from 'lucide-react';
 import { AttendanceCard, AttendanceCardSkeleton } from './AttendanceCard';
 import { MobileAttendanceList } from './MobileAttendanceList';
@@ -754,6 +756,16 @@ export function AttendanceGrid({
 
         {/* Quick Navigation - Desktop Only */}
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+          <Button
+            component={Link}
+            href="/chamada/qr"
+            variant="outlined"
+            size="small"
+            startIcon={<QrCode size={14} />}
+            sx={{ mr: 0.5 }}
+          >
+            Modo QR
+          </Button>
           <IconButton onClick={goToPreviousDay} size="small">
             <ChevronLeft size={20} />
           </IconButton>

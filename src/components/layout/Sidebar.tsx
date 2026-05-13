@@ -36,9 +36,13 @@ import {
   Store,
   Wallet,
   Receipt,
+  Newspaper,
+  CalendarDays,
+  QrCode,
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuth } from '@/components/providers';
+import { usePermissions } from '@/components/providers/PermissionProvider';
 import { useAcademy } from '@/contexts/AcademyContext';
 
 // ============================================
@@ -60,6 +64,7 @@ interface NavItem {
 const baseNavItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
   { label: 'Chamada', icon: ClipboardCheck, path: '/chamada' },
+  { label: 'Chamada QR', icon: QrCode, path: '/chamada/qr' },
   { label: 'Alunos', icon: Users, path: '/alunos' },
   { label: 'Turmas', icon: Calendar, path: '/turmas' },
   { label: 'Competições', icon: Trophy, path: '/competicoes' },
@@ -70,6 +75,11 @@ const baseNavItems: NavItem[] = [
 
 const storeNavItem: NavItem = { label: 'Loja', icon: Store, path: '/loja' };
 const walletNavItem: NavItem = { label: 'Carteira', icon: Wallet, path: '/carteira' };
+
+const contentNavItems: NavItem[] = [
+  { label: 'Notícias', icon: Newspaper, path: '/noticias' },
+  { label: 'Eventos', icon: CalendarDays, path: '/eventos' },
+];
 
 const bottomNavItems: NavItem[] = [
   { label: 'Configurações', icon: Settings, path: '/configuracoes' },
@@ -98,6 +108,7 @@ export function Sidebar({
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user, signOut } = useAuth();
   const { academy } = useAcademy();
+  const { isAdmin } = usePermissions();
 
   // Compute nav items based on academy settings
   const mainNavItems = useMemo(() => {
@@ -117,6 +128,11 @@ export function Sidebar({
 
     return items;
   }, [academy?.storeEnabled, academy?.abacatePayEnabled]);
+
+  const visibleContentNavItems = useMemo(
+    () => (isAdmin ? contentNavItems : []),
+    [isAdmin]
+  );
 
   const handleNavigate = useCallback(
     (path: string) => {
@@ -309,6 +325,36 @@ export function Sidebar({
             </ListItem>
           ))}
         </List>
+
+        {visibleContentNavItems.length > 0 && (
+          <>
+            {!collapsed && (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  px: 3,
+                  pt: 2,
+                  pb: 0.5,
+                  color: 'text.secondary',
+                  textTransform: 'uppercase',
+                  fontWeight: 600,
+                  letterSpacing: 0.5,
+                  fontSize: '0.7rem',
+                }}
+              >
+                Conteúdo
+              </Typography>
+            )}
+            <List disablePadding>
+              {visibleContentNavItems.map((item) => (
+                <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
+                  <NavItemButton item={item} />
+                </ListItem>
+              ))}
+            </List>
+          </>
+        )}
       </Box>
 
       <Divider />
@@ -508,6 +554,34 @@ export function Sidebar({
             </ListItem>
           ))}
         </List>
+
+        {visibleContentNavItems.length > 0 && (
+          <>
+            <Typography
+              variant="caption"
+              sx={{
+                display: 'block',
+                px: 3,
+                pt: 2,
+                pb: 0.5,
+                color: 'text.secondary',
+                textTransform: 'uppercase',
+                fontWeight: 600,
+                letterSpacing: 0.5,
+                fontSize: '0.7rem',
+              }}
+            >
+              Conteúdo
+            </Typography>
+            <List disablePadding>
+              {visibleContentNavItems.map((item) => (
+                <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
+                  <NavItemButton item={item} isCompact />
+                </ListItem>
+              ))}
+            </List>
+          </>
+        )}
       </Box>
 
       <Divider />

@@ -74,8 +74,12 @@ import { getBeltLabel } from '@/lib/constants/belts';
 import { generateAthleteCurriculumPDF } from '@/lib/pdfGenerator';
 import { createFinancialService, createAttendanceService, createStudentService } from '@/services';
 import { createClassService } from '@/services/classService';
+import { createBeltProgressionService } from '@/services';
 import { getStudentDueDay } from '@/services/planService';
 import { createAbacatePayService } from '@/services/abacatePayService';
+import { PromotionDialog } from '@/components/features/graduation';
+import { useQuery } from '@tanstack/react-query';
+import { Zap } from 'lucide-react';
 import { Attendance } from '@/types';
 import { createLinkCodeService } from '@/services/linkCodeService';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -352,6 +356,53 @@ export default function StudentProfilePage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+
+  // ============================================
+  // Eligibility + promotion (auto-graduation feature)
+  // ============================================
+  const autoGradEnabled = academy?.autoGraduationEnabled === true;
+  const beltService = useMemo(() => {
+    if (!academy?.id) return null;
+    return createBeltProgressionService(academy.id);
+  }, [academy?.id]);
+
+  const { data: eligibility, refetch: refetchEligibility } = useQuery({
+    queryKey: ['studentEligibility', academy?.id, studentId],
+    queryFn: async () => {
+      if (!beltService || !studentId) return null;
+      return beltService.checkEligibility(studentId);
+    },
+    enabled: autoGradEnabled && !!beltService && !!studentId,
+    staleTime: 1000 * 60 * 2,
+  });
+
+  const [promotionDialogOpen, setPromotionDialogOpen] = useState(false);
+  const [promotingNow, setPromotingNow] = useState(false);
+  const handleConfirmPromotion = useCallback(
+    async (type: 'stripe' | 'belt', notes?: string, date?: Date) => {
+      if (!beltService || !student || !eligibility?.nextPromotion || !user) return;
+      setPromotingNow(true);
+      try {
+        await beltService.promote(
+          student.id,
+          eligibility.nextPromotion.belt,
+          eligibility.nextPromotion.stripes,
+          user.id,
+          user.displayName,
+          notes,
+          date
+        );
+        showSuccess(`${student.fullName} foi graduado(a)!`);
+        setPromotionDialogOpen(false);
+        refetchEligibility();
+      } catch (e) {
+        showError('Falha ao registrar graduacao');
+      } finally {
+        setPromotingNow(false);
+      }
+    },
+    [beltService, student, eligibility, user, showSuccess, showError, refetchEligibility]
+  );
 
   // Determine if student is kids category
   const isKidsStudent = student?.category === 'kids';
@@ -1080,6 +1131,34 @@ export default function StudentProfilePage() {
                     Editar
                   </Button>
                 </Box>
+
+                {/* Graduar (only when auto-graduation is enabled and student is eligible) */}
+                {autoGradEnabled && eligibility?.eligible && (
+                  <Box sx={{ mt: 1 }}>
+                    <Button
+                      variant="contained"
+                      startIcon={<Zap size={16} />}
+                      onClick={() => setPromotionDialogOpen(true)}
+                      fullWidth
+                      size="small"
+                      sx={{
+                        bgcolor: '#D97706',
+                        '&:hover': { bgcolor: '#B45309' },
+                      }}
+                    >
+                      Graduar agora ({eligibility.currentClasses}/{eligibility.requiredClasses})
+                    </Button>
+                  </Box>
+                )}
+                {autoGradEnabled && eligibility && !eligibility.eligible && eligibility.requiredClasses > 0 && (
+                  <Box sx={{ mt: 1 }}>
+                    <Alert severity="info" sx={{ py: 0.5, fontSize: '0.75rem' }}>
+                      Faltam {eligibility.missingClasses}{' '}
+                      {eligibility.weighted ? 'pontos' : 'aulas'} para a proxima graduacao
+                      ({eligibility.currentClasses}/{eligibility.requiredClasses})
+                    </Alert>
+                  </Box>
+                )}
 
                 {/* Delete Button */}
                 <Box sx={{ mt: 1 }}>
@@ -2470,6 +2549,19 @@ export default function StudentProfilePage() {
             preselectedStudentId={studentId}
             preselectedStudentName={student.fullName}
             isLoading={isCreatingCharge}
+          />
+        )}
+
+        {/* Promotion Dialog */}
+        {student && eligibility?.nextPromotion && (
+          <PromotionDialog
+            open={promotionDialogOpen}
+            student={student}
+            nextPromotion={eligibility.nextPromotion}
+            onClose={() => setPromotionDialogOpen(false)}
+            onConfirm={handleConfirmPromotion}
+            isLoading={promotingNow}
+            getBeltLabel={getBeltLabel}
           />
         )}
       </AppLayout>

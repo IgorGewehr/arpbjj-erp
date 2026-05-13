@@ -14,8 +14,10 @@ import {
   ListItemIcon,
   ListItemText,
   CircularProgress,
+  LinearProgress,
+  Tooltip,
 } from '@mui/material';
-import { Phone, AlertCircle, ChevronRight, Target, MoreVertical } from 'lucide-react';
+import { Phone, AlertCircle, ChevronRight, Target, MoreVertical, Zap } from 'lucide-react';
 import { Student, StudentStatus, getStudentPrimarySport, getStudentGrade } from '@/types';
 import { SportId } from '@/lib/constants/sports';
 import { getBeltChipColor } from '@/lib/theme';
@@ -31,6 +33,95 @@ interface StudentCardProps {
   onWhatsApp?: (student: Student) => void;
   onStatusChange?: (student: Student, newStatus: StudentStatus) => void;
   compact?: boolean;
+  /**
+   * Optional eligibility snapshot. When provided, the card renders a small
+   * progress bar (current/required) and a "Elegível" badge once the student
+   * has reached the threshold. Pass undefined to hide the graduation block.
+   */
+  eligibility?: {
+    eligible: boolean;
+    currentClasses: number;
+    requiredClasses: number;
+    missingClasses: number;
+    weighted: boolean;
+  };
+}
+
+// ============================================
+// Eligibility block — progress bar + "Elegível" badge
+// ============================================
+function EligibilityBlock({
+  eligibility,
+  compact = false,
+}: {
+  eligibility: NonNullable<StudentCardProps['eligibility']>;
+  compact?: boolean;
+}) {
+  const { eligible, currentClasses, requiredClasses, missingClasses, weighted } = eligibility;
+  if (requiredClasses <= 0) return null;
+  const progress = Math.min(100, (currentClasses / requiredClasses) * 100);
+  const unit = weighted ? 'pts' : 'aulas';
+
+  const tooltip = eligible
+    ? `Pronto para graduar (${currentClasses}/${requiredClasses} ${unit})`
+    : `Faltam ${missingClasses} ${unit} para a próxima graduação`;
+
+  return (
+    <Tooltip title={tooltip} placement="top" arrow>
+      <Box
+        sx={{
+          mt: compact ? 0.5 : 1,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 1,
+          minWidth: 0,
+        }}
+      >
+        {eligible && (
+          <Chip
+            icon={<Zap size={compact ? 10 : 12} />}
+            label="Elegível"
+            size="small"
+            sx={{
+              fontSize: compact ? '0.6rem' : '0.65rem',
+              fontWeight: 700,
+              height: compact ? 18 : 22,
+              bgcolor: '#FEF3C7',
+              color: '#92400E',
+              '& .MuiChip-icon': { color: '#D97706', ml: 0.5 },
+              '& .MuiChip-label': { px: compact ? 0.5 : 0.75 },
+            }}
+          />
+        )}
+        <Box sx={{ flex: 1, minWidth: 60 }}>
+          <LinearProgress
+            variant="determinate"
+            value={progress}
+            sx={{
+              height: 4,
+              borderRadius: 999,
+              backgroundColor: '#F3F4F6',
+              '& .MuiLinearProgress-bar': {
+                backgroundColor: eligible ? '#D97706' : '#3B82F6',
+                borderRadius: 999,
+              },
+            }}
+          />
+        </Box>
+        <Typography
+          variant="caption"
+          sx={{
+            fontSize: compact ? '0.6rem' : '0.65rem',
+            color: 'text.secondary',
+            fontVariantNumeric: 'tabular-nums',
+            flexShrink: 0,
+          }}
+        >
+          {currentClasses}/{requiredClasses}
+        </Typography>
+      </Box>
+    </Tooltip>
+  );
 }
 
 // ============================================
@@ -99,6 +190,7 @@ export function StudentCard({
   onWhatsApp,
   onStatusChange,
   compact = false,
+  eligibility,
 }: StudentCardProps) {
   // Calculate total attendance count
   const totalAttendance = (student.attendanceCount || 0) + (student.initialAttendanceCount || 0);
@@ -257,6 +349,7 @@ export function StudentCard({
                 {/* Attendance Count - next to tags */}
                 <AttendanceCountBadge count={totalAttendance} size="small" />
               </Box>
+              {eligibility && <EligibilityBlock eligibility={eligibility} compact />}
             </Box>
 
             {/* Phone Info - Desktop only */}
@@ -443,6 +536,7 @@ export function StudentCard({
               />
               <AttendanceCountBadge count={totalAttendance} />
             </Box>
+            {eligibility && <EligibilityBlock eligibility={eligibility} />}
           </Box>
         </Box>
       </CardActionArea>

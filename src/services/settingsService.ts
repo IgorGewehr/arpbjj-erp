@@ -55,6 +55,7 @@ export interface AcademySettings {
   // Auto-graduation Settings
   autoGraduationEnabled?: boolean;
   autoGraduationAttendances?: number;
+  useClassWeights?: boolean;
 
   // Store Settings
   storeEnabled?: boolean;
@@ -120,6 +121,7 @@ class SettingsService {
           asaasKycOnboardingUrl: data.asaasKycOnboardingUrl,
           autoGraduationEnabled: data.autoGraduationEnabled || false,
           autoGraduationAttendances: data.autoGraduationAttendances,
+          useClassWeights: data.useClassWeights || false,
           storeEnabled: data.storeEnabled || false,
           storePublished: data.storePublished || false,
           storeWelcomeMessage: data.storeWelcomeMessage,
@@ -173,6 +175,7 @@ class SettingsService {
       if (settings.asaasEnabled !== undefined) settingsData.asaasEnabled = settings.asaasEnabled;
       if (settings.autoGraduationEnabled !== undefined) settingsData.autoGraduationEnabled = settings.autoGraduationEnabled;
       if (settings.autoGraduationAttendances !== undefined) settingsData.autoGraduationAttendances = settings.autoGraduationAttendances;
+      if (settings.useClassWeights !== undefined) settingsData.useClassWeights = settings.useClassWeights;
       if (settings.storeEnabled !== undefined) settingsData.storeEnabled = settings.storeEnabled;
       if (settings.storePublished !== undefined) settingsData.storePublished = settings.storePublished;
       if (settings.storeWelcomeMessage !== undefined) settingsData.storeWelcomeMessage = settings.storeWelcomeMessage;
@@ -295,6 +298,7 @@ class SettingsService {
         // Auto-graduation
         autoGraduationEnabled: data.autoGraduationEnabled || false,
         autoGraduationAttendances: data.autoGraduationAttendances,
+        useClassWeights: data.useClassWeights || false,
         // Store
         storeEnabled: data.storeEnabled || false,
         storePublished: data.storePublished || false,
@@ -399,6 +403,7 @@ export const settingsService = {
       if (settings.asaasEnabled !== undefined) settingsData.asaasEnabled = settings.asaasEnabled;
       if (settings.autoGraduationEnabled !== undefined) settingsData.autoGraduationEnabled = settings.autoGraduationEnabled;
       if (settings.autoGraduationAttendances !== undefined) settingsData.autoGraduationAttendances = settings.autoGraduationAttendances;
+      if (settings.useClassWeights !== undefined) settingsData.useClassWeights = settings.useClassWeights;
 
       await setDoc(docRef, settingsData, { merge: true });
     } catch (error) {

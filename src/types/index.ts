@@ -826,6 +826,10 @@ export interface AcademyUser {
   status?: 'active' | 'inactive' | 'pending';
   joinedAt?: Date;
 
+  // Permissions granted on top of the role's defaults (instructor only).
+  // Mirrors UserAcademyMapping.academyDetails[academyId].extraPermissions.
+  extraPermissions?: Permission[];
+
   createdAt: Date;
   updatedAt: Date;
 }

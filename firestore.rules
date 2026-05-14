@@ -251,17 +251,27 @@ service cloud.firestore {
         // Allow user to create their own document:
         // - Admin during academy creation (role == 'admin')
         // - Student during account linking (must already belong to academy via mapping)
+        // - Instructor during invite-code redeem (mapping was updated first by
+        //   the redeem flow, so belongsToAcademy returns true here)
         allow create: if isAuthenticated()
                       && request.auth.uid == userId
                       && (
                         request.resource.data.role == 'admin' ||
-                        (belongsToAcademy(academyId) && request.resource.data.role == 'student')
+                        (belongsToAcademy(academyId) && request.resource.data.role == 'student') ||
+                        (belongsToAcademy(academyId) && request.resource.data.role == 'instructor')
                       );
 
         // Staff can update users (except sensitive fields)
         allow update: if isAcademyStaff(academyId)
                       && !request.resource.data.diff(resource.data).affectedKeys()
                           .hasAny(['createdAt']);
+
+        // Instructor doing their own redeem can write their own academy user
+        // doc when the mapping already places them in the academy.
+        allow update: if isAuthenticated()
+                      && request.auth.uid == userId
+                      && belongsToAcademy(academyId)
+                      && request.resource.data.role == 'instructor';
 
         // Never allow delete from client
         allow delete: if false;
@@ -398,6 +408,32 @@ service cloud.firestore {
         allow update: if isAuthenticated()
                       && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['usedAt', 'usedBy'])
+                      && request.resource.data.usedBy == request.auth.uid;
+      }
+
+      // ============================================
+      // Instructor Link Codes Subcollection
+      // ============================================
+      // One-shot codes (8 chars, 30min TTL) that an academy admin generates so a
+      // user can claim the `instructor` role. Mirrors /linkCodes for students.
+      match /instructorLinkCodes/{codeId} {
+        // Staff can read all codes for this academy (UI lists active invites)
+        allow read: if isAcademyStaff(academyId);
+
+        // CRITICAL: unauthenticated/cross-academy read of UNUSED codes so a
+        // user logged into a different academy (or just signed up) can resolve
+        // the code via collectionGroup during the redeem flow.
+        allow read: if resource.data.usedAt == null;
+
+        // Only the academy admin generates and deletes invites
+        allow create, delete: if isAcademyAdmin(academyId);
+
+        // Allow any authenticated user to mark the code as used (one-shot
+        // redeem). They must stamp their own uid into usedBy. Other fields
+        // are immutable.
+        allow update: if isAuthenticated()
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['usedAt', 'usedBy', 'usedByName'])
                       && request.resource.data.usedBy == request.auth.uid;
       }
 

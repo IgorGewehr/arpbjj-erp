@@ -12,6 +12,7 @@ import { useAcademy } from '@/contexts/AcademyContext';
 import { Permission, UserRole, Resource, Action } from '@/types';
 import {
   hasPermission,
+  hasEffectivePermission,
   hasAnyPermission,
   hasAllPermissions,
   getAllowedRoutes,
@@ -68,11 +69,20 @@ interface PermissionProviderProps {
 
 export function PermissionProvider({ children }: PermissionProviderProps) {
   const { user, isAuthenticated } = useAuth();
-  const { academyUser } = useAcademy();
+  const { academyUser, academyId, userAcademyMapping } = useAcademy();
 
   // IMPORTANT: Role comes from academyUser (academy-specific), NOT from global user
   // This allows a user to be admin in one academy but student in another
   const role = academyUser?.role || null;
+
+  // Extra permissions: the academy owner can grant ad-hoc capabilities to a
+  // single instructor (e.g. financial:view) without making them an admin.
+  // Source of truth lives in userAcademyMapping.academyDetails[academyId].
+  const extraPermissions: Permission[] = useMemo(() => {
+    if (!academyId || !userAcademyMapping?.academyDetails) return [];
+    const details = userAcademyMapping.academyDetails[academyId];
+    return Array.isArray(details?.extraPermissions) ? details.extraPermissions : [];
+  }, [academyId, userAcademyMapping]);
 
   // ============================================
   // Permission Check Functions
@@ -80,25 +90,25 @@ export function PermissionProvider({ children }: PermissionProviderProps) {
   const can = useCallback(
     (permission: Permission): boolean => {
       if (!role) return false;
-      return hasPermission(role, permission);
+      return hasEffectivePermission(role, extraPermissions, permission);
     },
-    [role]
+    [role, extraPermissions]
   );
 
   const canAny = useCallback(
     (permissions: Permission[]): boolean => {
       if (!role) return false;
-      return hasAnyPermission(role, permissions);
+      return permissions.some((p) => hasEffectivePermission(role, extraPermissions, p));
     },
-    [role]
+    [role, extraPermissions]
   );
 
   const canAll = useCallback(
     (permissions: Permission[]): boolean => {
       if (!role) return false;
-      return hasAllPermissions(role, permissions);
+      return permissions.every((p) => hasEffectivePermission(role, extraPermissions, p));
     },
-    [role]
+    [role, extraPermissions]
   );
 
   // ============================================

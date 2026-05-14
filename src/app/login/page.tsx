@@ -461,6 +461,19 @@ export default function LoginPage() {
           >
             Criar Conta com Código
           </Button>
+          <Button
+            variant="text"
+            fullWidth
+            href="/codigo-equipe"
+            sx={{
+              mt: 1,
+              textTransform: 'none',
+              fontSize: '0.8rem',
+              color: 'text.secondary',
+            }}
+          >
+            Recebi código de equipe (instrutor)
+          </Button>
         </Box>
 
         {/* Footer */}

@@ -62,9 +62,11 @@ import {
   CheckCircle,
   AlertTriangle,
   Clock,
+  Users,
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { TeamTab } from '@/components/features/team/TeamTab';
 import { useAuth, useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { AcademySettings, createSettingsService } from '@/services/settingsService';
@@ -1925,6 +1927,7 @@ export default function ConfiguracoesPage() {
     { label: 'Pagamentos', icon: Wallet },
     { label: 'Loja', icon: Store },
     { label: 'Recursos', icon: Settings },
+    { label: 'Equipe', icon: Users },
     { label: 'Sistema', icon: Wrench },
   ];
 
@@ -1985,7 +1988,8 @@ export default function ConfiguracoesPage() {
               {tabValue === 3 && <PaymentsTab />}
               {tabValue === 4 && <StoreTab />}
               {tabValue === 5 && <ResourcesTab />}
-              {tabValue === 6 && <SystemTab />}
+              {tabValue === 6 && <TeamTab />}
+              {tabValue === 7 && <SystemTab />}
             </Grid>
           </Grid>
         </Box>

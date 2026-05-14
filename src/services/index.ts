@@ -9,6 +9,11 @@ export { beltProgressionService, createBeltProgressionService } from './beltProg
 export { planService, createPlanService, getStudentValue } from './planService';
 export { settingsService, createSettingsService } from './settingsService';
 export { linkCodeService, createLinkCodeService } from './linkCodeService';
+export {
+  createInstructorLinkCodeService,
+  validateInstructorCodeGlobally,
+  redeemInstructorCode,
+} from './instructorLinkCodeService';
 export { competitionService, createCompetitionService } from './competitionService';
 export { competitionEnrollmentService, createCompetitionEnrollmentService } from './competitionEnrollmentService';
 export { createCheckinService } from './checkinService';

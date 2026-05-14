@@ -202,6 +202,60 @@ export function hasPermission(role: UserRole, permission: Permission): boolean {
 }
 
 /**
+ * Check the *effective* permission for a user — combines the role's defaults
+ * with any extraPermissions the academy owner explicitly granted to that user.
+ * Used by instructors who need a-la-carte access (e.g. financial:view) beyond
+ * the base instructor role, without being promoted to admin.
+ */
+export function hasEffectivePermission(
+  role: UserRole,
+  extraPermissions: Permission[] | undefined,
+  permission: Permission
+): boolean {
+  if (hasPermission(role, permission)) return true;
+  return Array.isArray(extraPermissions) && extraPermissions.includes(permission);
+}
+
+/**
+ * List of permissions the academy owner is allowed to grant as extras to
+ * instructors. Constrains the UI checkboxes — we don't want owners handing
+ * out settings:manage by mistake. Add new permissions here as the team
+ * decides what's safe to delegate.
+ */
+export const GRANTABLE_EXTRA_PERMISSIONS: { permission: Permission; label: string; description: string }[] = [
+  {
+    permission: 'financial:view',
+    label: 'Ver financeiro',
+    description: 'Mensalidades, quem pagou, recibos',
+  },
+  {
+    permission: 'financial:create',
+    label: 'Lançar cobranças',
+    description: 'Criar novas cobranças (não inclui edição/exclusão)',
+  },
+  {
+    permission: 'students:create',
+    label: 'Cadastrar alunos',
+    description: 'Criar novos alunos na academia',
+  },
+  {
+    permission: 'students:delete',
+    label: 'Excluir alunos',
+    description: 'Remover alunos da academia (cuidado!)',
+  },
+  {
+    permission: 'reports:view',
+    label: 'Ver relatórios',
+    description: 'Acessar dashboards e métricas',
+  },
+  {
+    permission: 'competitions:create',
+    label: 'Criar competições',
+    description: 'Cadastrar torneios e abrir inscrições',
+  },
+];
+
+/**
  * Check if a role has any of the specified permissions
  */
 export function hasAnyPermission(role: UserRole, permissions: Permission[]): boolean {

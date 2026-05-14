@@ -202,6 +202,7 @@ export async function linkUserToAcademy(
   data: {
     studentId?: string;
     role: UserRole;
+    extraPermissions?: import('@/types').Permission[];
   }
 ): Promise<void> {
   const mappingRef = rootCollections.userAcademyMappingDoc(userId);
@@ -213,12 +214,17 @@ export async function linkUserToAcademy(
     ? (mappingSnap.data() as Record<string, unknown>)
     : null;
 
-  const academyDetail = {
+  const academyDetail: Record<string, unknown> = {
     studentId: data.studentId || null,
     role: data.role,
     joinedAt: serverTimestamp(),
     status: 'active',
   };
+  // Only persist extraPermissions when the role can actually use them.
+  // Students never have extras; admins already get everything by default.
+  if (data.extraPermissions && data.extraPermissions.length > 0) {
+    academyDetail.extraPermissions = data.extraPermissions;
+  }
 
   if (currentMapping) {
     // Update existing mapping

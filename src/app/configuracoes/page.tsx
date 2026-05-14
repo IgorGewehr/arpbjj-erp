@@ -66,6 +66,7 @@ import {
 } from 'lucide-react';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
+import { AcademyPageHeader } from '@/components/layout';
 import { TeamTab } from '@/components/features/team/TeamTab';
 import { useAuth, useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
@@ -1936,14 +1937,11 @@ export default function ConfiguracoesPage() {
       <AppLayout>
         <Box sx={{ p: { xs: 2, sm: 3 } }}>
           {/* Header */}
-          <Box sx={{ mb: 3 }}>
-            <Typography variant="h4" fontWeight={700}>
-              Configuracoes
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Gerencie as configuracoes do sistema
-            </Typography>
-          </Box>
+          <AcademyPageHeader
+            icon={<Settings size={20} />}
+            title="Configurações"
+            description="Gerencie as configurações do sistema"
+          />
 
           <Grid container spacing={3}>
             {/* Sidebar Tabs */}

@@ -34,6 +34,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import { FadeInView, ScaleOnPress } from '@/components/mobile';
+import { AcademyPageHeader } from '@/components/layout';
 import {
   ChevronLeft,
   ChevronRight,
@@ -1289,74 +1290,48 @@ export function FinancialDashboard() {
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
       {/* Header */}
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: { xs: 'flex-start', sm: 'center' },
-          justifyContent: 'space-between',
-          mb: { xs: 2, sm: 4 },
-          flexDirection: { xs: 'column', sm: 'row' },
-          gap: { xs: 2, sm: 0 },
-        }}
-      >
-        <Box>
-          <Typography
-            variant="h4"
-            fontWeight={700}
-            gutterBottom
-            sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
-          >
-            Financeiro
-          </Typography>
-          <Typography
-            variant="body1"
-            color="text.secondary"
-            sx={{ fontSize: { xs: '0.8rem', sm: '1rem' }, display: { xs: 'none', sm: 'block' } }}
-          >
-            Gerenciamento de planos, mensalidades e pagamentos
-          </Typography>
-        </Box>
-
-        <Box sx={{ display: 'flex', gap: 1, width: { xs: '100%', sm: 'auto' } }}>
-          <Button
-            variant="outlined"
-            startIcon={!isMobile && <RefreshCw size={18} />}
-            onClick={() => { refresh(); refreshPlans(); }}
-            size="small"
-            sx={{ flex: { xs: 1, sm: 'none' } }}
-          >
-            {isMobile ? <RefreshCw size={16} /> : 'Atualizar'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={!isMobile && <Users size={18} />}
-            onClick={() => setPayingStudentsDialogOpen(true)}
-            size="small"
-            sx={{ flex: { xs: 1, sm: 'none' } }}
-          >
-            {isMobile ? 'Pagantes' : 'Alunos Pagantes'}
-          </Button>
-          <Button
-            variant="outlined"
-            color="primary"
-            startIcon={!isMobile && <Plus size={18} />}
-            onClick={() => setCreateChargeDialogOpen(true)}
-            size="small"
-            sx={{ flex: { xs: 1, sm: 'none' } }}
-          >
-            {isMobile ? 'Cobrança' : 'Nova Cobrança'}
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={!isMobile && <Plus size={18} />}
-            onClick={() => setGenerateDialogOpen(true)}
-            size="small"
-            sx={{ flex: { xs: 1, sm: 'none' } }}
-          >
-            {isMobile ? 'Gerar' : 'Gerar Mensalidades'}
-          </Button>
-        </Box>
-      </Box>
+      <AcademyPageHeader
+        icon={<DollarSign size={20} />}
+        title="Financeiro"
+        description="Gerenciamento de planos, mensalidades e pagamentos"
+        actions={
+          <>
+            <Button
+              variant="outlined"
+              startIcon={!isMobile && <RefreshCw size={18} />}
+              onClick={() => { refresh(); refreshPlans(); }}
+              size="small"
+            >
+              {isMobile ? <RefreshCw size={16} /> : 'Atualizar'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={!isMobile && <Users size={18} />}
+              onClick={() => setPayingStudentsDialogOpen(true)}
+              size="small"
+            >
+              {isMobile ? 'Pagantes' : 'Alunos Pagantes'}
+            </Button>
+            <Button
+              variant="outlined"
+              color="primary"
+              startIcon={!isMobile && <Plus size={18} />}
+              onClick={() => setCreateChargeDialogOpen(true)}
+              size="small"
+            >
+              {isMobile ? 'Cobrança' : 'Nova Cobrança'}
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={!isMobile && <Plus size={18} />}
+              onClick={() => setGenerateDialogOpen(true)}
+              size="small"
+            >
+              {isMobile ? 'Gerar' : 'Gerar Mensalidades'}
+            </Button>
+          </>
+        }
+      />
 
       {/* Month Navigation */}
       <Paper sx={{ p: { xs: 1.5, sm: 2 }, borderRadius: 3, mb: { xs: 2, sm: 3 } }}>

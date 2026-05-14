@@ -31,6 +31,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import { Search, Grid, List, Users, Filter, FileText, Download, Calendar } from 'lucide-react';
+import { AcademyPageHeader } from '@/components/layout';
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses, usePlans } from '@/hooks';
@@ -854,27 +855,12 @@ export function StudentList() {
 
       {/* Header */}
       <FadeInView direction="down" delay={0}>
-        <Box sx={{ mb: { xs: 2, sm: 4 } }}>
-          <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 2 }}>
-            <Box>
-              <Typography
-                variant="h4"
-                fontWeight={700}
-                gutterBottom
-                sx={{ fontSize: { xs: '1.5rem', sm: '2rem' } }}
-              >
-                Alunos
-              </Typography>
-              <Typography
-                variant="body1"
-                color="text.secondary"
-                sx={{ fontSize: { xs: '0.8rem', sm: '1rem' } }}
-              >
-                {stats.total} alunos ({stats.byStatus.active} ativos)
-              </Typography>
-            </Box>
-
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <AcademyPageHeader
+          icon={<Users size={20} />}
+          title="Alunos"
+          description={`${stats.total} alunos (${stats.byStatus.active} ativos)`}
+          actions={
+            <>
               <Tooltip title="Relatório de Presença (PDF)">
                 <IconButton
                   onClick={() => setPdfDialogOpen(true)}
@@ -901,8 +887,10 @@ export function StudentList() {
                   <List size={isMobile ? 16 : 18} />
                 </ToggleButton>
               </ToggleButtonGroup>
-            </Box>
-          </Box>
+            </>
+          }
+        />
+        <Box sx={{ mb: { xs: 2, sm: 4 } }}>
 
         {/* Filters - Mobile */}
         <Box sx={{ display: { xs: 'flex', md: 'none' }, gap: 1, alignItems: 'center' }}>

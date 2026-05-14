@@ -17,8 +17,14 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  InputAdornment,
+  IconButton,
 } from '@mui/material';
-import { Save, History, DollarSign, ChevronRight, User } from 'lucide-react';
+import { Save, History, DollarSign, ChevronRight, User, Lock, Eye, EyeOff, CheckCircle, Key } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -38,10 +44,12 @@ export default function StudentProfilePage() {
   const router = useRouter();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { user } = useAuth();
+  const { user, changePassword } = useAuth();
   const { academyId } = useAcademy();
   const { success, error: showError } = useFeedback();
   const { linkedStudentIds } = usePermissions();
+
+  const [pwOpen, setPwOpen] = useState(false);
 
   const studentId = linkedStudentIds[0] || user?.studentId;
 
@@ -498,7 +506,205 @@ export default function StudentProfilePage() {
         >
           {saving ? 'Salvando...' : 'Salvar alterações'}
         </Button>
+
+        {/* Account section */}
+        <Box sx={{ mt: 4 }}>
+          <Typography
+            variant="caption"
+            fontWeight={600}
+            color="text.secondary"
+            sx={{ mb: 1.5, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 }}
+          >
+            Conta
+          </Typography>
+          <Button
+            variant="outlined"
+            startIcon={<Lock size={16} />}
+            onClick={() => setPwOpen(true)}
+            fullWidth
+            sx={{ textTransform: 'none', py: 1.25, justifyContent: 'flex-start' }}
+          >
+            Trocar senha
+          </Button>
+        </Box>
       </Box>
+
+      <ChangePasswordDialog
+        open={pwOpen}
+        onClose={() => setPwOpen(false)}
+        onSubmit={changePassword}
+      />
     </Box>
+  );
+}
+
+// ============================================
+// Change password dialog
+// ============================================
+interface ChangePasswordDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onSubmit: (currentPassword: string, newPassword: string) => Promise<void>;
+}
+
+function ChangePasswordDialog({ open, onClose, onSubmit }: ChangePasswordDialogProps) {
+  const [current, setCurrent] = useState('');
+  const [next, setNext] = useState('');
+  const [confirm, setConfirm] = useState('');
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNext, setShowNext] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [done, setDone] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Reset state when reopened
+  useEffect(() => {
+    if (open) {
+      setCurrent('');
+      setNext('');
+      setConfirm('');
+      setShowCurrent(false);
+      setShowNext(false);
+      setSaving(false);
+      setDone(false);
+      setErr(null);
+    }
+  }, [open]);
+
+  const handleSubmit = async () => {
+    if (!current) {
+      setErr('Informe sua senha atual.');
+      return;
+    }
+    if (next.length < 6) {
+      setErr('A nova senha precisa ter pelo menos 6 caracteres.');
+      return;
+    }
+    if (next !== confirm) {
+      setErr('A confirmação não bate com a nova senha.');
+      return;
+    }
+    setSaving(true);
+    setErr(null);
+    try {
+      await onSubmit(current, next);
+      setDone(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg.includes('wrong-password') || msg.includes('invalid-credential')) {
+        setErr('Senha atual incorreta.');
+      } else if (msg.includes('requires-recent-login')) {
+        setErr('Por segurança, saia e entre novamente antes de trocar a senha.');
+      } else if (msg.includes('weak-password')) {
+        setErr('Senha muito fraca. Use ao menos 6 caracteres.');
+      } else {
+        setErr('Erro ao trocar a senha. Tente novamente.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth="xs">
+      <DialogTitle>{done ? 'Senha atualizada' : 'Trocar senha'}</DialogTitle>
+      <DialogContent>
+        {done ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, pt: 1 }}>
+            <CheckCircle size={36} color="#16a34a" />
+            <Typography>Sua senha foi alterada com sucesso.</Typography>
+          </Box>
+        ) : (
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
+            <TextField
+              autoFocus
+              fullWidth
+              type={showCurrent ? 'text' : 'password'}
+              label="Senha atual"
+              value={current}
+              onChange={(e) => setCurrent(e.target.value)}
+              disabled={saving}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Lock size={18} />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setShowCurrent((v) => !v)}>
+                      {showCurrent ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              fullWidth
+              type={showNext ? 'text' : 'password'}
+              label="Nova senha"
+              value={next}
+              onChange={(e) => setNext(e.target.value)}
+              disabled={saving}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Key size={18} />
+                  </InputAdornment>
+                ),
+                endAdornment: (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setShowNext((v) => !v)}>
+                      {showNext ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+            <TextField
+              fullWidth
+              type={showNext ? 'text' : 'password'}
+              label="Confirmar nova senha"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              disabled={saving}
+              error={Boolean(err)}
+              helperText={err}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !saving) handleSubmit();
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Key size={18} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        {done ? (
+          <Button onClick={onClose} variant="contained">
+            OK
+          </Button>
+        ) : (
+          <>
+            <Button onClick={onClose} disabled={saving}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              variant="contained"
+              disabled={saving}
+              startIcon={saving ? <CircularProgress size={16} color="inherit" /> : undefined}
+            >
+              {saving ? 'Salvando...' : 'Salvar'}
+            </Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 }

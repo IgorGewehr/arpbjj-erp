@@ -18,8 +18,13 @@ import {
   Fade,
   Grow,
   keyframes,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
-import { Mail, Lock, Eye, EyeOff, GraduationCap, Sparkles, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, GraduationCap, Sparkles, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 
@@ -44,12 +49,13 @@ export default function LoginPage() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   const isDarkMode = theme.palette.mode === 'dark';
-  const { signIn, isAuthenticated, loading, error, clearError, user } = useAuth();
+  const { signIn, resetPassword, isAuthenticated, loading, error, clearError, user } = useAuth();
   const { academyUser, isLoading: academyLoading } = useAcademy();
 
   const [mounted, setMounted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [redirecting, setRedirecting] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -364,6 +370,22 @@ export default function LoginPage() {
             }}
           />
 
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: -1, mb: 2 }}>
+            <Button
+              type="button"
+              onClick={() => setForgotOpen(true)}
+              size="small"
+              sx={{
+                textTransform: 'none',
+                fontSize: '0.825rem',
+                fontWeight: 500,
+                color: 'primary.main',
+              }}
+            >
+              Esqueci minha senha
+            </Button>
+          </Box>
+
           <Button
             type="submit"
             variant="contained"
@@ -451,6 +473,142 @@ export default function LoginPage() {
         </Typography>
       </Paper>
       </Grow>
+
+      <ForgotPasswordDialog
+        open={forgotOpen}
+        onClose={() => setForgotOpen(false)}
+        initialEmail={formData.email}
+        onSubmit={resetPassword}
+      />
     </Box>
+  );
+}
+
+// ============================================
+// Forgot password dialog
+// ============================================
+// Self-contained dialog that handles input, loading, success and error
+// states. Closing it always resets the inner state so the next open
+// shows a fresh form.
+interface ForgotPasswordDialogProps {
+  open: boolean;
+  onClose: () => void;
+  initialEmail: string;
+  onSubmit: (email: string) => Promise<void>;
+}
+
+function ForgotPasswordDialog({
+  open,
+  onClose,
+  initialEmail,
+  onSubmit,
+}: ForgotPasswordDialogProps) {
+  const [email, setEmail] = useState(initialEmail);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Sync with initialEmail every time the dialog reopens
+  useEffect(() => {
+    if (open) {
+      setEmail(initialEmail);
+      setSent(false);
+      setErr(null);
+      setSending(false);
+    }
+  }, [open, initialEmail]);
+
+  const handleSubmit = async () => {
+    const trimmed = email.trim();
+    if (!trimmed || !trimmed.includes('@')) {
+      setErr('Digite um email válido.');
+      return;
+    }
+    setSending(true);
+    setErr(null);
+    try {
+      await onSubmit(trimmed);
+      setSent(true);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '';
+      if (msg.includes('user-not-found')) {
+        setErr('Email não cadastrado.');
+      } else if (msg.includes('invalid-email')) {
+        setErr('Email inválido.');
+      } else if (msg.includes('too-many-requests')) {
+        setErr('Muitas tentativas. Tente novamente em alguns minutos.');
+      } else {
+        setErr('Erro ao enviar email. Tente novamente.');
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={sending ? undefined : onClose} fullWidth maxWidth="xs">
+      <DialogTitle>{sent ? 'Email enviado' : 'Recuperar senha'}</DialogTitle>
+      <DialogContent>
+        {sent ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1.5, pt: 1 }}>
+            <CheckCircle size={36} color="#16a34a" />
+            <DialogContentText>
+              Enviamos um link de recuperação para <strong>{email.trim()}</strong>.
+            </DialogContentText>
+            <Typography variant="caption" color="text.secondary">
+              Verifique também sua caixa de spam.
+            </Typography>
+          </Box>
+        ) : (
+          <Box sx={{ pt: 1 }}>
+            <DialogContentText sx={{ mb: 2 }}>
+              Digite seu email cadastrado. Enviaremos um link para criar uma nova senha.
+            </DialogContentText>
+            <TextField
+              autoFocus
+              fullWidth
+              type="email"
+              label="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              disabled={sending}
+              error={Boolean(err)}
+              helperText={err}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !sending) handleSubmit();
+              }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Mail size={18} />
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        {sent ? (
+          <Button onClick={onClose} variant="contained">
+            OK
+          </Button>
+        ) : (
+          <>
+            <Button onClick={onClose} disabled={sending}>
+              Cancelar
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              variant="contained"
+              disabled={sending}
+              startIcon={sending ? <CircularProgress size={16} color="inherit" /> : undefined}
+            >
+              {sending ? 'Enviando...' : 'Enviar'}
+            </Button>
+          </>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 }

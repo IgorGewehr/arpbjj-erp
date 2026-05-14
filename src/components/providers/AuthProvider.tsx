@@ -11,6 +11,9 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  EmailAuthProvider,
+  reauthenticateWithCredential,
+  updatePassword as firebaseUpdatePassword,
 } from 'firebase/auth';
 import { auth } from '@/lib/firebase';
 import { User, UserRole, GlobalUser, AccountType } from '@/types';
@@ -39,6 +42,7 @@ interface AuthContextType {
   signUp: (email: string, password: string, displayName: string) => Promise<void>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
   updateUserProfile: (data: Partial<User>) => Promise<void>;
   updateGlobalUserProfile: (data: Partial<Omit<GlobalUser, 'id' | 'createdAt' | 'updatedAt'>>) => Promise<void>;
 
@@ -232,6 +236,27 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   // ============================================
+  // Change Password (logged-in user)
+  //
+  // Firebase requires a fresh auth credential for sensitive operations
+  // (updatePassword). We reauthenticate explicitly with the current password
+  // first so the call deterministically succeeds or throws — never silently
+  // prompts the user with a redirect mid-flow.
+  // ============================================
+  const changePassword = useCallback(
+    async (currentPassword: string, newPassword: string) => {
+      const current = auth.currentUser;
+      if (!current || !current.email) {
+        throw new Error('User not authenticated');
+      }
+      const credential = EmailAuthProvider.credential(current.email, currentPassword);
+      await reauthenticateWithCredential(current, credential);
+      await firebaseUpdatePassword(current, newPassword);
+    },
+    []
+  );
+
+  // ============================================
   // Update User Profile (backwards compatible)
   // ============================================
   const updateUserProfile = useCallback(async (data: Partial<User>) => {
@@ -377,6 +402,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       signUp,
       signOut,
       resetPassword,
+      changePassword,
       updateUserProfile,
       updateGlobalUserProfile,
       refreshUser,
@@ -397,6 +423,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       signUp,
       signOut,
       resetPassword,
+      changePassword,
       updateUserProfile,
       updateGlobalUserProfile,
       refreshUser,

@@ -19,8 +19,13 @@ import { createUserWithEmailAndPassword, updateProfile, AuthError } from 'fireba
 import { FirebaseError } from 'firebase/app';
 import { doc, setDoc, updateDoc, serverTimestamp, collectionGroup, query, where, getDocs, Timestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
-import { LinkCode } from '@/types';
+import { LinkCode, InstructorLinkCode, Permission } from '@/types';
 import { useAcademy } from '@/contexts/AcademyContext';
+import {
+  validateInstructorCodeGlobally,
+  redeemInstructorCode,
+} from '@/services';
+import { GRANTABLE_EXTRA_PERMISSIONS } from '@/lib/permissions';
 
 // ============================================
 // CPF Helpers
@@ -58,6 +63,14 @@ const validateCpf = (cpf: string): boolean => {
 // ============================================
 type Step = 'code' | 'register' | 'redirecting' | 'success';
 
+// Discriminated union: a validated code is either a student code (6 chars,
+// /linkCodes — needs CPF/phone, attaches to a pre-existing student record)
+// or an instructor code (8 chars, /instructorLinkCodes — creates an instructor
+// account with extraPermissions, no CPF needed).
+type ResolvedCode =
+  | { kind: 'student'; code: LinkCode }
+  | { kind: 'instructor'; code: InstructorLinkCode; academyId: string };
+
 // ============================================
 // Main Component
 // ============================================
@@ -68,11 +81,13 @@ export default function CreateAccountPage() {
   const [step, setStep] = useState<Step>('code');
   const [code, setCode] = useState('');
   const [linkCode, setLinkCode] = useState<LinkCode | null>(null);
+  const [resolved, setResolved] = useState<ResolvedCode | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const redirectingRef = useRef(false);
 
   // Registration form
+  const [fullName, setFullName] = useState(''); // Instructor-only (student name comes from linkCode)
   const [cpf, setCpf] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
@@ -90,20 +105,21 @@ export default function CreateAccountPage() {
 
     const pollUntilReady = async () => {
       // Poll every 500ms for up to 10 seconds (20 attempts)
+      const destination = resolved?.kind === 'instructor' ? '/dashboard' : '/portal';
       for (let i = 0; i < 20; i++) {
         await new Promise(resolve => setTimeout(resolve, 500));
         const loadedUser = await reloadUserMapping();
         if (loadedUser && loadedUser.role) {
-          router.replace('/portal');
+          router.replace(destination);
           return;
         }
       }
       // Fallback: redirect anyway after 10s
-      router.replace('/portal');
+      router.replace(destination);
     };
 
     pollUntilReady();
-  }, [step, reloadUserMapping, router]);
+  }, [step, reloadUserMapping, router, resolved]);
 
   // ============================================
   // Validate Code (collectionGroup query - multi-tenant)
@@ -120,8 +136,25 @@ export default function CreateAccountPage() {
 
       const codeUpper = code.toUpperCase().trim();
 
-      // collectionGroup query across all academies' linkCodes
-      // MUST filter by usedAt == null to match security rules constraint
+      // Dispatch by length: 6 chars -> student, 8 chars -> instructor.
+      // Length is the discriminator the owner set when generating.
+      const isInstructor = codeUpper.length === 8;
+
+      if (isInstructor) {
+        const found = await validateInstructorCodeGlobally(codeUpper);
+        if (!found) {
+          setError('Codigo nao encontrado, expirado ou ja utilizado.');
+          return;
+        }
+        setResolved({ kind: 'instructor', code: found.code, academyId: found.academyId });
+        setLinkCode(null);
+        setStep('register');
+        return;
+      }
+
+      // Student flow (6 chars). Falls through to the original collectionGroup
+      // query so legacy codes (and accidental 6-char instructor lookups) still
+      // surface a clear error instead of a silent miss.
       const q = query(
         collectionGroup(db, 'linkCodes'),
         where('code', '==', codeUpper),
@@ -137,7 +170,6 @@ export default function CreateAccountPage() {
       const codeDoc = snapshot.docs[0];
       const data = codeDoc.data();
 
-      // Check if expired
       const expiresAt = data.expiresAt instanceof Timestamp
         ? data.expiresAt.toDate()
         : new Date(data.expiresAt);
@@ -146,10 +178,6 @@ export default function CreateAccountPage() {
         return;
       }
 
-      // Extract academyId safely using Firestore API
-      // Path structure: academies/{academyId}/linkCodes/{docId}
-      // codeDoc.ref.parent = linkCodes collection
-      // codeDoc.ref.parent.parent = academies/{academyId} document
       const academyDocRef = codeDoc.ref.parent.parent;
       if (!academyDocRef) {
         setError('Erro ao identificar a academia do código');
@@ -175,6 +203,7 @@ export default function CreateAccountPage() {
       };
 
       setLinkCode(foundLinkCode);
+      setResolved({ kind: 'student', code: foundLinkCode });
       setStep('register');
     } catch (err) {
       console.error('Code validation error:', err);
@@ -187,6 +216,98 @@ export default function CreateAccountPage() {
   // ============================================
   // Create Account (multi-tenant correct)
   // ============================================
+  // Instructor signup: minimal form (name + email + password + confirm).
+  // We create the auth user, write the global users/{uid} doc, then call
+  // redeemInstructorCode which handles the mapping + academy user doc +
+  // marking the code as used. No CPF/phone — those belong to student records.
+  const handleCreateInstructorAccount = useCallback(async () => {
+    if (!resolved || resolved.kind !== 'instructor') return;
+    const { code: invite, academyId } = resolved;
+
+    if (!fullName.trim()) {
+      setError('Digite seu nome completo');
+      return;
+    }
+    if (!email.trim()) {
+      setError('Digite seu email');
+      return;
+    }
+    if (!password) {
+      setError('Digite uma senha');
+      return;
+    }
+    if (password.length < 6) {
+      setError('A senha deve ter pelo menos 6 caracteres');
+      return;
+    }
+    if (password !== confirmPassword) {
+      setError('As senhas nao coincidem');
+      return;
+    }
+    if (invite.expiresAt && new Date() > invite.expiresAt) {
+      setError('Este codigo expirou. Solicite um novo.');
+      setStep('code');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      setError('');
+
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      );
+      const user = userCredential.user;
+      await updateProfile(user, { displayName: fullName.trim() });
+
+      // Global users/{uid} doc — accountType linked is set later when the
+      // redeem fires (it calls updateDoc which requires the doc to exist).
+      await setDoc(doc(db, 'users', user.uid), {
+        email: email.trim(),
+        displayName: fullName.trim(),
+        accountType: 'free',
+        isActive: true,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      });
+
+      // Redeem the invite: writes the mapping with role=instructor +
+      // extraPermissions, upserts the academy user doc, marks code as used.
+      await redeemInstructorCode({
+        code: invite,
+        academyId,
+        userId: user.uid,
+        userEmail: email.trim(),
+        userDisplayName: fullName.trim(),
+      });
+
+      setStep('redirecting');
+    } catch (err: unknown) {
+      console.error('Instructor signup error:', err);
+      if (err instanceof FirebaseError) {
+        switch (err.code) {
+          case 'auth/email-already-in-use':
+            setError('Este email ja esta sendo utilizado. Faca login e use a opcao "Recebi codigo de equipe".');
+            break;
+          case 'auth/invalid-email':
+            setError('Email invalido');
+            break;
+          case 'auth/weak-password':
+            setError('Senha muito fraca. Use pelo menos 6 caracteres.');
+            break;
+          default:
+            setError('Erro ao criar conta. Tente novamente.');
+        }
+      } else {
+        setError('Erro ao criar conta. Tente novamente.');
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [resolved, fullName, email, password, confirmPassword]);
+
   const handleCreateAccount = useCallback(async () => {
     if (!linkCode || !linkCode.academyId) return;
 
@@ -496,7 +617,9 @@ export default function CreateAccountPage() {
   // ============================================
   // Render Register Step
   // ============================================
-  const renderRegisterStep = () => (
+  const renderRegisterStep = () => {
+    const isInstructor = resolved?.kind === 'instructor';
+    return (
     <>
       <Box sx={{ textAlign: 'center', mb: 4 }}>
         <Box
@@ -504,22 +627,64 @@ export default function CreateAccountPage() {
             width: 80,
             height: 80,
             borderRadius: '50%',
-            bgcolor: 'success.light',
+            bgcolor: isInstructor ? 'info.light' : 'success.light',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             margin: '0 auto 16px',
           }}
         >
-          <User size={40} color="#2e7d32" />
+          <User size={40} color={isInstructor ? '#1565c0' : '#2e7d32'} />
         </Box>
         <Typography variant="h5" fontWeight={700} gutterBottom>
-          Bem-vindo, {linkCode?.studentName}!
+          {isInstructor
+            ? 'Cadastro de instrutor'
+            : `Bem-vindo, ${linkCode?.studentName}!`}
         </Typography>
         <Typography variant="body2" color="text.secondary">
-          Complete seu cadastro para acessar o portal
+          {isInstructor
+            ? `Convite de ${(resolved as { kind: 'instructor'; code: InstructorLinkCode }).code.createdByName}`
+            : 'Complete seu cadastro para acessar o portal'}
         </Typography>
       </Box>
+
+      {isInstructor && resolved?.kind === 'instructor' && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          <Typography variant="body2" sx={{ mb: 1 }}>
+            <strong>Suas permissões nessa academia:</strong>
+          </Typography>
+          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+            <Box
+              sx={{
+                px: 1,
+                py: 0.25,
+                bgcolor: 'background.paper',
+                borderRadius: 999,
+                fontSize: '0.7rem',
+              }}
+            >
+              Chamada, turmas, alunos (base)
+            </Box>
+            {resolved.code.extraPermissions.map((p) => {
+              const def = GRANTABLE_EXTRA_PERMISSIONS.find((g) => g.permission === p);
+              return (
+                <Box
+                  key={p}
+                  sx={{
+                    px: 1,
+                    py: 0.25,
+                    bgcolor: 'background.paper',
+                    borderRadius: 999,
+                    fontSize: '0.7rem',
+                  }}
+                >
+                  {def?.label ?? p}
+                </Box>
+              );
+            })}
+          </Box>
+        </Alert>
+      )}
 
       {error && (
         <Alert severity="error" sx={{ mb: 3 }}>
@@ -527,39 +692,58 @@ export default function CreateAccountPage() {
         </Alert>
       )}
 
-      <TextField
-        label="CPF"
-        value={cpf}
-        onChange={(e) => setCpf(formatCpf(e.target.value))}
-        fullWidth
-        placeholder="000.000.000-00"
-        inputProps={{ maxLength: 14 }}
-        sx={{ mb: 2 }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <FileText size={20} color="#666" />
-            </InputAdornment>
-          ),
-        }}
-      />
+      {isInstructor ? (
+        <TextField
+          label="Nome completo"
+          value={fullName}
+          onChange={(e) => setFullName(e.target.value)}
+          fullWidth
+          sx={{ mb: 2 }}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <User size={20} color="#666" />
+              </InputAdornment>
+            ),
+          }}
+        />
+      ) : (
+        <>
+          <TextField
+            label="CPF"
+            value={cpf}
+            onChange={(e) => setCpf(formatCpf(e.target.value))}
+            fullWidth
+            placeholder="000.000.000-00"
+            inputProps={{ maxLength: 14 }}
+            sx={{ mb: 2 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <FileText size={20} color="#666" />
+                </InputAdornment>
+              ),
+            }}
+          />
 
-      <TextField
-        label="WhatsApp"
-        value={phone}
-        onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
-        fullWidth
-        placeholder="11999999999"
-        inputProps={{ maxLength: 11 }}
-        sx={{ mb: 2 }}
-        InputProps={{
-          startAdornment: (
-            <InputAdornment position="start">
-              <Phone size={20} color="#666" />
-            </InputAdornment>
-          ),
-        }}
-      />
+          <TextField
+            label="WhatsApp"
+            value={phone}
+            onChange={(e) => setPhone(e.target.value.replace(/\D/g, '').slice(0, 11))}
+            fullWidth
+            placeholder="11999999999"
+            inputProps={{ maxLength: 11 }}
+            sx={{ mb: 2 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Phone size={20} color="#666" />
+                </InputAdornment>
+              ),
+            }}
+          />
+        </>
+      )}
 
       <TextField
         label="Email"
@@ -628,7 +812,7 @@ export default function CreateAccountPage() {
         variant="contained"
         fullWidth
         size="large"
-        onClick={handleCreateAccount}
+        onClick={isInstructor ? handleCreateInstructorAccount : handleCreateAccount}
         disabled={loading}
         sx={{ mb: 2 }}
       >
@@ -647,7 +831,8 @@ export default function CreateAccountPage() {
         Voltar
       </Button>
     </>
-  );
+    );
+  };
 
   // ============================================
   // Render Redirecting Step (loading while AcademyContext loads)

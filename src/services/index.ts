@@ -13,6 +13,7 @@ export {
   createInstructorLinkCodeService,
   validateInstructorCodeGlobally,
   redeemInstructorCode,
+  promoteUserToInstructor,
 } from './instructorLinkCodeService';
 export { competitionService, createCompetitionService } from './competitionService';
 export { competitionEnrollmentService, createCompetitionEnrollmentService } from './competitionEnrollmentService';

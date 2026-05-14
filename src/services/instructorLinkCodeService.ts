@@ -157,6 +157,48 @@ export async function validateInstructorCodeGlobally(
 }
 
 /**
+ * Promote an existing user who's already linked to the academy as `student`
+ * (or any role) to `instructor`. Keeps studentId intact so the user can still
+ * access their own student portal data, but switches role and stamps the
+ * extraPermissions chosen by the owner. Idempotent — calling twice doesn't
+ * stack permissions, just rewrites them.
+ */
+export async function promoteUserToInstructor(opts: {
+  userId: string;
+  academyId: string;
+  extraPermissions: Permission[];
+  email?: string;
+  displayName?: string;
+}): Promise<void> {
+  const { userId, academyId, extraPermissions, email, displayName } = opts;
+
+  // Update the mapping: role -> instructor, attach extraPermissions.
+  // We use FieldValue updates so studentId (if any) is preserved.
+  const mappingRef = doc(db, `userAcademyMapping/${userId}`);
+  const updates: Record<string, unknown> = {
+    [`academyDetails.${academyId}.role`]: 'instructor',
+    updatedAt: serverTimestamp(),
+  };
+  if (extraPermissions.length > 0) {
+    updates[`academyDetails.${academyId}.extraPermissions`] = extraPermissions;
+  } else {
+    // Clear any previous extras so a re-promote with empty list resets them
+    // instead of silently inheriting stale values.
+    updates[`academyDetails.${academyId}.extraPermissions`] = [];
+  }
+  await setDoc(mappingRef, updates, { merge: true });
+
+  // Mirror the role in the academy-scoped user doc so legacy code reading
+  // from there also sees instructor.
+  await upsertAcademyUser(academyId, userId, {
+    role: 'instructor',
+    ...(email ? { email } : {}),
+    ...(displayName ? { displayName } : {}),
+    status: 'active',
+  });
+}
+
+/**
  * Redeem a previously generated instructor code: links the current user to
  * the academy as `instructor`, attaches `extraPermissions`, and marks the
  * code as used.

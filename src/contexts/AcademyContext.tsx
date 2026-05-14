@@ -10,6 +10,7 @@ import {
   ReactNode
 } from 'react';
 import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { useQueryClient } from '@tanstack/react-query';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Academy, UserAcademyMapping, AcademyUser, UserRole } from '@/types';
@@ -67,6 +68,7 @@ interface AcademyProviderProps {
 
 export function AcademyProvider({ children }: AcademyProviderProps) {
   const { user, firebaseUser, isAuthenticated, loading: authLoading } = useAuth();
+  const queryClient = useQueryClient();
 
   const [academyId, setAcademyId] = useState<string | null>(null);
   const [academy, setAcademy] = useState<Academy | null>(null);
@@ -288,6 +290,10 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
 
   // ============================================
   // Set Active Academy (switch without changing primary)
+  //
+  // Also invalidates the React Query cache. Without this, lists like
+  // /alunos and /chamada continue showing the previous academy's data
+  // for up to staleTime (5min) after the switcher fires.
   // ============================================
   const setAcademyAction = useCallback(async (newAcademyId: string) => {
     if (!userAcademies.includes(newAcademyId)) {
@@ -302,13 +308,17 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
 
     try {
       await loadAcademy(newAcademyId);
+      // Drop every per-academy cached query so the UI refetches with the
+      // new academyId in the key. Doing this after loadAcademy so the
+      // refetch fires already knowing the right academy.
+      await queryClient.invalidateQueries();
     } catch (err) {
       console.error('Error switching academy:', err);
       setError('Erro ao trocar de academia');
     } finally {
       setIsSwitching(false);
     }
-  }, [userAcademies, academyId, loadAcademy]);
+  }, [userAcademies, academyId, loadAcademy, queryClient]);
 
   // ============================================
   // Set Primary Academy (updates Firestore)

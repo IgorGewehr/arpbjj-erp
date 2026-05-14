@@ -85,6 +85,13 @@ const bottomNavItems: NavItem[] = [
   { label: 'Configurações', icon: Settings, path: '/configuracoes' },
 ];
 
+// Visible to anyone authenticated — the page itself routes by user/code state.
+// Lets a logged-in user redeem an instructor invite without going through
+// the login screen again.
+const accountActionItems: NavItem[] = [
+  { label: 'Resgatar código', icon: QrCode, path: '/codigo-equipe' },
+];
+
 // ============================================
 // Sidebar Component
 // ============================================
@@ -363,6 +370,11 @@ export function Sidebar({
       <Box sx={{ py: 1 }}>
         <List disablePadding>
           {bottomNavItems.map((item) => (
+            <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
+              <NavItemButton item={item} />
+            </ListItem>
+          ))}
+          {accountActionItems.map((item) => (
             <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
               <NavItemButton item={item} />
             </ListItem>

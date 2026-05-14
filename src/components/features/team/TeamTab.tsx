@@ -19,12 +19,26 @@ import {
   IconButton,
   Tooltip,
 } from '@mui/material';
-import { UserPlus, Copy, Trash2, Clock, ShieldCheck, Users } from 'lucide-react';
+import {
+  UserPlus,
+  Copy,
+  Trash2,
+  Clock,
+  ShieldCheck,
+  Users,
+  ArrowUpCircle,
+  Search,
+} from 'lucide-react';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useAuth, useFeedback } from '@/components/providers';
-import { createInstructorLinkCodeService } from '@/services';
+import {
+  createInstructorLinkCodeService,
+  promoteUserToInstructor,
+} from '@/services';
+import { useStudents } from '@/hooks';
 import { GRANTABLE_EXTRA_PERMISSIONS } from '@/lib/permissions';
-import { InstructorLinkCode, Permission } from '@/types';
+import { InstructorLinkCode, Permission, Student } from '@/types';
+import { TextField, InputAdornment, List, ListItemButton, ListItemAvatar, Avatar, ListItemText, Divider } from '@mui/material';
 
 // ============================================
 // Team Tab — instructor invitations
@@ -54,6 +68,7 @@ export function TeamTab() {
   const [codes, setCodes] = useState<InstructorLinkCode[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [promoteOpen, setPromoteOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!service) {
@@ -115,14 +130,24 @@ export function TeamTab() {
             Convide professores e defina o que cada um pode ver e fazer
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<UserPlus size={16} />}
-          onClick={() => setInviteOpen(true)}
-          disabled={!service || !user}
-        >
-          Convidar professor
-        </Button>
+        <Stack direction="row" spacing={1}>
+          <Button
+            variant="outlined"
+            startIcon={<ArrowUpCircle size={16} />}
+            onClick={() => setPromoteOpen(true)}
+            disabled={!academyId}
+          >
+            Promover aluno
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<UserPlus size={16} />}
+            onClick={() => setInviteOpen(true)}
+            disabled={!service || !user}
+          >
+            Convidar professor
+          </Button>
+        </Stack>
       </Stack>
 
       <Alert severity="info" sx={{ mb: 3, borderRadius: 2 }}>
@@ -166,7 +191,207 @@ export function TeamTab() {
           createdByName={user.displayName}
         />
       )}
+
+      {academyId && (
+        <PromoteDialog
+          open={promoteOpen}
+          onClose={() => setPromoteOpen(false)}
+          academyId={academyId}
+        />
+      )}
     </Box>
+  );
+}
+
+// ============================================
+// Promote dialog — pick a linked student, set extras, promote to instructor
+// ============================================
+function PromoteDialog({
+  open,
+  onClose,
+  academyId,
+}: {
+  open: boolean;
+  onClose: () => void;
+  academyId: string;
+}) {
+  const { students, isLoading: studentsLoading } = useStudents();
+  const { success, error: showError } = useFeedback();
+  const [search, setSearch] = useState('');
+  const [selected, setSelected] = useState<Student | null>(null);
+  const [extras, setExtras] = useState<Set<Permission>>(new Set());
+  const [submitting, setSubmitting] = useState(false);
+
+  // Only students with a Firebase Auth account can be promoted — they need a
+  // user record to hang the new role on.
+  const eligible = useMemo(
+    () =>
+      (students ?? []).filter(
+        (s) => s.linkedUserId && s.linkedUserId.length > 0
+      ),
+    [students]
+  );
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return eligible;
+    return eligible.filter((s) =>
+      [s.fullName, s.nickname, s.email]
+        .filter((v): v is string => Boolean(v))
+        .some((v) => v.toLowerCase().includes(q))
+    );
+  }, [eligible, search]);
+
+  useEffect(() => {
+    if (open) {
+      setSearch('');
+      setSelected(null);
+      setExtras(new Set());
+      setSubmitting(false);
+    }
+  }, [open]);
+
+  const togglePerm = (p: Permission) =>
+    setExtras((prev) => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p);
+      else next.add(p);
+      return next;
+    });
+
+  const handleSubmit = async () => {
+    if (!selected || !selected.linkedUserId) return;
+    setSubmitting(true);
+    try {
+      await promoteUserToInstructor({
+        userId: selected.linkedUserId,
+        academyId,
+        extraPermissions: Array.from(extras),
+        email: selected.email,
+        displayName: selected.fullName,
+      });
+      success(`${selected.fullName} promovido a instrutor.`);
+      onClose();
+    } catch {
+      showError('Erro ao promover aluno. Tente novamente.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={submitting ? undefined : onClose} fullWidth maxWidth="sm">
+      <DialogTitle>
+        {selected ? `Promover ${selected.fullName}` : 'Promover aluno a instrutor'}
+      </DialogTitle>
+      <DialogContent>
+        {selected ? (
+          <Box>
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              O aluno mantém o acesso aos dados pessoais como aluno, mas
+              passa a ver os recursos de instrutor com as permissões
+              selecionadas abaixo.
+            </Typography>
+            <Stack spacing={0}>
+              {GRANTABLE_EXTRA_PERMISSIONS.map((def) => (
+                <FormControlLabel
+                  key={def.permission}
+                  control={
+                    <Checkbox
+                      checked={extras.has(def.permission)}
+                      onChange={() => togglePerm(def.permission)}
+                    />
+                  }
+                  label={
+                    <Box>
+                      <Typography variant="body2" fontWeight={500}>
+                        {def.label}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {def.description}
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ alignItems: 'flex-start', mr: 0, py: 0.5 }}
+                />
+              ))}
+            </Stack>
+          </Box>
+        ) : (
+          <Box>
+            <Typography variant="body2" color="text.secondary" mb={2}>
+              Apenas alunos com conta criada aparecem na lista (vinculados
+              via link-code anteriormente).
+            </Typography>
+            <TextField
+              autoFocus
+              fullWidth
+              size="small"
+              placeholder="Buscar aluno por nome ou email..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search size={16} />
+                  </InputAdornment>
+                ),
+              }}
+              sx={{ mb: 2 }}
+            />
+            {studentsLoading ? (
+              <Box display="flex" justifyContent="center" py={4}>
+                <CircularProgress size={24} />
+              </Box>
+            ) : filtered.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 4 }}>
+                Nenhum aluno encontrado.
+              </Typography>
+            ) : (
+              <List dense sx={{ maxHeight: 320, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1 }}>
+                {filtered.map((s, idx) => (
+                  <Box key={s.id}>
+                    {idx > 0 && <Divider component="li" />}
+                    <ListItemButton onClick={() => setSelected(s)}>
+                      <ListItemAvatar>
+                        <Avatar src={s.photoUrl ?? undefined} sx={{ width: 32, height: 32 }}>
+                          {s.fullName.charAt(0).toUpperCase()}
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={s.fullName}
+                        secondary={s.email ?? '—'}
+                      />
+                    </ListItemButton>
+                  </Box>
+                ))}
+              </List>
+            )}
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        {selected ? (
+          <>
+            <Button onClick={() => setSelected(null)} disabled={submitting}>
+              Voltar
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleSubmit}
+              disabled={submitting}
+              startIcon={
+                submitting ? <CircularProgress size={14} color="inherit" /> : undefined
+              }
+            >
+              {submitting ? 'Promovendo...' : 'Promover a instrutor'}
+            </Button>
+          </>
+        ) : (
+          <Button onClick={onClose}>Cancelar</Button>
+        )}
+      </DialogActions>
+    </Dialog>
   );
 }
 

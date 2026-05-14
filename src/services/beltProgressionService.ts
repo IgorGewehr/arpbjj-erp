@@ -62,6 +62,9 @@ const docToBeltProgression = (doc: DocumentSnapshot): BeltProgression => {
     newStripes: data.newStripes,
     promotionDate: data.promotionDate instanceof Timestamp ? data.promotionDate.toDate() : new Date(data.promotionDate),
     totalClasses: data.totalClasses,
+    effectiveCountAtPromotion: typeof data.effectiveCountAtPromotion === 'number'
+      ? data.effectiveCountAtPromotion
+      : undefined,
     promotedBy: data.promotedBy,
     promotedByName: data.promotedByName,
     notes: data.notes,
@@ -137,6 +140,31 @@ export class BeltProgressionService {
     }
   }
 
+  /**
+   * Returns the comparison snapshot from the most recent promotion of this
+   * student — the count to subtract when computing "attendances since last
+   * promotion". Returns 0 when the student has never been promoted.
+   *
+   * Optional [progressionsHint] avoids re-querying when the caller already
+   * has the student's progression list loaded (used by snapshot batch).
+   */
+  async getLastPromotionBaseline(
+    studentId: string,
+    progressionsHint?: BeltProgression[]
+  ): Promise<number> {
+    const progressions = progressionsHint ?? (await this.getByStudent(studentId));
+    if (progressions.length === 0) return 0;
+    // getByStudent already returns sorted desc by promotionDate, but be
+    // defensive in case the order ever changes.
+    const sorted = [...progressions].sort(
+      (a, b) => b.promotionDate.getTime() - a.promotionDate.getTime()
+    );
+    const last = sorted[0];
+    return typeof last.effectiveCountAtPromotion === 'number'
+      ? last.effectiveCountAtPromotion
+      : last.totalClasses;
+  }
+
   // ============================================
   // Check Eligibility for Promotion
   //
@@ -175,9 +203,15 @@ export class BeltProgressionService {
     }
 
     const academyConfig = config ?? (await this.loadAcademyConfig());
-    const totalClasses = academyConfig.useClassWeights
+    const rawTotal = academyConfig.useClassWeights
       ? await this.attendanceService.getStudentWeightedAttendanceCount(studentId)
       : await this.attendanceService.getStudentAttendanceCount(studentId);
+
+    // Subtract the snapshot from the most recent promotion so we count only
+    // attendances *since* that promotion. Without this, a student promoted at
+    // 82 with a 75 threshold would immediately re-qualify for the next belt.
+    const baseline = await this.getLastPromotionBaseline(studentId);
+    const totalClasses = Math.max(0, rawTotal - baseline);
     const currentBelt = student.currentBelt as BeltColor;
     const currentStripes = student.currentStripes;
 
@@ -323,6 +357,14 @@ export class BeltProgressionService {
     const now = new Date();
     const effectivePromotionDate = promotionDate ?? now;
 
+    // Snapshot the value compared against the academy threshold so future
+    // checkEligibility calls count "attendances since this promotion". For
+    // weighted academies that's the weighted sum; otherwise the raw count.
+    const academyConfig = await this.loadAcademyConfig();
+    const effectiveCountAtPromotion = academyConfig.useClassWeights
+      ? await this.attendanceService.getStudentWeightedAttendanceCount(studentId)
+      : totalClasses;
+
     // Build progression data carefully to avoid undefined values
     const progressionData: Record<string, unknown> = {
       studentId,
@@ -332,6 +374,7 @@ export class BeltProgressionService {
       newStripes,
       promotionDate: Timestamp.fromDate(effectivePromotionDate),
       totalClasses,
+      effectiveCountAtPromotion,
       promotedBy,
       promotedByName,
       createdAt: Timestamp.fromDate(now),

@@ -575,7 +575,15 @@ export interface BeltProgression {
   newStripes: Stripes;
 
   promotionDate: Date;
+  /** Raw attendance count at the time of promotion (back-compat, reporting). */
   totalClasses: number;
+  /**
+   * Snapshot of the value that was compared against the academy threshold at
+   * the moment of this promotion. Weighted academies store the weighted sum
+   * here; others store the same value as totalClasses. Used by
+   * checkEligibility to count "attendances since last promotion".
+   */
+  effectiveCountAtPromotion?: number;
   promotedBy: string;
   promotedByName?: string;
   notes?: string;

@@ -33,8 +33,10 @@ import {
   FormRow,
   FormTabs,
   FormTabPanel,
+  LoadingButton,
 } from '@/components/ui';
 import { ADULT_BELT_OPTIONS, KIDS_BELT_OPTIONS } from '@/lib/constants/belts';
+import { hapticImpact, hapticNotification } from '@/lib/capacitor';
 
 // ============================================
 // Tabs Configuration
@@ -236,7 +238,11 @@ export default function StudentRegistrationPage() {
   // Handle Submit
   // ============================================
   const handleSubmit = useCallback(async () => {
-    if (!validateForm()) return;
+    if (!validateForm()) {
+      void hapticNotification('warning');
+      return;
+    }
+    void hapticImpact('medium');
 
     try {
       const studentData = {
@@ -323,11 +329,12 @@ export default function StudentRegistrationPage() {
                 Preencha os dados do novo aluno
               </Typography>
             </Box>
-            <Button
+            <LoadingButton
               variant="contained"
               startIcon={<Save size={18} />}
               onClick={handleSubmit}
-              disabled={isCreating}
+              isLoading={isCreating}
+              loadingText="Salvando..."
               sx={{
                 bgcolor: '#171717',
                 '&:hover': { bgcolor: '#333' },
@@ -335,8 +342,8 @@ export default function StudentRegistrationPage() {
                 px: 3,
               }}
             >
-              {isCreating ? 'Salvando...' : 'Salvar'}
-            </Button>
+              Salvar
+            </LoadingButton>
           </Box>
 
           {/* Form with Tabs */}

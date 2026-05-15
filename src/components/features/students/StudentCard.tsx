@@ -18,6 +18,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import { Phone, AlertCircle, ChevronRight, Target, MoreVertical, Zap } from 'lucide-react';
+import { AnimatePresence, motion } from 'framer-motion';
 import { Student, StudentStatus, getStudentPrimarySport, getStudentGrade } from '@/types';
 import { SportId } from '@/lib/constants/sports';
 import { getBeltChipColor } from '@/lib/theme';
@@ -77,22 +78,33 @@ function EligibilityBlock({
           minWidth: 0,
         }}
       >
-        {eligible && (
-          <Chip
-            icon={<Zap size={compact ? 10 : 12} />}
-            label="Elegível"
-            size="small"
-            sx={{
-              fontSize: compact ? '0.6rem' : '0.65rem',
-              fontWeight: 700,
-              height: compact ? 18 : 22,
-              bgcolor: '#FEF3C7',
-              color: '#92400E',
-              '& .MuiChip-icon': { color: '#D97706', ml: 0.5 },
-              '& .MuiChip-label': { px: compact ? 0.5 : 0.75 },
-            }}
-          />
-        )}
+        <AnimatePresence initial={false}>
+          {eligible && (
+            <motion.div
+              key="eligible-badge"
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              transition={{ duration: 0.2, ease: [0.0, 0.0, 0.2, 1] }}
+              style={{ display: 'inline-flex' }}
+            >
+              <Chip
+                icon={<Zap size={compact ? 10 : 12} />}
+                label="Elegível"
+                size="small"
+                sx={{
+                  fontSize: compact ? '0.6rem' : '0.65rem',
+                  fontWeight: 700,
+                  height: compact ? 18 : 22,
+                  bgcolor: '#FEF3C7',
+                  color: '#92400E',
+                  '& .MuiChip-icon': { color: '#D97706', ml: 0.5 },
+                  '& .MuiChip-label': { px: compact ? 0.5 : 0.75 },
+                }}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
         <Box sx={{ flex: 1, minWidth: 60 }}>
           <LinearProgress
             variant="determinate"
@@ -333,13 +345,24 @@ export function StudentCard({
                     size="small"
                   />
                 )}
-                <Chip
-                  label={status.label}
-                  size="small"
-                  color={status.color}
-                  variant="outlined"
-                  sx={{ fontSize: '0.6rem', height: 18 }}
-                />
+                <AnimatePresence mode="wait" initial={false}>
+                  <motion.div
+                    key={displayStatus}
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 4 }}
+                    transition={{ duration: 0.15, ease: [0.0, 0.0, 0.2, 1] }}
+                    style={{ display: 'inline-flex' }}
+                  >
+                    <Chip
+                      label={status.label}
+                      size="small"
+                      color={status.color}
+                      variant="outlined"
+                      sx={{ fontSize: '0.6rem', height: 18 }}
+                    />
+                  </motion.div>
+                </AnimatePresence>
                 <Chip
                   label={student.category === 'kids' ? 'Kids' : 'Adulto'}
                   size="small"
@@ -521,13 +544,24 @@ export function StudentCard({
 
             {/* Tags + Attendance Count */}
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-              <Chip
-                label={status.label}
-                size="small"
-                color={status.color}
-                variant="outlined"
-                sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
-              />
+              <AnimatePresence mode="wait" initial={false}>
+                <motion.div
+                  key={displayStatus}
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 4 }}
+                  transition={{ duration: 0.15, ease: [0.0, 0.0, 0.2, 1] }}
+                  style={{ display: 'inline-flex' }}
+                >
+                  <Chip
+                    label={status.label}
+                    size="small"
+                    color={status.color}
+                    variant="outlined"
+                    sx={{ fontSize: { xs: '0.6rem', sm: '0.7rem' }, height: { xs: 18, sm: 22 } }}
+                  />
+                </motion.div>
+              </AnimatePresence>
               <Chip
                 label={student.category === 'kids' ? 'Kids' : 'Adulto'}
                 size="small"

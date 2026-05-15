@@ -279,6 +279,8 @@ export function TopBar({ onMenuClick, sidebarWidth = 0 }: TopBarProps) {
         // Position to the right of sidebar on desktop
         left: { xs: 0, md: sidebarWidth },
         width: { xs: '100%', md: `calc(100% - ${sidebarWidth}px)` },
+        // iOS notch / status-bar inset on Capacitor builds (no-op on web)
+        pt: 'env(safe-area-inset-top, 0px)',
         transition: (theme) => theme.transitions.create(['left', 'width'], {
           easing: theme.transitions.easing.sharp,
           duration: theme.transitions.duration.enteringScreen,

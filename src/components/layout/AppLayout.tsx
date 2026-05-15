@@ -6,6 +6,7 @@ import { Box, LinearProgress, useTheme, useMediaQuery } from '@mui/material';
 import { Sidebar, SIDEBAR_WIDTH, SIDEBAR_COLLAPSED_WIDTH } from './Sidebar';
 import { TopBar } from './TopBar';
 import { MobileBottomNav } from './MobileBottomNav';
+import { PageTransition } from '@/components/ui/PageTransition';
 import { useFinancial, useSwipeNavigation } from '@/hooks';
 import { useAcademy } from '@/contexts/AcademyContext';
 
@@ -140,7 +141,8 @@ export function AppLayout({ children }: AppLayoutProps) {
           {...(isMobile ? swipeHandlers : {})}
           sx={{
             flex: 1,
-            mt: '64px', // TopBar height
+            // TopBar height + iOS notch inset on Capacitor builds (no-op on web)
+            mt: 'calc(64px + env(safe-area-inset-top, 0px))',
             // Add padding-bottom for mobile BottomNav (56px + safe area)
             pb: { xs: 'calc(72px + env(safe-area-inset-bottom))', md: 0 },
             bgcolor: 'background.default',
@@ -158,7 +160,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             }),
           }}
         >
-          {children}
+          <PageTransition>{children}</PageTransition>
         </Box>
 
         {/* Mobile Bottom Navigation */}

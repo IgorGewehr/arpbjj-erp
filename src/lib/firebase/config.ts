@@ -1,6 +1,12 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { getFirestore, Firestore } from 'firebase/firestore';
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+  Firestore,
+} from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
 import { Messaging } from 'firebase/messaging';
 
@@ -18,7 +24,33 @@ const app: FirebaseApp = !getApps().length ? initializeApp(firebaseConfig) : get
 
 // Firebase services
 export const auth: Auth = getAuth(app);
-export const db: Firestore = getFirestore(app);
+
+// Initialize Firestore with persistent local cache (IndexedDB) when running
+// in the browser. `initializeFirestore` MUST be called only once per app, so
+// we guard via `getApps().length` above and use a try/catch fallback in case
+// it has already been initialized in a previous module evaluation (HMR).
+let dbInstance: Firestore | null = null;
+function buildDb(): Firestore {
+  if (dbInstance) return dbInstance;
+  // SSR: no IndexedDB — just use default getFirestore.
+  if (typeof window === 'undefined') {
+    dbInstance = getFirestore(app);
+    return dbInstance;
+  }
+  try {
+    dbInstance = initializeFirestore(app, {
+      localCache: persistentLocalCache({
+        tabManager: persistentMultipleTabManager(),
+      }),
+    });
+  } catch {
+    // Already initialized (HMR / duplicated evaluation) — fall back.
+    dbInstance = getFirestore(app);
+  }
+  return dbInstance;
+}
+
+export const db: Firestore = buildDb();
 export const storage: FirebaseStorage = getStorage(app);
 
 // Firebase Cloud Messaging (lazy, browser-only)

@@ -36,6 +36,7 @@ import {
 } from 'lucide-react';
 import { useAuth, usePermissions } from '@/components/providers';
 import { GuardianPortalGuard } from '@/components/common';
+import { PageTransition } from '@/components/ui/PageTransition';
 
 // ============================================
 // Constants
@@ -283,7 +284,7 @@ function GuardianLayoutContent({ children }: PortalLayoutProps) {
           minHeight: '100vh',
         }}
       >
-        {children}
+        <PageTransition>{children}</PageTransition>
       </Box>
 
       {/* User Menu (Mobile) */}

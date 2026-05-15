@@ -36,6 +36,8 @@ import { doc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { motion, AnimatePresence } from 'framer-motion';
+import { LoadingButton } from '@/components/ui';
+import { hapticImpact } from '@/lib/capacitor';
 
 // ============================================
 // WhatsApp Floating Button
@@ -863,15 +865,20 @@ export default function CreateAcademyPage() {
                 </Button>
               )}
 
-              <Button
+              <LoadingButton
                 variant="contained"
-                onClick={handleNext}
-                disabled={loading || (activeStep === 0 && !isStep1Valid) || (activeStep === 1 && !isStep2Valid)}
-                endIcon={loading ? <CircularProgress size={18} color="inherit" /> : <ArrowRight size={18} />}
+                onClick={() => {
+                  void hapticImpact(activeStep === 1 ? 'medium' : 'light');
+                  handleNext();
+                }}
+                isLoading={loading}
+                loadingText="Criando..."
+                disabled={(activeStep === 0 && !isStep1Valid) || (activeStep === 1 && !isStep2Valid)}
+                endIcon={<ArrowRight size={18} />}
                 sx={{ flex: 1 }}
               >
-                {loading ? 'Criando...' : activeStep === 1 ? 'Criar Academia' : 'Continuar'}
-              </Button>
+                {activeStep === 1 ? 'Criar Academia' : 'Continuar'}
+              </LoadingButton>
             </Box>
           )}
 

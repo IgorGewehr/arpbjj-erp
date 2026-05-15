@@ -27,6 +27,8 @@ import {
 import { Mail, Lock, Eye, EyeOff, GraduationCap, Sparkles, Loader2, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
+import { LoadingButton } from '@/components/ui';
+import { hapticImpact, hapticNotification } from '@/lib/capacitor';
 
 // Loading animation keyframes
 const pulse = keyframes`
@@ -89,11 +91,14 @@ export default function LoginPage() {
     async (e: React.FormEvent) => {
       e.preventDefault();
       setSubmitting(true);
+      // Tactile confirmation when user fires the form on a native device.
+      void hapticImpact('medium');
 
       try {
         await signIn(formData.email, formData.password);
       } catch {
         // Error is handled by AuthProvider
+        void hapticNotification('error');
       } finally {
         setSubmitting(false);
       }
@@ -220,6 +225,9 @@ export default function LoginPage() {
         bgcolor: 'background.default',
         overflow: 'hidden',
         p: { xs: 2, sm: 3 },
+        // Respect iOS notch / home-indicator on Capacitor builds (no-op on web)
+        pt: { xs: 'calc(16px + env(safe-area-inset-top, 0px))', sm: 'calc(24px + env(safe-area-inset-top, 0px))' },
+        pb: { xs: 'calc(16px + env(safe-area-inset-bottom, 0px))', sm: 'calc(24px + env(safe-area-inset-bottom, 0px))' },
         position: 'relative',
       }}
     >
@@ -386,12 +394,13 @@ export default function LoginPage() {
             </Button>
           </Box>
 
-          <Button
+          <LoadingButton
             type="submit"
             variant="contained"
             fullWidth
             size="large"
-            disabled={submitting}
+            isLoading={submitting}
+            loadingText="Entrando..."
             sx={{
               mb: 3,
               py: 1.5,
@@ -405,12 +414,8 @@ export default function LoginPage() {
               },
             }}
           >
-            {submitting ? (
-              <CircularProgress size={24} color="inherit" />
-            ) : (
-              'Entrar'
-            )}
-          </Button>
+            Entrar
+          </LoadingButton>
         </Box>
 
         <Divider sx={{ width: '100%', mb: 3 }}>

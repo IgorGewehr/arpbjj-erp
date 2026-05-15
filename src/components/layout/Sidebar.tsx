@@ -63,8 +63,9 @@ interface NavItem {
 
 const baseNavItems: NavItem[] = [
   { label: 'Dashboard', icon: LayoutDashboard, path: '/dashboard' },
+  // "Chamada" abre a chamada normal. O botão "Modo QR" dentro da própria
+  // página leva pra projeção do QR — não precisamos de duas entradas.
   { label: 'Chamada', icon: ClipboardCheck, path: '/chamada' },
-  { label: 'Chamada QR', icon: QrCode, path: '/chamada/qr' },
   { label: 'Alunos', icon: Users, path: '/alunos' },
   { label: 'Turmas', icon: Calendar, path: '/turmas' },
   { label: 'Competições', icon: Trophy, path: '/competicoes' },

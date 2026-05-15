@@ -13,3 +13,19 @@ export { useCheckin } from './useCheckin';
 export { useBillingReminders } from './useBillingReminders';
 export { useRetention } from './useRetention';
 export { useFinancialReport } from './useFinancialReport';
+export {
+  useNews,
+  useNewsItem,
+  useCreateNews,
+  useUpdateNews,
+  useDeleteNews,
+  usePublishNews,
+} from './useNews';
+export {
+  useEvents,
+  useEventItem,
+  useCreateEvent,
+  useUpdateEvent,
+  useDeleteEvent,
+  usePublishEvent,
+} from './useEvents';

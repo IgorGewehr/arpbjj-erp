@@ -40,6 +40,7 @@ import { useAcademy } from '@/contexts/AcademyContext';
 import { StudentPortalGuard } from '@/components/common';
 import { createStudentService, createPlanService } from '@/services';
 import { BottomSheet, ScaleOnPress } from '@/components/mobile';
+import { PageTransition } from '@/components/ui/PageTransition';
 import { useIsMonitor } from '@/hooks';
 
 const DRAWER_WIDTH = 220;
@@ -330,7 +331,7 @@ function PortalLayoutContent({ children }: PortalLayoutProps) {
         <Box sx={{
           p: { xs: 2, sm: 3 },
         }}>
-          {children}
+          <PageTransition>{children}</PageTransition>
         </Box>
       </Box>
 

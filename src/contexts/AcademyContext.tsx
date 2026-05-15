@@ -7,13 +7,57 @@ import {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   ReactNode
 } from 'react';
-import { doc, getDoc, onSnapshot, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, onSnapshot, updateDoc, type Unsubscribe } from 'firebase/firestore';
 import { useQueryClient } from '@tanstack/react-query';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { Academy, UserAcademyMapping, AcademyUser, UserRole } from '@/types';
+
+// ============================================
+// Query keys that depend on the active academy.
+// Used by setAcademyAction's invalidate predicate so we drop only
+// per-academy data on switch (NOT currentUser, userPreferences, etc).
+// Keep this list in sync with the QUERY_KEYS objects in src/hooks/.
+// ============================================
+const ACADEMY_SCOPED_KEY_FRAGMENTS = [
+  'student',          // student, students, studentEligibility, studentPlan, studentPayments, etc.
+  'allStudents',
+  'class',            // class, classes, allClasses, todayClasses, currentClass, weeklySchedule
+  'plan',             // plans, plan, activePlans, studentPlan, studentPlans
+  'payment',          // pendingPayments, overduePayments, studentPayments
+  'financial',        // financials, financial
+  'monthlySummary',
+  'revenueStats',
+  'attendance',       // attendance, todayAttendance, classesForDate, studentAttendance, presentStudentIds
+  'eligibility',      // eligibilitySnapshot, studentEligibility
+  'assessment',       // assessments, recentAssessments, latestAssessment, assessmentEvolution
+  'competition',      // upcomingCompetitions, studentCompetitionResults, competitionPhotos
+  'photo',            // competitionPhotos, studentPhotos, photoCount, highlightPhotos
+  'checkin',          // checkinStatus, studentCheckins
+  'billing',
+  'guardian',         // guardianChildren, guardianChildrenAttendance, guardianChildrenPayments
+  'news',
+  'event',
+  'store',
+  'order',
+  'retention',
+  'academySettings',
+  'abacatePayEnabled',
+  'asaasEnabled',
+  'monitor',
+  'belt',
+];
+
+function isAcademyScopedKey(key: readonly unknown[]): boolean {
+  return key.some((segment) => {
+    if (typeof segment !== 'string') return false;
+    const lower = segment.toLowerCase();
+    return ACADEMY_SCOPED_KEY_FRAGMENTS.some((fragment) => lower.includes(fragment));
+  });
+}
 
 // ============================================
 // Academy Info Type (for multi-academy display)
@@ -81,33 +125,48 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
   const [isSwitching, setIsSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Ref to the active onSnapshot unsubscribe so we can tear down the
+  // previous listener BEFORE attaching a new one (preventing leaks /
+  // multiple listeners stacking up across academy switches).
+  const academySnapshotUnsubRef = useRef<Unsubscribe | null>(null);
+
   // ============================================
   // Load Academy Info for all user's academies
+  //
+  // Parallelizes the fan-out reads via Promise.allSettled so a single
+  // failed/missing doc does not block the rest. Replaces the previous
+  // for...await that issued N sequential getDoc calls.
   // ============================================
   const loadAcademiesInfo = useCallback(async (academyIds: string[], mapping: UserAcademyMapping) => {
-    const infos: AcademyInfo[] = [];
-
-    for (const id of academyIds) {
-      try {
+    const settled = await Promise.allSettled(
+      academyIds.map(async (id) => {
         const academyRef = doc(db, 'academies', id);
         const academySnap = await getDoc(academyRef);
 
-        if (academySnap.exists()) {
-          const data = academySnap.data();
-          const details = mapping.academyDetails?.[id];
+        if (!academySnap.exists()) return null;
 
-          infos.push({
-            id,
-            name: data.name || 'Academia',
-            logoUrl: data.logoUrl,
-            studentId: details?.studentId,
-            role: (details?.role as UserRole) || 'student',
-          });
-        }
-      } catch (err) {
-        console.error(`Error loading academy info for ${id}:`, err);
+        const data = academySnap.data();
+        const details = mapping.academyDetails?.[id];
+
+        const info: AcademyInfo = {
+          id,
+          name: data.name || 'Academia',
+          logoUrl: data.logoUrl,
+          studentId: details?.studentId,
+          role: (details?.role as UserRole) || 'student',
+        };
+        return info;
+      })
+    );
+
+    const infos: AcademyInfo[] = [];
+    settled.forEach((result, idx) => {
+      if (result.status === 'fulfilled') {
+        if (result.value) infos.push(result.value);
+      } else {
+        console.error(`Error loading academy info for ${academyIds[idx]}:`, result.reason);
       }
-    }
+    });
 
     setAcademiesInfo(infos);
     return infos;
@@ -307,11 +366,26 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
     setError(null);
 
     try {
+      // Tear down the previous academy's onSnapshot listener before
+      // we change academyId — otherwise the dependency-driven cleanup
+      // and the new subscription overlap for a tick.
+      academySnapshotUnsubRef.current?.();
+      academySnapshotUnsubRef.current = null;
+
       await loadAcademy(newAcademyId);
-      // Drop every per-academy cached query so the UI refetches with the
-      // new academyId in the key. Doing this after loadAcademy so the
-      // refetch fires already knowing the right academy.
-      await queryClient.invalidateQueries();
+
+      // Drop only per-academy cached queries so the UI refetches with
+      // the new academyId in the key. Skips queries like currentUser /
+      // userPreferences / userAcademyMapping that are NOT scoped per
+      // academy. Doing this after loadAcademy so refetches fire with
+      // the right academy already set.
+      await queryClient.invalidateQueries({
+        predicate: (query) => {
+          const key = query.queryKey;
+          if (!Array.isArray(key)) return false;
+          return isAcademyScopedKey(key);
+        },
+      });
     } catch (err) {
       console.error('Error switching academy:', err);
       setError('Erro ao trocar de academia');
@@ -470,9 +544,17 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
 
   // ============================================
   // Real-time Academy Updates
+  //
+  // Stores the unsubscribe in a ref so setAcademyAction can tear down
+  // the previous listener immediately on switch (instead of waiting
+  // for React's effect cleanup to run on the next render).
   // ============================================
   useEffect(() => {
     if (!academyId) return;
+
+    // Defensive: if a previous listener is still attached (e.g. fast
+    // remounts under StrictMode), drop it before subscribing again.
+    academySnapshotUnsubRef.current?.();
 
     const academyRef = doc(db, 'academies', academyId);
     const unsubscribe = onSnapshot(academyRef, (snapshot) => {
@@ -532,8 +614,25 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
       console.error('Error listening to academy updates:', err);
     });
 
-    return () => unsubscribe();
+    academySnapshotUnsubRef.current = unsubscribe;
+
+    return () => {
+      unsubscribe();
+      // Clear the ref only if it still points to *this* unsubscribe —
+      // a fast switch may have already replaced it with the new one.
+      if (academySnapshotUnsubRef.current === unsubscribe) {
+        academySnapshotUnsubRef.current = null;
+      }
+    };
   }, [academyId]);
+
+  // Final cleanup on provider unmount (covers signout and route teardown).
+  useEffect(() => {
+    return () => {
+      academySnapshotUnsubRef.current?.();
+      academySnapshotUnsubRef.current = null;
+    };
+  }, []);
 
   // ============================================
   // Computed Values

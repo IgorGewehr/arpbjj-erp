@@ -62,7 +62,15 @@ export function useStudents(options: UseStudentsOptions = {}) {
     queryKey: [QUERY_KEYS.students, academyId, filters],
     queryFn: ({ pageParam }) => studentService.listAll(filters, 30, pageParam as string | undefined),
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.hasMore ? lastPage.lastId : undefined,
+    // Guard: only return a cursor when both hasMore is true AND we
+    // actually have a lastId. Without this guard a malformed page
+    // (e.g. hasMore=true but lastId=undefined) would loop indefinitely
+    // because React Query would re-issue with pageParam=undefined.
+    getNextPageParam: (lastPage) => {
+      if (!lastPage?.hasMore) return undefined;
+      if (!lastPage.lastId) return undefined;
+      return lastPage.lastId;
+    },
     enabled: autoLoad,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });

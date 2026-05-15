@@ -26,6 +26,8 @@ import {
   redeemInstructorCode,
 } from '@/services';
 import { GRANTABLE_EXTRA_PERMISSIONS } from '@/lib/permissions';
+import { LoadingButton } from '@/components/ui';
+import { hapticImpact, hapticNotification } from '@/lib/capacitor';
 
 // ============================================
 // CPF Helpers
@@ -534,16 +536,18 @@ export default function CreateAccountPage() {
         onKeyDown={(e) => e.key === 'Enter' && handleValidateCode()}
       />
 
-      <Button
+      <LoadingButton
         variant="contained"
         fullWidth
         size="large"
         onClick={handleValidateCode}
-        disabled={loading || code.length < 6}
+        isLoading={loading}
+        loadingText="Validando..."
+        disabled={code.length < 6}
         sx={{ mb: 2 }}
       >
-        {loading ? <CircularProgress size={24} /> : 'Validar Codigo'}
-      </Button>
+        Validar Codigo
+      </LoadingButton>
 
       <Button
         variant="text"
@@ -808,16 +812,24 @@ export default function CreateAccountPage() {
         }}
       />
 
-      <Button
+      <LoadingButton
         variant="contained"
         fullWidth
         size="large"
-        onClick={isInstructor ? handleCreateInstructorAccount : handleCreateAccount}
-        disabled={loading}
+        onClick={() => {
+          void hapticImpact('medium');
+          if (isInstructor) {
+            handleCreateInstructorAccount();
+          } else {
+            handleCreateAccount();
+          }
+        }}
+        isLoading={loading}
+        loadingText="Criando conta..."
         sx={{ mb: 2 }}
       >
-        {loading ? <CircularProgress size={24} /> : 'Criar Conta'}
-      </Button>
+        Criar Conta
+      </LoadingButton>
 
       <Button
         variant="text"

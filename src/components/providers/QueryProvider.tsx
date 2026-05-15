@@ -13,17 +13,21 @@ export function QueryProvider({ children }: QueryProviderProps) {
       new QueryClient({
         defaultOptions: {
           queries: {
-            // Cache data for 5 minutes
-            staleTime: 1000 * 60 * 5,
-            // Keep data in cache for 30 minutes
-            gcTime: 1000 * 60 * 30,
+            // 1min default staleTime — short enough that mutations don't
+            // serve very stale data, long enough to avoid refetch on every
+            // navigation. Hooks override per-domain (see useStudents,
+            // useClasses, useFinancial, etc.).
+            staleTime: 60 * 1000,
+            // Keep cached data in memory for 10 minutes after last use so
+            // route changes don't drop fresh-fetched data.
+            gcTime: 10 * 60 * 1000,
+            // On Capacitor webview, focus events fire on every keyboard
+            // open/close — refetch on focus would cause UI jitter.
+            refetchOnWindowFocus: false,
             // Retry once on failure
             retry: 1,
-            // Don't refetch on window focus by default
-            refetchOnWindowFocus: false,
           },
           mutations: {
-            // Retry once on failure
             retry: 1,
           },
         },

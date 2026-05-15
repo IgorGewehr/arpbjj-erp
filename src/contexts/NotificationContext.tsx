@@ -7,6 +7,7 @@ import {
   useEffect,
   useCallback,
   useMemo,
+  useRef,
   ReactNode
 } from 'react';
 import {
@@ -21,6 +22,7 @@ import {
   deleteDoc,
   serverTimestamp,
   Timestamp,
+  type Unsubscribe,
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAuth } from '@/components/providers/AuthProvider';
@@ -62,13 +64,54 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator === 'undefined' ? true : navigator.onLine
+  );
+
+  // Active onSnapshot unsubscribe (kept in a ref so the online/offline
+  // listeners can tear it down without re-running the effect).
+  const unsubRef = useRef<Unsubscribe | null>(null);
+
+  // ============================================
+  // Track browser online/offline status
+  // ============================================
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
 
   // ============================================
   // Real-time Notification Listener
+  //
+  // Only attaches the onSnapshot when the browser reports online —
+  // when offline we tear down the listener (keeps last-known data on
+  // screen) and re-subscribe automatically when connectivity returns.
   // ============================================
   useEffect(() => {
     if (!firebaseUser || !academyId || !isAuthenticated) {
+      // Tear down any prior subscription on signout / academy switch.
+      unsubRef.current?.();
+      unsubRef.current = null;
       setNotifications([]);
+      setIsLoading(false);
+      return;
+    }
+
+    if (!isOnline) {
+      // Drop the live listener while offline. UI keeps the last list
+      // it had; no need to wipe it (would flicker on quick blips).
+      unsubRef.current?.();
+      unsubRef.current = null;
       setIsLoading(false);
       return;
     }
@@ -137,8 +180,15 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
       }
     );
 
-    return () => unsubscribe();
-  }, [firebaseUser, academyId, isAuthenticated]);
+    unsubRef.current = unsubscribe;
+
+    return () => {
+      unsubscribe();
+      if (unsubRef.current === unsubscribe) {
+        unsubRef.current = null;
+      }
+    };
+  }, [firebaseUser, academyId, isAuthenticated, isOnline]);
 
   // ============================================
   // Mark Single Notification as Read

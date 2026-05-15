@@ -11,7 +11,6 @@ import {
   MenuItem,
   Chip,
   Paper,
-  Skeleton,
   InputAdornment,
   ToggleButtonGroup,
   ToggleButton,
@@ -32,6 +31,7 @@ import {
 } from '@mui/material';
 import { Search, Grid, List, Users, Filter, FileText, Download, Calendar } from 'lucide-react';
 import { AcademyPageHeader } from '@/components/layout';
+import { SkeletonCard } from '@/components/ui/skeletons';
 import { StudentCard } from './StudentCard';
 import { QuickRegisterFab } from './QuickRegisterFab';
 import { useStudents, useClasses, usePlans } from '@/hooks';
@@ -115,6 +115,7 @@ function getTatamiStartDate(student: Student): Date {
   return student.jiujitsuStartDate || student.startDate;
 }
 import { useRouter } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
 import { BottomSheet, FadeInView, ScaleOnPress } from '@/components/mobile';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { createAttendanceService } from '@/services/attendanceService';
@@ -320,12 +321,26 @@ export function StudentList() {
     }
   }, [isMobile]);
 
-  // Infinite scroll - IntersectionObserver
+  // Infinite scroll - IntersectionObserver (throttled).
+  // The observer can fire repeatedly during a fast scroll; without a
+  // throttle React Query queues several fetchNextPage() calls back to
+  // back. We clamp to one trigger per 500ms, plus the existing
+  // !isFetchingNextPage guard.
+  const lastFetchRef = useRef(0);
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && hasNextPage && !isFetchingNextPage && !isSearching) {
-          fetchNextPage();
+        if (
+          entries[0].isIntersecting &&
+          hasNextPage &&
+          !isFetchingNextPage &&
+          !isSearching
+        ) {
+          const now = Date.now();
+          if (now - lastFetchRef.current > 500) {
+            lastFetchRef.current = now;
+            fetchNextPage();
+          }
         }
       },
       { threshold: 0.1 }
@@ -367,58 +382,78 @@ export function StudentList() {
     return map;
   }, [eligibilityList]);
 
-  // Filter and sort students by class, plan, sport, and sort option
-  const filteredStudents = useMemo(() => {
-    let result = students;
+  // ============================================
+  // Filter + sort pipeline (split into sub-memos)
+  //
+  // The previous implementation chained every filter, the eligibility
+  // join, AND the sort inside a single useMemo with 7+ dependencies.
+  // Touching any one of them (e.g. switching the sort) re-ran the
+  // entire pipeline. Splitting into 5 stages means a sort change only
+  // re-runs the final sort step; a plan filter change only re-runs
+  // from the plan stage downward; etc.
+  // ============================================
 
-    // Filter by class
-    if (classFilter) {
-      const selectedClass = classes.find(c => c.id === classFilter);
-      if (selectedClass) {
-        result = result.filter(s => selectedClass.studentIds?.includes(s.id));
-      }
-    }
+  // Stage 1 — class filter
+  const studentsAfterClassFilter = useMemo(() => {
+    if (!classFilter) return students;
+    const selectedClass = classes.find((c) => c.id === classFilter);
+    if (!selectedClass) return students;
+    return students.filter((s) => selectedClass.studentIds?.includes(s.id));
+  }, [students, classFilter, classes]);
 
-    // Filter by plan
-    if (planFilter) {
-      result = result.filter(s => s.planId === planFilter);
-    }
+  // Stage 2 — plan filter
+  const studentsAfterPlanFilter = useMemo(() => {
+    if (!planFilter) return studentsAfterClassFilter;
+    return studentsAfterClassFilter.filter((s) => s.planId === planFilter);
+  }, [studentsAfterClassFilter, planFilter]);
 
-    // Filter by sport
-    if (sportFilter) {
-      result = result.filter(s => getStudentSports(s).includes(sportFilter as SportId));
-    }
+  // Stage 3 — sport filter
+  const studentsAfterSportFilter = useMemo(() => {
+    if (!sportFilter) return studentsAfterPlanFilter;
+    return studentsAfterPlanFilter.filter((s) =>
+      getStudentSports(s).includes(sportFilter as SportId)
+    );
+  }, [studentsAfterPlanFilter, sportFilter]);
 
-    // Filter by account link status
+  // Stage 4 — account-link filter (uses search-equivalent slot per spec)
+  const studentsAfterAccountFilter = useMemo(() => {
     if (accountFilter === 'linked') {
-      result = result.filter(s => !!s.linkedUserId);
-    } else if (accountFilter === 'unlinked') {
-      result = result.filter(s => !s.linkedUserId);
+      return studentsAfterSportFilter.filter((s) => !!s.linkedUserId);
     }
+    if (accountFilter === 'unlinked') {
+      return studentsAfterSportFilter.filter((s) => !s.linkedUserId);
+    }
+    return studentsAfterSportFilter;
+  }, [studentsAfterSportFilter, accountFilter]);
 
-    // Sort students
-    result = [...result].sort((a, b) => {
+  // Stage 5 — sort (only re-runs when sortBy / eligibility change,
+  // or when an upstream filter actually changes the array reference)
+  const filteredStudents = useMemo(() => {
+    const sorted = [...studentsAfterAccountFilter];
+    sorted.sort((a, b) => {
       switch (sortBy) {
         case 'alphabetical':
           return a.fullName.localeCompare(b.fullName, 'pt-BR');
 
-        case 'graduation':
+        case 'graduation': {
           // Higher graduation first (descending)
           const aGraduation = getBeltOrderValue(a.currentBelt, a.currentStripes);
           const bGraduation = getBeltOrderValue(b.currentBelt, b.currentStripes);
           return bGraduation - aGraduation;
+        }
 
         case 'attendance':
           // More attendance first (descending)
           return getTotalAttendance(b) - getTotalAttendance(a);
 
-        case 'tatami_time':
+        case 'tatami_time': {
           // Older (more time on tatami) first - earlier date comes first
           const aDate = getTatamiStartDate(a);
           const bDate = getTatamiStartDate(b);
           return new Date(aDate).getTime() - new Date(bDate).getTime();
+        }
 
-        case 'eligible_first':
+        case 'eligible_first': {
           // Eligible students float to the top, then closest-to-eligible (descending),
           // then alphabetical as tiebreaker. Requires eligibilityMap to be loaded.
           const aE = eligibilityMap.get(a.id);
@@ -434,14 +469,14 @@ export function StudentList() {
             : 0;
           if (aProg !== bProg) return bProg - aProg;
           return a.fullName.localeCompare(b.fullName, 'pt-BR');
+        }
 
         default:
           return 0;
       }
     });
-
-    return result;
-  }, [students, classFilter, classes, planFilter, accountFilter, sortBy, eligibilityMap]);
+    return sorted;
+  }, [studentsAfterAccountFilter, sortBy, eligibilityMap]);
 
   // Handle student click
   const handleStudentClick = useCallback(
@@ -951,7 +986,7 @@ export function StudentList() {
         </Box>
       </FadeInView>
 
-      {/* Loading State */}
+      {/* Loading State - 6 skeleton cards */}
       {isLoading && (
         <Box
           sx={{
@@ -966,12 +1001,11 @@ export function StudentList() {
             gap: { xs: 1, sm: 2 },
           }}
         >
-          {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-            <Skeleton
+          {Array.from({ length: 6 }).map((_, i) => (
+            <SkeletonCard
               key={i}
-              variant="rounded"
               height={viewMode === 'grid' ? (isMobile ? 100 : 140) : 60}
-              sx={{ borderRadius: 3 }}
+              rounded="3xl"
             />
           ))}
         </Box>
@@ -1014,20 +1048,36 @@ export function StudentList() {
               gap: { xs: 1, sm: 2 },
             }}
           >
-            {filteredStudents.map((student) => (
-              <ScaleOnPress key={student.id}>
-                <StudentCard
-                  student={student}
-                  displaySport={sportFilter || undefined}
-                  onClick={handleStudentClick}
-                  onStatusChange={handleCardStatusChange}
-                  compact={viewMode === 'list'}
-                  eligibility={
-                    autoGradEnabled ? eligibilityMap.get(student.id) : undefined
-                  }
-                />
-              </ScaleOnPress>
-            ))}
+            <AnimatePresence mode="popLayout" initial={false}>
+              {filteredStudents.map((student, index) => (
+                <motion.div
+                  key={student.id}
+                  layout
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.96 }}
+                  transition={{
+                    duration: 0.2,
+                    ease: [0.0, 0.0, 0.2, 1],
+                    // Cap stagger at index 20 to avoid lag on large lists
+                    delay: Math.min(index, 20) * 0.02,
+                  }}
+                >
+                  <ScaleOnPress>
+                    <StudentCard
+                      student={student}
+                      displaySport={sportFilter || undefined}
+                      onClick={handleStudentClick}
+                      onStatusChange={handleCardStatusChange}
+                      compact={viewMode === 'list'}
+                      eligibility={
+                        autoGradEnabled ? eligibilityMap.get(student.id) : undefined
+                      }
+                    />
+                  </ScaleOnPress>
+                </motion.div>
+              ))}
+            </AnimatePresence>
           </Box>
 
           {/* Load More Trigger */}
@@ -1035,24 +1085,37 @@ export function StudentList() {
             <Box
               ref={loadMoreRef}
               sx={{
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                py: 4,
-                gap: 2,
+                py: 3,
               }}
             >
               {isFetchingNextPage ? (
-                <>
-                  <CircularProgress size={24} />
-                  <Typography variant="body2" color="text.secondary">
-                    Carregando mais alunos...
-                  </Typography>
-                </>
+                <Box
+                  sx={{
+                    display: 'grid',
+                    gridTemplateColumns: viewMode === 'grid'
+                      ? {
+                          xs: 'repeat(auto-fill, minmax(140px, 1fr))',
+                          sm: 'repeat(auto-fill, minmax(200px, 1fr))',
+                          md: 'repeat(auto-fill, minmax(240px, 1fr))',
+                        }
+                      : '1fr',
+                    gap: { xs: 1, sm: 2 },
+                  }}
+                >
+                  {Array.from({ length: 6 }).map((_, i) => (
+                    <SkeletonCard
+                      key={i}
+                      height={viewMode === 'grid' ? (isMobile ? 100 : 140) : 60}
+                      rounded="3xl"
+                    />
+                  ))}
+                </Box>
               ) : (
-                <Typography variant="body2" color="text.secondary">
-                  Role para carregar mais
-                </Typography>
+                <Box sx={{ display: 'flex', justifyContent: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Role para carregar mais
+                  </Typography>
+                </Box>
               )}
             </Box>
           )}

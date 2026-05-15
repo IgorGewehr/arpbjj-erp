@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
@@ -459,7 +460,14 @@ export function CheckoutDialog({
                         boxShadow: '0 8px 32px rgba(0,0,0,0.08)',
                       }}
                     >
-                      <img src={qrCodeUrl} alt="QR Code PIX" style={{ display: 'block', borderRadius: 8 }} />
+                      <Image
+                        src={qrCodeUrl}
+                        alt="QR Code PIX"
+                        width={280}
+                        height={280}
+                        unoptimized
+                        style={{ display: 'block', borderRadius: 8 }}
+                      />
                     </Box>
                   ) : (
                     <Skeleton variant="rectangular" width={280} height={280} sx={{ mx: 'auto', mb: 2, borderRadius: 4 }} />

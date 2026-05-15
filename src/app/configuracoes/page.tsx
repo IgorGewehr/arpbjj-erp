@@ -68,6 +68,8 @@ import { AppLayout } from '@/components/layout/AppLayout';
 import { ProtectedRoute } from '@/components/layout/ProtectedRoute';
 import { AcademyPageHeader } from '@/components/layout';
 import { TeamTab } from '@/components/features/team/TeamTab';
+import { LoadingButton } from '@/components/ui';
+import { hapticImpact } from '@/lib/capacitor';
 import { useAuth, useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { AcademySettings, createSettingsService } from '@/services/settingsService';
@@ -141,14 +143,18 @@ interface SaveButtonProps {
 function SaveButton({ saving, onClick }: SaveButtonProps) {
   return (
     <Box sx={{ mt: 3, display: 'flex', justifyContent: 'flex-end' }}>
-      <Button
+      <LoadingButton
         variant="contained"
-        startIcon={saving ? <CircularProgress size={16} color="inherit" /> : <Save size={18} />}
-        onClick={onClick}
-        disabled={saving}
+        startIcon={<Save size={18} />}
+        onClick={() => {
+          void hapticImpact('light');
+          onClick();
+        }}
+        isLoading={saving}
+        loadingText="Salvando..."
       >
-        {saving ? 'Salvando...' : 'Salvar'}
-      </Button>
+        Salvar
+      </LoadingButton>
     </Box>
   );
 }

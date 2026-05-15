@@ -22,6 +22,7 @@ import {
   useMediaQuery,
 } from '@mui/material';
 import { AlertTriangle, Info, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
+import { hapticImpact } from '@/lib/capacitor';
 
 // ============================================
 // Types
@@ -132,6 +133,12 @@ export function ConfirmDialogProvider({ children }: ConfirmDialogProviderProps) 
   // ============================================
   const handleClose = useCallback(
     (confirmed: boolean) => {
+      // Haptic feedback when the user confirms a destructive/warning action
+      // on a Capacitor build. No-op on web.
+      if (confirmed) {
+        const style = state.severity === 'error' ? 'heavy' : 'medium';
+        void hapticImpact(style);
+      }
       if (state.resolve) {
         state.resolve(confirmed);
       }
@@ -141,7 +148,7 @@ export function ConfirmDialogProvider({ children }: ConfirmDialogProviderProps) 
         setState(initialState);
       }, 200);
     },
-    [state.resolve]
+    [state.resolve, state.severity]
   );
 
   // ============================================

@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useMemo, useState, useEffect } from 'react';
 import {
   Box,
@@ -114,7 +115,14 @@ function PaymentDialog({ open, onClose, payment, paymentLink, isLoading }: Payme
                   borderColor: 'grey.200',
                 }}
               >
-                <img src={qrCodeUrl} alt="QR Code PIX" style={{ display: 'block' }} />
+                <Image
+                  src={qrCodeUrl}
+                  alt="QR Code PIX"
+                  width={256}
+                  height={256}
+                  unoptimized
+                  style={{ display: 'block' }}
+                />
               </Box>
             ) : (
               <Skeleton variant="rectangular" width={256} height={256} sx={{ mx: 'auto', mb: 2 }} />

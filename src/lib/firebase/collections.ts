@@ -80,6 +80,8 @@ export const collections = {
   storeOrders: (academyId: string) => getCollection(academyId, 'storeOrders'),
   checkins: (academyId: string) => getCollection(academyId, 'checkins'),
   billingContactLog: (academyId: string) => getCollection(academyId, 'billingContactLog'),
+  news: (academyId: string) => getCollection(academyId, 'news'),
+  events: (academyId: string) => getCollection(academyId, 'events'),
 
   // Document references
   user: (academyId: string, userId: string) => getDocRef(academyId, 'users', userId),
@@ -103,6 +105,8 @@ export const collections = {
   storeOrder: (academyId: string, orderId: string) => getDocRef(academyId, 'storeOrders', orderId),
   checkin: (academyId: string, checkinId: string) => getDocRef(academyId, 'checkins', checkinId),
   billingContact: (academyId: string, contactId: string) => getDocRef(academyId, 'billingContactLog', contactId),
+  news_doc: (academyId: string, newsId: string) => getDocRef(academyId, 'news', newsId),
+  event_doc: (academyId: string, eventId: string) => getDocRef(academyId, 'events', eventId),
 };
 
 // ============================================

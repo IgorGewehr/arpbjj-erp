@@ -34,6 +34,9 @@ export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
   maximumScale: 1,
+  // Required for CSS env(safe-area-inset-*) to resolve to non-zero values on
+  // iOS devices with a notch (Capacitor native shell + Safari).
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({

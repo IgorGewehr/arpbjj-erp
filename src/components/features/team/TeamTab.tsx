@@ -28,8 +28,10 @@ import {
   Users,
   ArrowUpCircle,
   Search,
+  Pencil,
+  UserMinus,
 } from 'lucide-react';
-import { collection, getDocs, query, where } from 'firebase/firestore';
+import { arrayRemove, collection, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useAuth, useFeedback } from '@/components/providers';
@@ -40,10 +42,19 @@ import { InstructorLinkCode, Permission, Student } from '@/types';
 import { TextField, InputAdornment, List, ListItemButton, ListItemAvatar, Avatar, ListItemText, Divider } from '@mui/material';
 
 interface TeamMember {
-  id: string;
+  id: string;           // Firebase Auth UID
   displayName?: string;
   email?: string;
   extraPermissions?: string[];
+  studentId?: string;   // student doc ID (for monitor check)
+}
+
+interface EditMember {
+  userId: string;
+  studentId?: string;
+  displayName: string;
+  email?: string;
+  permissions: string[];
 }
 
 // ============================================
@@ -62,7 +73,7 @@ interface TeamMember {
 // later when the use case actually appears.
 // ============================================
 export function TeamTab() {
-  const { academyId } = useAcademy();
+  const { academyId, academy } = useAcademy();
   const { user } = useAuth();
   const { success, error: showError } = useFeedback();
 
@@ -76,6 +87,7 @@ export function TeamTab() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
+  const [editMember, setEditMember] = useState<EditMember | null>(null);
 
   const loadMembers = useCallback(async () => {
     if (!academyId) return;
@@ -92,12 +104,25 @@ export function TeamTab() {
           displayName: d.data().displayName,
           email: d.data().email,
           extraPermissions: d.data().extraPermissions ?? [],
+          studentId: d.data().studentId,
         }))
       );
     } catch {
-      // non-critical, silently ignore
+      // non-critical
     }
   }, [academyId]);
+
+  const handleRemoveMonitor = useCallback(async (member: TeamMember) => {
+    if (!academyId || !member.studentId) return;
+    try {
+      await updateDoc(doc(db, 'academies', academyId), {
+        monitorIds: arrayRemove(member.studentId),
+      });
+      success(`${member.displayName ?? 'Instrutor'} removido dos monitores.`);
+    } catch {
+      showError('Erro ao remover monitor.');
+    }
+  }, [academyId, success, showError]);
 
   const refresh = useCallback(async () => {
     if (!service) {
@@ -192,36 +217,66 @@ export function TeamTab() {
             Instrutores ativos
           </Typography>
           <Stack spacing={1} mb={3}>
-            {members.map((m) => (
-              <Paper key={m.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
-                <Stack direction="row" alignItems="center" spacing={1.5}>
-                  <Avatar sx={{ width: 36, height: 36, fontSize: 14 }}>
-                    {m.displayName?.[0]?.toUpperCase() ?? '?'}
-                  </Avatar>
-                  <Box flex={1} minWidth={0}>
-                    <Typography variant="body2" fontWeight={600} noWrap>
-                      {m.displayName ?? m.email ?? m.id}
-                    </Typography>
-                    {m.email && (
-                      <Typography variant="caption" color="text.secondary" noWrap>
-                        {m.email}
-                      </Typography>
-                    )}
-                    {m.extraPermissions && m.extraPermissions.length > 0 && (
-                      <Stack direction="row" flexWrap="wrap" gap={0.5} mt={0.5}>
-                        {m.extraPermissions.map((p) => {
-                          const def = GRANTABLE_EXTRA_PERMISSIONS.find((g) => g.permission === p);
-                          return (
-                            <Chip key={p} label={def?.label ?? p} size="small" variant="outlined" />
-                          );
-                        })}
+            {members.map((m) => {
+              const isMonitor = !!(m.studentId && academy?.monitorIds?.includes(m.studentId));
+              return (
+                <Paper key={m.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                  <Stack direction="row" alignItems="flex-start" spacing={1.5}>
+                    <Avatar sx={{ width: 36, height: 36, fontSize: 14, mt: 0.25 }}>
+                      {m.displayName?.[0]?.toUpperCase() ?? '?'}
+                    </Avatar>
+                    <Box flex={1} minWidth={0}>
+                      <Stack direction="row" alignItems="center" spacing={0.5}>
+                        <Typography variant="body2" fontWeight={600} noWrap>
+                          {m.displayName ?? m.email ?? m.id}
+                        </Typography>
+                        {isMonitor && (
+                          <Chip label="Monitor" size="small" color="warning" variant="outlined" sx={{ height: 18, fontSize: '0.65rem' }} />
+                        )}
                       </Stack>
-                    )}
-                  </Box>
-                  <ShieldCheck size={16} color="green" />
-                </Stack>
-              </Paper>
-            ))}
+                      {m.email && (
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          {m.email}
+                        </Typography>
+                      )}
+                      <Stack direction="row" flexWrap="wrap" gap={0.5} mt={0.5}>
+                        {(m.extraPermissions ?? []).length === 0 ? (
+                          <Typography variant="caption" color="text.disabled">Sem permissões extras</Typography>
+                        ) : (
+                          (m.extraPermissions ?? []).map((p) => {
+                            const def = GRANTABLE_EXTRA_PERMISSIONS.find((g) => g.permission === p);
+                            return <Chip key={p} label={def?.label ?? p} size="small" variant="outlined" />;
+                          })
+                        )}
+                      </Stack>
+                    </Box>
+                    <Stack direction="row" spacing={0.5}>
+                      <Tooltip title="Editar permissões">
+                        <IconButton
+                          size="small"
+                          onClick={() => setEditMember({
+                            userId: m.id,
+                            studentId: m.studentId,
+                            displayName: m.displayName ?? '',
+                            email: m.email,
+                            permissions: m.extraPermissions ?? [],
+                          })}
+                        >
+                          <Pencil size={15} />
+                        </IconButton>
+                      </Tooltip>
+                      {isMonitor && (
+                        <Tooltip title="Remover de monitor">
+                          <IconButton size="small" color="warning" onClick={() => handleRemoveMonitor(m)}>
+                            <UserMinus size={15} />
+                          </IconButton>
+                        </Tooltip>
+                      )}
+                    </Stack>
+                  </Stack>
+                </Paper>
+              );
+            })}
           </Stack>
         </>
       )}
@@ -270,7 +325,108 @@ export function TeamTab() {
           academyId={academyId}
         />
       )}
+
+      {academyId && editMember && (
+        <EditPermissionsDialog
+          open={!!editMember}
+          member={editMember}
+          academyId={academyId}
+          onClose={() => setEditMember(null)}
+          onSaved={() => { loadMembers(); setEditMember(null); }}
+        />
+      )}
     </Box>
+  );
+}
+
+// ============================================
+// Edit permissions dialog — update extra permissions for an existing instructor
+// ============================================
+function EditPermissionsDialog({
+  open,
+  member,
+  academyId,
+  onClose,
+  onSaved,
+}: {
+  open: boolean;
+  member: EditMember;
+  academyId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { firebaseUser } = useAuth();
+  const { success, error: showError } = useFeedback();
+  const [extras, setExtras] = useState<Set<Permission>>(new Set(member.permissions as Permission[]));
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setExtras(new Set(member.permissions as Permission[]));
+  }, [member]);
+
+  const toggle = (p: Permission) =>
+    setExtras((prev) => {
+      const next = new Set(prev);
+      if (next.has(p)) next.delete(p); else next.add(p);
+      return next;
+    });
+
+  const handleSave = async () => {
+    if (!firebaseUser) return;
+    setSaving(true);
+    try {
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch('/api/team/promote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          targetUserId: member.userId,
+          academyId,
+          extraPermissions: Array.from(extras),
+          studentId: member.studentId,
+          email: member.email,
+          displayName: member.displayName,
+        }),
+      });
+      if (!res.ok) throw new Error();
+      success(`Permissões de ${member.displayName} atualizadas.`);
+      onSaved();
+    } catch {
+      showError('Erro ao salvar permissões.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onClose={saving ? undefined : onClose} fullWidth maxWidth="sm">
+      <DialogTitle>Editar permissões — {member.displayName}</DialogTitle>
+      <DialogContent>
+        <Typography variant="body2" color="text.secondary" mb={2}>
+          Selecione as permissões extras além do acesso padrão de instrutor.
+        </Typography>
+        <Stack spacing={0}>
+          {GRANTABLE_EXTRA_PERMISSIONS.map((def) => (
+            <FormControlLabel
+              key={def.permission}
+              control={<Checkbox checked={extras.has(def.permission as Permission)} onChange={() => toggle(def.permission as Permission)} />}
+              label={
+                <Box>
+                  <Typography variant="body2" fontWeight={500}>{def.label}</Typography>
+                  <Typography variant="caption" color="text.secondary">{def.description}</Typography>
+                </Box>
+              }
+            />
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} disabled={saving}>Cancelar</Button>
+        <Button variant="contained" onClick={handleSave} disabled={saving}>
+          {saving ? 'Salvando...' : 'Salvar'}
+        </Button>
+      </DialogActions>
+    </Dialog>
   );
 }
 

@@ -29,6 +29,7 @@ import {
   Receipt,
 } from 'lucide-react';
 import { useAcademy } from '@/contexts/AcademyContext';
+import { usePermissions } from '@/components/providers/PermissionProvider';
 
 // ============================================
 // Types
@@ -79,24 +80,48 @@ export function MobileBottomNav({ overdueCount = 0 }: MobileBottomNavProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { academy } = useAcademy();
+  const { isAdmin, can } = usePermissions();
   const [moreAnchor, setMoreAnchor] = useState<null | HTMLElement>(null);
 
-  // Dynamic secondary items based on academy settings
+  // Dynamic secondary items based on academy settings + permissions
   const secondaryNavItems = useMemo(() => {
     const items = [...baseSecondaryNavItems];
-    // Insert Carteira after Cobranca (index 2) if AbacatePay enabled
     const cobrancaIndex = items.findIndex(i => i.path === '/cobranca');
     let insertIndex = cobrancaIndex + 1;
     if (academy?.abacatePayEnabled) {
       items.splice(insertIndex, 0, { label: 'Carteira', icon: Wallet, path: '/carteira' });
       insertIndex++;
     }
-    // Insert Loja after Carteira/Cobranca if store enabled
     if (academy?.storeEnabled) {
       items.splice(insertIndex, 0, { label: 'Loja', icon: Store, path: '/loja' });
     }
-    return items;
-  }, [academy?.storeEnabled, academy?.abacatePayEnabled]);
+
+    if (isAdmin) return items;
+
+    return items.filter((item) => {
+      switch (item.path) {
+        case '/cobranca':
+          return can('financial:view') || can('financial:create');
+        case '/carteira':
+          return false;
+        case '/relatorios':
+          return can('reports:view');
+        case '/configuracoes':
+          return false;
+        default:
+          return true;
+      }
+    });
+  }, [academy?.storeEnabled, academy?.abacatePayEnabled, isAdmin, can]);
+
+  // Financeiro is in primary nav — hide for instructors without permission
+  const visiblePrimaryNavItems = useMemo(() => {
+    if (isAdmin) return primaryNavItems;
+    return primaryNavItems.filter((item) => {
+      if (item.path === '/financeiro') return can('financial:view');
+      return true;
+    });
+  }, [isAdmin, can]);
 
   const handleNavigate = useCallback((path: string) => {
     router.push(path);
@@ -144,7 +169,7 @@ export function MobileBottomNav({ overdueCount = 0 }: MobileBottomNavProps) {
             py: 0.5,
           }}
         >
-          {primaryNavItems.map((item) => {
+          {visiblePrimaryNavItems.map((item) => {
             const active = isActive(item.path);
             const showBadge = item.path === '/financeiro' && overdueCount > 0;
 

@@ -116,29 +116,49 @@ export function Sidebar({
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const { user, signOut } = useAuth();
   const { academy } = useAcademy();
-  const { isAdmin } = usePermissions();
+  const { isAdmin, can } = usePermissions();
 
-  // Compute nav items based on academy settings
+  // Compute nav items based on academy settings + role permissions
   const mainNavItems = useMemo(() => {
     const items = [...baseNavItems];
     let insertIndex = 7; // Before Relatorios
 
-    // Add Carteira after Financeiro if AbacatePay is enabled
     if (academy?.abacatePayEnabled) {
       items.splice(insertIndex, 0, walletNavItem);
       insertIndex++;
     }
-
-    // Add Store after Carteira/Financeiro if store is enabled
     if (academy?.storeEnabled) {
       items.splice(insertIndex, 0, storeNavItem);
     }
 
-    return items;
-  }, [academy?.storeEnabled, academy?.abacatePayEnabled]);
+    if (isAdmin) return items;
+
+    // Instructors: hide items they don't have permission for
+    return items.filter((item) => {
+      switch (item.path) {
+        case '/financeiro':
+          return can('financial:view');
+        case '/cobranca':
+          return can('financial:view') || can('financial:create');
+        case '/carteira':
+          return false; // wallet is admin-only
+        case '/relatorios':
+          return can('reports:view');
+        case '/configuracoes':
+          return false;
+        default:
+          return true;
+      }
+    });
+  }, [academy?.storeEnabled, academy?.abacatePayEnabled, isAdmin, can]);
 
   const visibleContentNavItems = useMemo(
     () => (isAdmin ? contentNavItems : []),
+    [isAdmin]
+  );
+
+  const visibleBottomNavItems = useMemo(
+    () => (isAdmin ? bottomNavItems : []),
     [isAdmin]
   );
 
@@ -370,7 +390,7 @@ export function Sidebar({
       {/* Bottom Navigation */}
       <Box sx={{ py: 1 }}>
         <List disablePadding>
-          {bottomNavItems.map((item) => (
+          {visibleBottomNavItems.map((item) => (
             <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
               <NavItemButton item={item} />
             </ListItem>
@@ -602,7 +622,7 @@ export function Sidebar({
       {/* Bottom Navigation */}
       <Box sx={{ py: 1 }}>
         <List disablePadding>
-          {bottomNavItems.map((item) => (
+          {visibleBottomNavItems.map((item) => (
             <ListItem key={item.path} disablePadding sx={{ px: 1, py: 0.25 }}>
               <NavItemButton item={item} isCompact />
             </ListItem>

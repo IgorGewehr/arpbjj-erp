@@ -249,6 +249,11 @@ export const GRANTABLE_EXTRA_PERMISSIONS: { permission: Permission; label: strin
     description: 'Acessar dashboards e métricas',
   },
   {
+    permission: 'attendance:create',
+    label: 'Fazer chamada',
+    description: 'Registrar presenças nas turmas',
+  },
+  {
     permission: 'competitions:create',
     label: 'Criar competições',
     description: 'Cadastrar torneios e abrir inscrições',

@@ -29,16 +29,22 @@ import {
   ArrowUpCircle,
   Search,
 } from 'lucide-react';
+import { collection, getDocs, query, where } from 'firebase/firestore';
+import { db } from '@/lib/firebase';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useAuth, useFeedback } from '@/components/providers';
-import {
-  createInstructorLinkCodeService,
-  promoteUserToInstructor,
-} from '@/services';
+import { createInstructorLinkCodeService } from '@/services';
 import { useStudents } from '@/hooks';
 import { GRANTABLE_EXTRA_PERMISSIONS } from '@/lib/permissions';
 import { InstructorLinkCode, Permission, Student } from '@/types';
 import { TextField, InputAdornment, List, ListItemButton, ListItemAvatar, Avatar, ListItemText, Divider } from '@mui/material';
+
+interface TeamMember {
+  id: string;
+  displayName?: string;
+  email?: string;
+  extraPermissions?: string[];
+}
 
 // ============================================
 // Team Tab — instructor invitations
@@ -67,8 +73,31 @@ export function TeamTab() {
 
   const [codes, setCodes] = useState<InstructorLinkCode[]>([]);
   const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<TeamMember[]>([]);
   const [inviteOpen, setInviteOpen] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
+
+  const loadMembers = useCallback(async () => {
+    if (!academyId) return;
+    try {
+      const snap = await getDocs(
+        query(
+          collection(db, `academies/${academyId}/users`),
+          where('role', '==', 'instructor')
+        )
+      );
+      setMembers(
+        snap.docs.map((d) => ({
+          id: d.id,
+          displayName: d.data().displayName,
+          email: d.data().email,
+          extraPermissions: d.data().extraPermissions ?? [],
+        }))
+      );
+    } catch {
+      // non-critical, silently ignore
+    }
+  }, [academyId]);
 
   const refresh = useCallback(async () => {
     if (!service) {
@@ -88,7 +117,8 @@ export function TeamTab() {
 
   useEffect(() => {
     refresh();
-  }, [refresh]);
+    loadMembers();
+  }, [refresh, loadMembers]);
 
   const handleDelete = useCallback(
     async (code: InstructorLinkCode) => {
@@ -156,6 +186,46 @@ export function TeamTab() {
         </Typography>
       </Alert>
 
+      {members.length > 0 && (
+        <>
+          <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1.5 }}>
+            Instrutores ativos
+          </Typography>
+          <Stack spacing={1} mb={3}>
+            {members.map((m) => (
+              <Paper key={m.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                <Stack direction="row" alignItems="center" spacing={1.5}>
+                  <Avatar sx={{ width: 36, height: 36, fontSize: 14 }}>
+                    {m.displayName?.[0]?.toUpperCase() ?? '?'}
+                  </Avatar>
+                  <Box flex={1} minWidth={0}>
+                    <Typography variant="body2" fontWeight={600} noWrap>
+                      {m.displayName ?? m.email ?? m.id}
+                    </Typography>
+                    {m.email && (
+                      <Typography variant="caption" color="text.secondary" noWrap>
+                        {m.email}
+                      </Typography>
+                    )}
+                    {m.extraPermissions && m.extraPermissions.length > 0 && (
+                      <Stack direction="row" flexWrap="wrap" gap={0.5} mt={0.5}>
+                        {m.extraPermissions.map((p) => {
+                          const def = GRANTABLE_EXTRA_PERMISSIONS.find((g) => g.permission === p);
+                          return (
+                            <Chip key={p} label={def?.label ?? p} size="small" variant="outlined" />
+                          );
+                        })}
+                      </Stack>
+                    )}
+                  </Box>
+                  <ShieldCheck size={16} color="green" />
+                </Stack>
+              </Paper>
+            ))}
+          </Stack>
+        </>
+      )}
+
       <Typography variant="caption" fontWeight={600} color="text.secondary" sx={{ display: 'block', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1.5 }}>
         Convites ativos
       </Typography>
@@ -196,6 +266,7 @@ export function TeamTab() {
         <PromoteDialog
           open={promoteOpen}
           onClose={() => setPromoteOpen(false)}
+          onPromoted={loadMembers}
           academyId={academyId}
         />
       )}
@@ -209,14 +280,17 @@ export function TeamTab() {
 function PromoteDialog({
   open,
   onClose,
+  onPromoted,
   academyId,
 }: {
   open: boolean;
   onClose: () => void;
+  onPromoted?: () => void;
   academyId: string;
 }) {
   const { students, isLoading: studentsLoading } = useStudents();
   const { success, error: showError } = useFeedback();
+  const { firebaseUser } = useAuth();
   const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<Student | null>(null);
   const [extras, setExtras] = useState<Set<Permission>>(new Set());
@@ -260,17 +334,31 @@ function PromoteDialog({
     });
 
   const handleSubmit = async () => {
-    if (!selected || !selected.linkedUserId) return;
+    if (!selected || !selected.linkedUserId || !firebaseUser) return;
     setSubmitting(true);
     try {
-      await promoteUserToInstructor({
-        userId: selected.linkedUserId,
-        academyId,
-        extraPermissions: Array.from(extras),
-        email: selected.email,
-        displayName: selected.fullName,
+      const token = await firebaseUser.getIdToken();
+      const res = await fetch('/api/team/promote', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          targetUserId: selected.linkedUserId,
+          academyId,
+          extraPermissions: Array.from(extras),
+          studentId: selected.id,
+          email: selected.email,
+          displayName: selected.fullName,
+        }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || 'Erro desconhecido');
+      }
       success(`${selected.fullName} promovido a instrutor.`);
+      onPromoted?.();
       onClose();
     } catch {
       showError('Erro ao promover aluno. Tente novamente.');

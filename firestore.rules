@@ -214,6 +214,13 @@ service cloud.firestore {
       allow update: if isAuthenticated()
                     && request.auth.uid == userId;
 
+      // Academy staff can update another user's mapping (e.g., promote to instructor).
+      // Gate: requester must be staff (admin or instructor) of the target user's primary academy.
+      allow update: if isAuthenticated()
+                    && request.auth.uid != userId
+                    && resource.data.keys().hasAll(['primaryAcademyId'])
+                    && isAcademyStaff(resource.data.primaryAcademyId);
+
       // Never allow delete
       allow delete: if false;
     }

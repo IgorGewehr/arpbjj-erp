@@ -18,18 +18,14 @@ export default function Home() {
 
   const isLoading = loading || (isAuthenticated && academyLoading);
 
-  // Redirect logic — preserved from previous implementation
+  // Redirect logic
   useEffect(() => {
-    if (!isLoading) {
-      if (isAuthenticated && user && academyUser) {
-        // Redirect based on academy-specific role
-        const defaultRoute = getDefaultRoute(academyUser.role);
-        router.replace(defaultRoute);
-      } else if (!isAuthenticated) {
-        router.replace('/login');
-      }
-      // If authenticated but no academyUser, user may need to link account
-      // The ProtectedRoute will handle this case
+    if (isLoading) return;
+    if (isAuthenticated && user && academyUser) {
+      router.replace(getDefaultRoute(academyUser.role));
+    } else if (!isAuthenticated || (isAuthenticated && user && !academyUser)) {
+      // Not logged in OR logged in but not linked to any academy
+      router.replace('/login');
     }
   }, [isAuthenticated, loading, user, academyUser, academyLoading, router, isLoading]);
 

@@ -81,13 +81,11 @@ export default function LoginPage() {
                        : role === 'guardian' ? '/responsavel'
                        : '/dashboard';
       setTimeout(() => router.push(redirectTo), 300);
-    } else if (!academyError && userAcademies.length === 0) {
-      // Loaded OK but genuinely zero academies — new user, create one
+    } else if (userAcademies.length === 0) {
+      // Zero academies — either new user or not yet in tatami
       setRedirecting(true);
       setTimeout(() => router.push('/criar-academia'), 300);
     }
-    // If there's an academyError or academyUser is null but loading finished,
-    // stay on login so the user can see the error or retry.
   }, [isAuthenticated, user, loading, academyUser, academyLoading, academyError, userAcademies, router]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

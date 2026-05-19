@@ -12,7 +12,7 @@ import {
 } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/components/providers/AuthProvider';
-import { api, academyApi } from '@/lib/api/client';
+import { api, academyApi, ApiError } from '@/lib/api/client';
 import { Academy, UserAcademyMapping, AcademyUser, UserRole } from '@/types';
 
 // ============================================
@@ -260,9 +260,20 @@ export function AcademyProvider({ children }: { children: ReactNode }) {
     }, 60_000);
   }, [stopPolling, loadAcademyData]);
 
-  // Fetch /v1/me and update all membership-derived state
+  // Fetch /v1/me and update all membership-derived state.
+  // Returns null if the user doesn't exist in tatami yet (404) — callers
+  // treat null as "new user, zero academies" and redirect to /criar-academia.
   const loadMe = useCallback(async (): Promise<GoCurrentUser | null> => {
-    const me = await api.get<GoCurrentUser>('/v1/me');
+    let me: GoCurrentUser;
+    try {
+      me = await api.get<GoCurrentUser>('/v1/me');
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) {
+        setUserAcademies([]);
+        return null;
+      }
+      throw err;
+    }
     meUserRef.current = me.user;
     membershipsRef.current = me.memberships;
 

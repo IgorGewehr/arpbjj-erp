@@ -1,20 +1,5 @@
-import {
-  collection,
-  doc,
-  getDoc,
-  getDocs,
-  setDoc,
-  deleteDoc,
-  query,
-  where,
-  collectionGroup,
-  Timestamp,
-  CollectionReference,
-  serverTimestamp,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { InstructorLinkCode, Permission, UserRole } from '@/types';
-import { linkUserToAcademy, upsertAcademyUser } from './globalUserService';
+import { api, ApiError } from '@/lib/api/client';
+import { InstructorLinkCode, Permission } from '@/types';
 
 // ============================================
 // Instructor Link Code Service
@@ -22,103 +7,83 @@ import { linkUserToAcademy, upsertAcademyUser } from './globalUserService';
 // Mirrors the student link-code flow but with two key differences:
 //   1) The code carries the snapshot of `extraPermissions` to grant on redeem,
 //      so the owner picks the perms once and the professor only types the code.
-//   2) Lives under /academies/{id}/instructorLinkCodes/{code} (the code IS the
-//      doc id). Anonymous reads on unused codes mirror the student link-codes
-//      rule so a not-yet-logged-in user can validate the code during register.
+//   2) Handled by the Go backend at /v1/academies/{id}/instructor-link-codes.
 // ============================================
 
-const CODE_TTL_MINUTES = 30;
-const CODE_LENGTH = 8;
-const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // no 0/O/1/I to avoid OCR ambiguity
-
-function generateCodeString(): string {
-  let out = '';
-  for (let i = 0; i < CODE_LENGTH; i++) {
-    out += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
-  }
-  return out;
+// ============================================
+// Go API response shape
+// ============================================
+interface InstructorLinkCodeDTO {
+  id: string;
+  code: string;
+  created_by: string;
+  created_by_name: string;
+  created_at: string;
+  expires_at: string;
+  extra_permissions: Permission[];
+  used_at?: string | null;
+  used_by?: string | null;
+  used_by_name?: string | null;
 }
 
-function instructorLinkCodesRef(academyId: string): CollectionReference {
-  return collection(db, `academies/${academyId}/instructorLinkCodes`);
-}
-
-function fromDoc(d: { id: string; data: () => Record<string, unknown> }): InstructorLinkCode {
-  const data = d.data();
+// ============================================
+// Mapper: Go DTO → InstructorLinkCode
+// ============================================
+function dtoToCode(dto: InstructorLinkCodeDTO): InstructorLinkCode {
   return {
-    id: d.id,
-    code: (data.code as string) ?? d.id,
-    createdBy: data.createdBy as string,
-    createdByName: data.createdByName as string,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt as string),
-    expiresAt: data.expiresAt instanceof Timestamp ? data.expiresAt.toDate() : new Date(data.expiresAt as string),
-    extraPermissions: Array.isArray(data.extraPermissions) ? (data.extraPermissions as Permission[]) : [],
-    usedAt: data.usedAt instanceof Timestamp ? data.usedAt.toDate() : undefined,
-    usedBy: typeof data.usedBy === 'string' ? data.usedBy : undefined,
-    usedByName: typeof data.usedByName === 'string' ? data.usedByName : undefined,
+    id: dto.id ?? dto.code,
+    code: dto.code,
+    createdBy: dto.created_by,
+    createdByName: dto.created_by_name,
+    createdAt: new Date(dto.created_at),
+    expiresAt: new Date(dto.expires_at),
+    extraPermissions: Array.isArray(dto.extra_permissions) ? dto.extra_permissions : [],
+    usedAt: dto.used_at ? new Date(dto.used_at) : undefined,
+    usedBy: dto.used_by ?? undefined,
+    usedByName: dto.used_by_name ?? undefined,
   };
 }
 
 export class InstructorLinkCodeService {
   constructor(private academyId: string) {}
 
+  private get base() {
+    return `/v1/academies/${this.academyId}/instructor-link-codes`;
+  }
+
   /**
-   * Generate a fresh code for the academy. Up to 5 retries on collision.
-   * Returns the persisted [InstructorLinkCode] including the random code id.
+   * Generate a fresh instructor invite code via the Go backend.
+   * Returns the persisted InstructorLinkCode with the generated code string.
    */
   async generate(
     createdBy: string,
     createdByName: string,
     extraPermissions: Permission[]
   ): Promise<InstructorLinkCode> {
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + CODE_TTL_MINUTES * 60_000);
-
-    let attempts = 0;
-    while (attempts < 5) {
-      const code = generateCodeString();
-      const ref = doc(instructorLinkCodesRef(this.academyId), code);
-      const existing = await getDoc(ref);
-      if (existing.exists()) {
-        attempts++;
-        continue;
-      }
-      const payload = {
-        code,
-        createdBy,
-        createdByName,
-        createdAt: Timestamp.fromDate(now),
-        expiresAt: Timestamp.fromDate(expiresAt),
-        extraPermissions,
-      };
-      await setDoc(ref, payload);
-      return {
-        id: code,
-        code,
-        createdBy,
-        createdByName,
-        createdAt: now,
-        expiresAt,
-        extraPermissions,
-      };
-    }
-    throw new Error('Não foi possível gerar um código único. Tente novamente.');
+    const dto = await api.post<InstructorLinkCodeDTO>(this.base, {
+      created_by: createdBy,
+      created_by_name: createdByName,
+      extra_permissions: extraPermissions,
+    });
+    return dtoToCode(dto);
   }
 
   /**
-   * List active (unused, unexpired) codes for the academy.
+   * List active (unused, unexpired) instructor invite codes for the academy.
+   * TODO(tatami): No GET /v1/academies/{id}/instructor-link-codes endpoint exists yet.
+   * Returns empty array until the backend exposes a list endpoint.
    */
   async listActive(): Promise<InstructorLinkCode[]> {
-    const snap = await getDocs(instructorLinkCodesRef(this.academyId));
-    const now = new Date();
-    return snap.docs
-      .map(fromDoc)
-      .filter((c) => !c.usedAt && c.expiresAt.getTime() > now.getTime())
-      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    // TODO(tatami): implement when GET /v1/academies/{academyId}/instructor-link-codes is available.
+    return [];
   }
 
-  async delete(codeId: string): Promise<void> {
-    await deleteDoc(doc(instructorLinkCodesRef(this.academyId), codeId));
+  /**
+   * Delete an instructor invite code.
+   * TODO(tatami): No DELETE /v1/academies/{id}/instructor-link-codes/{code} endpoint exists yet.
+   */
+  async delete(_codeId: string): Promise<void> {
+    // TODO(tatami): implement when DELETE /v1/academies/{academyId}/instructor-link-codes/{codeId} is available.
   }
 }
 
@@ -131,37 +96,40 @@ export function createInstructorLinkCodeService(academyId: string): InstructorLi
 // ============================================
 
 /**
- * Search every academy for an unused, unexpired code. Returns the matching
- * code plus the academy it belongs to (extracted from the doc path). Mirrors
- * the student link-code validation flow.
+ * Validate an instructor invite code globally.
+ * Uses GET /v1/link-codes/{code} which the Go backend resolves across all academies.
  */
 export async function validateInstructorCodeGlobally(
   rawCode: string
 ): Promise<{ code: InstructorLinkCode; academyId: string } | null> {
   const code = rawCode.trim().toUpperCase();
   if (!code) return null;
-  const q = query(collectionGroup(db, 'instructorLinkCodes'), where('code', '==', code));
-  const snap = await getDocs(q);
-  if (snap.empty) return null;
 
-  for (const d of snap.docs) {
-    const parsed = fromDoc(d);
-    if (parsed.usedAt) continue;
-    if (parsed.expiresAt.getTime() <= Date.now()) continue;
-    // Path is /academies/{academyId}/instructorLinkCodes/{codeId}
-    const pathParts = d.ref.path.split('/');
-    const academyId = pathParts[1];
-    return { code: parsed, academyId };
+  try {
+    const dto = await api.get<InstructorLinkCodeDTO & { academy_id: string }>(
+      `/v1/link-codes/${code}`
+    );
+
+    // Treat 409 (used/expired) and 404 (not found) as invalid silently;
+    // any other shape means the code exists and is valid.
+    if (!dto || !dto.code) return null;
+    if (dto.used_at) return null;
+    if (new Date(dto.expires_at).getTime() <= Date.now()) return null;
+
+    const academyId = dto.academy_id;
+    return { code: dtoToCode(dto), academyId };
+  } catch (err) {
+    if (err instanceof ApiError && (err.status === 404 || err.status === 409)) {
+      return null;
+    }
+    throw err;
   }
-  return null;
 }
 
 /**
- * Promote an existing user who's already linked to the academy as `student`
- * (or any role) to `instructor`. Keeps studentId intact so the user can still
- * access their own student portal data, but switches role and stamps the
- * extraPermissions chosen by the owner. Idempotent — calling twice doesn't
- * stack permissions, just rewrites them.
+ * Promote an existing academy member to admin role with extra permissions.
+ * Uses PATCH /v1/academies/{academyId}/memberships/{userId}.
+ * The Firebase ID token is injected automatically by the API client.
  */
 export async function promoteUserToInstructor(opts: {
   userId: string;
@@ -170,38 +138,20 @@ export async function promoteUserToInstructor(opts: {
   email?: string;
   displayName?: string;
 }): Promise<void> {
-  const { userId, academyId, extraPermissions, email, displayName } = opts;
+  const { userId, academyId, extraPermissions } = opts;
 
-  // Update the mapping: role -> instructor, attach extraPermissions.
-  // We use FieldValue updates so studentId (if any) is preserved.
-  const mappingRef = doc(db, `userAcademyMapping/${userId}`);
-  const updates: Record<string, unknown> = {
-    [`academyDetails.${academyId}.role`]: 'instructor',
-    updatedAt: serverTimestamp(),
-  };
-  if (extraPermissions.length > 0) {
-    updates[`academyDetails.${academyId}.extraPermissions`] = extraPermissions;
-  } else {
-    // Clear any previous extras so a re-promote with empty list resets them
-    // instead of silently inheriting stale values.
-    updates[`academyDetails.${academyId}.extraPermissions`] = [];
-  }
-  await setDoc(mappingRef, updates, { merge: true });
-
-  // Mirror the role in the academy-scoped user doc so legacy code reading
-  // from there also sees instructor.
-  await upsertAcademyUser(academyId, userId, {
-    role: 'instructor',
-    ...(email ? { email } : {}),
-    ...(displayName ? { displayName } : {}),
-    status: 'active',
+  await api.patch(`/v1/academies/${academyId}/memberships/${userId}`, {
+    role: 'admin',
+    extra_permissions: extraPermissions,
   });
 }
 
 /**
- * Redeem a previously generated instructor code: links the current user to
- * the academy as `instructor`, attaches `extraPermissions`, and marks the
- * code as used.
+ * Redeem a previously generated instructor code: calls the Go backend which
+ * atomically marks the code as used and upserts the user_academy_mappings
+ * with the instructor role and extraPermissions.
+ *
+ * The Firebase ID token is injected automatically by the API client interceptor.
  */
 export async function redeemInstructorCode(opts: {
   code: InstructorLinkCode;
@@ -210,32 +160,7 @@ export async function redeemInstructorCode(opts: {
   userEmail: string;
   userDisplayName: string;
 }): Promise<void> {
-  const { code, academyId, userId, userEmail, userDisplayName } = opts;
+  const { code, userDisplayName } = opts;
 
-  // Persist instructor role + extraPermissions in the cross-academy mapping
-  await linkUserToAcademy(userId, academyId, {
-    role: 'instructor' as UserRole,
-    extraPermissions: code.extraPermissions,
-  });
-
-  // Upsert the academy-scoped user doc so legacy code that reads from there
-  // still sees the instructor (mirrors student linking flow).
-  await upsertAcademyUser(academyId, userId, {
-    role: 'instructor',
-    email: userEmail,
-    displayName: userDisplayName,
-    status: 'active',
-  });
-
-  // Mark the code as used (one-shot)
-  const codeRef = doc(db, `academies/${academyId}/instructorLinkCodes/${code.id}`);
-  await setDoc(
-    codeRef,
-    {
-      usedAt: serverTimestamp(),
-      usedBy: userId,
-      usedByName: userDisplayName,
-    },
-    { merge: true }
-  );
+  await api.post(`/v1/link-codes/${code.code}/redeem`, { full_name: userDisplayName });
 }

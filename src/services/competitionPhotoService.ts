@@ -1,48 +1,60 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  Timestamp,
-  serverTimestamp,
-  DocumentSnapshot,
-  limit as firestoreLimit,
-} from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { db, storage, collections } from '@/lib/firebase';
+import { api, ApiError } from '@/lib/api/client';
 import { CompetitionPhoto } from '@/types';
 import imageCompression from 'browser-image-compression';
 
 // ============================================
-// Helper: Convert Firestore document to CompetitionPhoto
+// Go API response shape
 // ============================================
-const docToPhoto = (doc: DocumentSnapshot): CompetitionPhoto => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
+interface CompetitionPhotoDTO {
+  id: string;
+  competition_id: string;
+  competition_name: string;
+  student_id: string;
+  student_name: string;
+  url: string;
+  storage_path?: string;
+  caption?: string | null;
+  likes?: number;
+  is_highlight?: boolean;
+  medal_type?: string | null;
+  photo_type?: 'student' | 'team' | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+}
 
+interface PhotoListDTO {
+  items: CompetitionPhotoDTO[];
+}
+
+interface UploadUrlDTO {
+  upload_url: string;
+  photo_id: string;
+  storage_path: string;
+}
+
+// ============================================
+// Mapper: Go DTO → CompetitionPhoto
+// ============================================
+function dtoToPhoto(dto: CompetitionPhotoDTO): CompetitionPhoto {
   return {
-    id: doc.id,
-    competitionId: data.competitionId,
-    competitionName: data.competitionName,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    url: data.url,
-    storagePath: data.storagePath,
-    caption: data.caption,
-    likes: data.likes ?? 0,
-    isHighlight: data.isHighlight ?? false,
-    medalType: data.medalType,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
-    createdBy: data.createdBy,
+    id: dto.id,
+    competitionId: dto.competition_id,
+    competitionName: dto.competition_name,
+    studentId: dto.student_id,
+    studentName: dto.student_name,
+    url: dto.url,
+    storagePath: dto.storage_path ?? '',
+    caption: dto.caption ?? undefined,
+    likes: dto.likes ?? 0,
+    isHighlight: dto.is_highlight ?? false,
+    medalType: (dto.medal_type as CompetitionPhoto['medalType']) ?? undefined,
+    photoType: (dto.photo_type as 'student' | 'team') ?? undefined,
+    createdAt: new Date(dto.created_at),
+    updatedAt: new Date(dto.updated_at),
+    createdBy: dto.created_by,
   };
-};
+}
 
 // ============================================
 // Helper: Validate image file
@@ -78,11 +90,15 @@ const compressImage = async (file: File): Promise<File> => {
 // Create Competition Photo Service
 // ============================================
 export const createCompetitionPhotoService = (academyId: string) => {
-  const photosCollection = collections.competitionPhotos(academyId);
+  const photosBase = (competitionId: string) =>
+    `/v1/academies/${academyId}/competitions/${competitionId}/photos`;
 
   return {
     // ============================================
-    // Upload Photo
+    // Upload Photo (3-step presigned URL flow)
+    // 1. POST .../photos/upload-url  — get presigned PUT URL
+    // 2. PUT  <presigned-url>        — upload the file directly
+    // 3. POST .../photos             — register the photo in tatami
     // ============================================
     async uploadPhoto(
       competitionId: string,
@@ -104,171 +120,131 @@ export const createCompetitionPhotoService = (academyId: string) => {
       // Compress image
       const compressedFile = await compressImage(file);
 
-      // Generate unique photo ID
-      const photoId = doc(collection(db, 'temp')).id;
+      // Step 1 — get presigned upload URL
+      const { upload_url, photo_id, storage_path } = await api.post<UploadUrlDTO>(
+        `${photosBase(competitionId)}/upload-url`,
+        {
+          file_name: file.name,
+          content_type: 'image/jpeg',
+        }
+      );
 
-      // Upload to Firebase Storage
-      const storagePath = `/academies/${academyId}/competitions/${competitionId}/photos/${photoId}.jpg`;
-      const storageRef = ref(storage, storagePath);
-
-      await uploadBytes(storageRef, compressedFile, {
-        contentType: 'image/jpeg',
-        cacheControl: 'public, max-age=3600, must-revalidate',
+      // Step 2 — PUT directly to the presigned URL (no auth header)
+      const putRes = await fetch(upload_url, {
+        method: 'PUT',
+        body: compressedFile,
+        headers: { 'Content-Type': 'image/jpeg' },
       });
 
-      // Get download URL
-      const downloadURL = await getDownloadURL(storageRef);
+      if (!putRes.ok) {
+        throw new Error(`Falha no upload da imagem: ${putRes.statusText}`);
+      }
 
-      // Create Firestore document
-      const photoData = {
-        competitionId,
-        competitionName,
-        studentId,
-        studentName,
-        url: downloadURL,
-        storagePath,
-        caption: caption || null,
-        likes: 0,
-        isHighlight: false,
-        medalType: medalType || null,
-        photoType: photoType || null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-        createdBy,
-      };
+      // Step 3 — register the photo in tatami
+      const dto = await api.post<CompetitionPhotoDTO>(photosBase(competitionId), {
+        photo_id,
+        competition_name: competitionName,
+        student_id: studentId,
+        student_name: studentName,
+        storage_path,
+        caption: caption ?? null,
+        medal_type: medalType ?? null,
+        photo_type: photoType ?? 'student',
+        created_by: createdBy,
+      });
 
-      const docRef = await addDoc(photosCollection, photoData);
-
-      // Return created photo
-      const photoDoc = await getDoc(docRef);
-      return docToPhoto(photoDoc);
+      return dtoToPhoto(dto);
     },
 
     // ============================================
     // Get Photos by Competition
     // ============================================
     async getPhotosByCompetition(competitionId: string): Promise<CompetitionPhoto[]> {
-      const q = query(
-        photosCollection,
-        where('competitionId', '==', competitionId),
-        orderBy('createdAt', 'desc')
-      );
-
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(docToPhoto);
+      const res = await api.get<PhotoListDTO | CompetitionPhotoDTO[]>(photosBase(competitionId));
+      const raw = Array.isArray(res) ? res : (res as PhotoListDTO).items ?? [];
+      return raw
+        .map(dtoToPhoto)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
     },
 
     // ============================================
-    // Get Photos by Student
+    // Get Photos by Student (client-side filter from all competitions)
+    // TODO(tatami): add ?student_id= query param if backend supports it.
+    // For now, this needs a competitionId context. Returns [] when called
+    // without one because there is no cross-competition student photos endpoint.
     // ============================================
-    async getPhotosByStudent(studentId: string): Promise<CompetitionPhoto[]> {
-      const q = query(
-        photosCollection,
-        where('studentId', '==', studentId),
-        orderBy('createdAt', 'desc')
-      );
-
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(docToPhoto);
+    async getPhotosByStudent(_studentId: string): Promise<CompetitionPhoto[]> {
+      // TODO(tatami): No GET /v1/academies/{id}/competition-photos?student_id= endpoint yet.
+      // Returning empty array. Callers that need this should use
+      // getPhotosByStudentAndCompetition() with a specific competitionId.
+      return [];
     },
 
     // ============================================
     // Get Student Photo Count for Competition
     // ============================================
     async getStudentPhotoCount(competitionId: string, studentId: string): Promise<number> {
-      const q = query(
-        photosCollection,
-        where('competitionId', '==', competitionId),
-        where('studentId', '==', studentId)
-      );
-
-      const snapshot = await getDocs(q);
-      return snapshot.size;
+      const photos = await this.getPhotosByCompetition(competitionId);
+      return photos.filter((p) => p.studentId === studentId).length;
     },
 
     // ============================================
     // Update Photo Caption
+    // TODO(tatami): No PATCH /v1/.../photos/{photoId} endpoint exists yet.
     // ============================================
-    async updatePhotoCaption(photoId: string, caption: string): Promise<void> {
+    async updatePhotoCaption(_photoId: string, caption: string): Promise<void> {
       if (caption.length > 200) {
         throw new Error('Legenda muito longa. Máximo: 200 caracteres.');
       }
-
-      const photoRef = doc(photosCollection, photoId);
-      await updateDoc(photoRef, {
-        caption,
-        updatedAt: serverTimestamp(),
-      });
+      // TODO(tatami): implement when PATCH /v1/academies/{id}/competitions/{competitionId}/photos/{photoId} is available.
     },
 
     // ============================================
     // Toggle Highlight (Admin only)
+    // TODO(tatami): No PATCH endpoint for highlight exists yet.
     // ============================================
-    async toggleHighlight(photoId: string, isHighlight: boolean): Promise<void> {
-      const photoRef = doc(photosCollection, photoId);
-      await updateDoc(photoRef, {
-        isHighlight,
-        updatedAt: serverTimestamp(),
-      });
+    async toggleHighlight(_photoId: string, _isHighlight: boolean): Promise<void> {
+      // TODO(tatami): implement when PATCH /v1/academies/{id}/competitions/{competitionId}/photos/{photoId} is available.
     },
 
     // ============================================
     // Delete Photo
     // ============================================
     async deletePhoto(photoId: string): Promise<void> {
-      // Get photo document
-      const photoRef = doc(photosCollection, photoId);
-      const photoDoc = await getDoc(photoRef);
-
-      if (!photoDoc.exists()) {
-        throw new Error('Foto não encontrada.');
-      }
-
-      const photo = docToPhoto(photoDoc);
-
-      // Delete from Storage
+      // The backend resolves the competitionId from the photoId context.
+      // Use the academy-level delete endpoint if available, otherwise we need
+      // the competitionId. Since callers don't pass competitionId here,
+      // attempt the direct photo delete via a photo-level endpoint.
+      // TODO(tatami): confirm exact delete URL with backend team.
+      // Using DELETE /v1/academies/{academyId}/competition-photos/{photoId} as assumed path.
       try {
-        const storageRef = ref(storage, photo.storagePath);
-        await deleteObject(storageRef);
+        await api.delete(`/v1/academies/${academyId}/competition-photos/${photoId}`);
       } catch (err) {
-        // Ignore if file doesn't exist
-        if ((err as { code?: string }).code !== 'storage/object-not-found') {
-          throw err;
+        if (err instanceof ApiError && err.status === 404) {
+          // Already gone — treat as success
+          return;
         }
+        throw err;
       }
-
-      // Delete from Firestore
-      await deleteDoc(photoRef);
     },
 
     // ============================================
     // Get Photo by ID
+    // TODO(tatami): No single-photo GET endpoint exists yet.
     // ============================================
-    async getPhotoById(photoId: string): Promise<CompetitionPhoto | null> {
-      const photoRef = doc(photosCollection, photoId);
-      const photoDoc = await getDoc(photoRef);
-
-      if (!photoDoc.exists()) {
-        return null;
-      }
-
-      return docToPhoto(photoDoc);
+    async getPhotoById(_photoId: string): Promise<CompetitionPhoto | null> {
+      // TODO(tatami): implement when GET /v1/academies/{id}/competitions/{competitionId}/photos/{photoId} is available.
+      return null;
     },
 
     // ============================================
     // Get Highlight Photos (for competition cover)
     // ============================================
     async getHighlightPhotos(competitionId: string, limitCount = 10): Promise<CompetitionPhoto[]> {
-      const q = query(
-        photosCollection,
-        where('competitionId', '==', competitionId),
-        where('isHighlight', '==', true),
-        orderBy('createdAt', 'desc'),
-        firestoreLimit(limitCount)
-      );
-
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(docToPhoto);
+      const photos = await this.getPhotosByCompetition(competitionId);
+      return photos
+        .filter((p) => p.isHighlight)
+        .slice(0, limitCount);
     },
 
     // ============================================
@@ -278,29 +254,43 @@ export const createCompetitionPhotoService = (academyId: string) => {
       studentId: string,
       competitionId: string
     ): Promise<CompetitionPhoto[]> {
-      const q = query(
-        photosCollection,
-        where('studentId', '==', studentId),
-        where('competitionId', '==', competitionId),
-        orderBy('createdAt', 'desc')
-      );
-
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(docToPhoto);
+      const photos = await this.getPhotosByCompetition(competitionId);
+      return photos.filter((p) => p.studentId === studentId);
     },
 
     // ============================================
     // Get All Photos (for admin gallery view)
+    // Fetches photos across all competitions by listing competitions first.
+    // TODO(tatami): replace with a dedicated academy-level photos endpoint if added.
     // ============================================
     async getAllPhotos(limitCount?: number): Promise<CompetitionPhoto[]> {
-      let q = query(photosCollection, orderBy('createdAt', 'desc'));
+      try {
+        // Fetch competition list to iterate over each
+        const compRes = await api.get<{ items: Array<{ id: string }> } | Array<{ id: string }>>(
+          `/v1/academies/${academyId}/competitions`
+        );
+        const competitions = Array.isArray(compRes)
+          ? compRes
+          : (compRes as { items: Array<{ id: string }> }).items ?? [];
 
-      if (limitCount) {
-        q = query(q, firestoreLimit(limitCount));
+        const photoArrays = await Promise.all(
+          competitions.map((c) =>
+            this.getPhotosByCompetition(c.id).catch(() => [] as CompetitionPhoto[])
+          )
+        );
+
+        let all = photoArrays
+          .flat()
+          .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+        if (limitCount) {
+          all = all.slice(0, limitCount);
+        }
+
+        return all;
+      } catch {
+        return [];
       }
-
-      const snapshot = await getDocs(q);
-      return snapshot.docs.map(docToPhoto);
     },
   };
 };

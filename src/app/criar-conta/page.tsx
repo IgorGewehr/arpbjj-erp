@@ -17,9 +17,10 @@ import {
 import { Eye, EyeOff, Key, User, Mail, Lock, CheckCircle, ArrowLeft, GraduationCap, ArrowRight, FileText, Phone } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile, AuthError } from 'firebase/auth';
 import { FirebaseError } from 'firebase/app';
-import { doc, setDoc, updateDoc, serverTimestamp, collectionGroup, query, where, getDocs, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { LinkCode, InstructorLinkCode, Permission } from '@/types';
+import { api, ApiError } from '@/lib/api/client';
 import { useAcademy } from '@/contexts/AcademyContext';
 import {
   validateInstructorCodeGlobally,
@@ -154,54 +155,49 @@ export default function CreateAccountPage() {
         return;
       }
 
-      // Student flow (6 chars). Falls through to the original collectionGroup
-      // query so legacy codes (and accidental 6-char instructor lookups) still
-      // surface a clear error instead of a silent miss.
-      const q = query(
-        collectionGroup(db, 'linkCodes'),
-        where('code', '==', codeUpper),
-        where('usedAt', '==', null),
-      );
-      const snapshot = await getDocs(q);
+      // Student flow (6 chars): validate via Go backend.
+      interface LinkCodePreview {
+        academy_id: string;
+        academy_name: string;
+        academy_logo_url: string;
+        role: string;
+        student_id?: string;
+        expires_at: string;
+      }
 
-      if (snapshot.empty) {
-        setError('Codigo nao encontrado ou ja utilizado. Solicite um novo codigo.');
+      let preview: LinkCodePreview;
+      try {
+        preview = await api.get<LinkCodePreview>(`/v1/link-codes/${codeUpper}`);
+      } catch (apiErr) {
+        if (apiErr instanceof ApiError) {
+          if (apiErr.status === 404) {
+            setError('Codigo invalido ou ja utilizado');
+          } else if (apiErr.status === 409) {
+            setError('Codigo expirado ou ja utilizado');
+          } else {
+            setError('Erro ao validar codigo. Tente novamente.');
+          }
+        } else {
+          setError('Erro ao validar codigo. Tente novamente.');
+        }
         return;
       }
 
-      const codeDoc = snapshot.docs[0];
-      const data = codeDoc.data();
-
-      const expiresAt = data.expiresAt instanceof Timestamp
-        ? data.expiresAt.toDate()
-        : new Date(data.expiresAt);
+      const expiresAt = new Date(preview.expires_at);
       if (new Date() > expiresAt) {
         setError('Este codigo expirou');
         return;
       }
 
-      const academyDocRef = codeDoc.ref.parent.parent;
-      if (!academyDocRef) {
-        setError('Erro ao identificar a academia do código');
-        return;
-      }
-      const academyId = academyDocRef.id;
-
-      const createdAt = data.createdAt instanceof Timestamp
-        ? data.createdAt.toDate()
-        : data.createdAt ? new Date(data.createdAt) : new Date();
-
       const foundLinkCode: LinkCode = {
-        id: codeDoc.id,
-        code: data.code,
-        studentId: data.studentId,
-        studentName: data.studentName,
-        academyId,
-        createdBy: data.createdBy,
-        createdAt,
+        id: codeUpper,
+        code: codeUpper,
+        academyId: preview.academy_id,
+        studentId: preview.student_id ?? '',
+        studentName: undefined as unknown as string, // not available from Go preview
         expiresAt,
-        usedAt: data.usedAt instanceof Timestamp ? data.usedAt.toDate() : undefined,
-        usedBy: data.usedBy,
+        createdAt: new Date(),
+        createdBy: '',
       };
 
       setLinkCode(foundLinkCode);
@@ -313,9 +309,11 @@ export default function CreateAccountPage() {
   const handleCreateAccount = useCallback(async () => {
     if (!linkCode || !linkCode.academyId) return;
 
-    const academyId = linkCode.academyId;
-
     // Validation
+    if (!fullName.trim()) {
+      setError('Digite seu nome completo');
+      return;
+    }
     const cpfDigits = cpf.replace(/\D/g, '');
     if (!cpfDigits) {
       setError('Digite seu CPF');
@@ -369,79 +367,17 @@ export default function CreateAccountPage() {
 
       // Step 2: Update profile with student name
       await updateProfile(user, {
-        displayName: linkCode.studentName,
+        displayName: fullName.trim(),
       });
 
-      // Step 3: Create global user document (NO role, NO studentId - those are per-academy)
-      await setDoc(doc(db, 'users', user.uid), {
-        email: email.trim(),
-        displayName: linkCode.studentName,
-        accountType: 'linked',
-        isActive: true,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
+      // Step 3: Get a fresh token so the Go backend can verify it
+      await user.getIdToken(true);
+
+      // Step 4: Redeem the link code — Go creates membership, links student, marks code used
+      await api.post(`/v1/link-codes/${linkCode.code}/redeem`, {
+        full_name: fullName.trim(),
+        phone: phoneDigits,
       });
-
-      // Step 4: Create userAcademyMapping (source of truth for user-academy relationships)
-      await setDoc(doc(db, 'userAcademyMapping', user.uid), {
-        academyIds: [academyId],
-        primaryAcademyId: academyId,
-        academyDetails: {
-          [academyId]: {
-            role: 'student',
-            studentId: linkCode.studentId,
-            joinedAt: serverTimestamp(),
-            status: 'active',
-          },
-        },
-        updatedAt: serverTimestamp(),
-      });
-
-      // Step 5: Create academy user document (academies/{academyId}/users/{uid})
-      await setDoc(doc(db, 'academies', academyId, 'users', user.uid), {
-        email: email.trim(),
-        displayName: linkCode.studentName,
-        role: 'student',
-        studentId: linkCode.studentId,
-        approvedAt: serverTimestamp(),
-        status: 'active',
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp(),
-      });
-
-      // Step 6: Secondary operations (can fail without breaking the flow)
-      try {
-        // Mark code as used in the correct academy's linkCodes subcollection
-        await updateDoc(doc(db, 'academies', academyId, 'linkCodes', linkCode.id), {
-          usedAt: serverTimestamp(),
-          usedBy: user.uid,
-        });
-      } catch (linkErr) {
-        console.warn('Failed to mark code as used (non-critical):', linkErr);
-      }
-
-      // Update student record with linked user ID and CPF (with retry)
-      let cpfSaved = false;
-      for (let attempt = 0; attempt < 3 && !cpfSaved; attempt++) {
-        try {
-          await updateDoc(doc(db, 'academies', academyId, 'students', linkCode.studentId), {
-            linkedUserId: user.uid,
-            email: email.trim(),
-            cpf: cpfDigits,
-            phone: phoneDigits,
-            updatedAt: serverTimestamp(),
-          });
-          cpfSaved = true;
-        } catch (studentErr) {
-          console.warn(`CPF save attempt ${attempt + 1} failed:`, studentErr);
-          if (attempt < 2) {
-            await new Promise(resolve => setTimeout(resolve, 500));
-          }
-        }
-      }
-      if (!cpfSaved) {
-        console.warn('WARNING: CPF not saved after 3 attempts. User can update later.');
-      }
 
       // Account created - wait for AcademyContext to load data before redirecting
       setStep('redirecting');
@@ -466,12 +402,17 @@ export default function CreateAccountPage() {
           case 'auth/network-request-failed':
             setError('Erro de conexao. Verifique sua internet.');
             break;
-          case 'permission-denied':
-            setError('Erro de permissao. O codigo pode ter expirado. Tente novamente.');
-            break;
           default:
             console.error('Unhandled Firebase error:', err.code, err.message);
             setError('Erro ao criar conta. Tente novamente.');
+        }
+      } else if (err instanceof ApiError) {
+        if (err.status === 404) {
+          setError('Codigo invalido ou ja utilizado');
+        } else if (err.status === 409) {
+          setError('Codigo expirado ou ja utilizado');
+        } else {
+          setError('Erro ao criar conta. Tente novamente.');
         }
       } else if (err instanceof Error) {
         // Handle network or other errors
@@ -486,7 +427,7 @@ export default function CreateAccountPage() {
     } finally {
       setLoading(false);
     }
-  }, [linkCode, cpf, phone, email, password, confirmPassword]);
+  }, [linkCode, fullName, cpf, phone, email, password, confirmPassword]);
 
   // ============================================
   // Render Code Step
@@ -643,7 +584,7 @@ export default function CreateAccountPage() {
         <Typography variant="h5" fontWeight={700} gutterBottom>
           {isInstructor
             ? 'Cadastro de instrutor'
-            : `Bem-vindo, ${linkCode?.studentName}!`}
+            : 'Crie sua conta de aluno'}
         </Typography>
         <Typography variant="body2" color="text.secondary">
           {isInstructor
@@ -713,6 +654,21 @@ export default function CreateAccountPage() {
         />
       ) : (
         <>
+          <TextField
+            label="Nome completo"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            fullWidth
+            sx={{ mb: 2 }}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <User size={20} color="#666" />
+                </InputAdornment>
+              ),
+            }}
+          />
+
           <TextField
             label="CPF"
             value={cpf}

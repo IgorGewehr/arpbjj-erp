@@ -1,19 +1,4 @@
-import {
-  getDocs,
-  addDoc,
-  getDoc,
-  setDoc,
-  query,
-  where,
-  orderBy,
-  Timestamp,
-  DocumentSnapshot,
-  CollectionReference,
-  doc,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { collections } from '@/lib/firebase/collections';
-import { removeUndefinedDeep } from '@/lib/firestoreUtils';
+import { api, BillingStageEntry, BillingStagesResult } from '@/lib/api/client';
 import {
   Financial,
   BillingStage,
@@ -25,57 +10,7 @@ import {
 } from '@/types';
 
 // ============================================
-// Helper: Convert Firestore document to Financial
-// ============================================
-const docToFinancial = (docSnap: DocumentSnapshot): Financial => {
-  const data = docSnap.data();
-  if (!data) throw new Error('Document data is undefined');
-
-  return {
-    id: docSnap.id,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    type: data.type,
-    description: data.description,
-    amount: data.amount,
-    dueDate: data.dueDate instanceof Timestamp ? data.dueDate.toDate() : new Date(data.dueDate),
-    status: data.status,
-    paymentDate: data.paymentDate instanceof Timestamp ? data.paymentDate.toDate() : data.paymentDate ? new Date(data.paymentDate) : undefined,
-    method: data.method,
-    referenceMonth: data.referenceMonth,
-    planId: data.planId,
-    receiptUrl: data.receiptUrl,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
-    createdBy: data.createdBy,
-  };
-};
-
-// ============================================
-// Helper: Convert Firestore document to BillingContactLog
-// ============================================
-const docToContactLog = (docSnap: DocumentSnapshot): BillingContactLog => {
-  const data = docSnap.data();
-  if (!data) throw new Error('Document data is undefined');
-
-  return {
-    id: docSnap.id,
-    financialId: data.financialId,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    type: data.type,
-    notes: data.notes,
-    stage: data.stage,
-    daysOverdue: data.daysOverdue,
-    contactedBy: data.contactedBy,
-    contactedByName: data.contactedByName,
-    academyId: data.academyId,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-  };
-};
-
-// ============================================
-// Helper: Calculate days overdue
+// Helper: calculate days overdue
 // ============================================
 const calculateDaysOverdue = (dueDate: Date): number => {
   const now = new Date();
@@ -86,7 +21,7 @@ const calculateDaysOverdue = (dueDate: Date): number => {
 };
 
 // ============================================
-// Helper: Classify stage from days overdue
+// Helper: classify stage from days overdue
 // ============================================
 const classifyStage = (daysOverdue: number): BillingStage | null => {
   if (daysOverdue >= 30) return 'D+30';
@@ -97,6 +32,40 @@ const classifyStage = (daysOverdue: number): BillingStage | null => {
   if (daysOverdue === 0) return 'D+0';
   return null;
 };
+
+// ============================================
+// Helper: map Go stage key (D0, D1, …) to BillingStage (D+0, D+1, …)
+// ============================================
+const mapGoStageKey = (key: string): BillingStage => {
+  const map: Record<string, BillingStage> = {
+    D0: 'D+0',
+    D1: 'D+1',
+    D3: 'D+3',
+    D7: 'D+7',
+    D15: 'D+15',
+    'D30+': 'D+30',
+    D30: 'D+30',
+  };
+  return map[key] ?? ('D+0' as BillingStage);
+};
+
+// ============================================
+// Helper: map BillingStageEntry to Financial
+// ============================================
+const mapStageEntryToFinancial = (entry: BillingStageEntry): Financial => ({
+  id: entry.id,
+  studentId: entry.student_id,
+  studentName: entry.student_name,
+  type: 'monthly_tuition',
+  description: entry.description,
+  amount: typeof entry.amount === 'string' ? parseFloat(entry.amount) : entry.amount,
+  dueDate: new Date(entry.due_date),
+  status: (entry.status as Financial['status']) || 'overdue',
+  referenceMonth: entry.reference_month,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  createdBy: '',
+});
 
 // ============================================
 // Default Billing Reminder Settings
@@ -118,22 +87,23 @@ const DEFAULT_SETTINGS: BillingReminderSettings = {
 // ============================================
 export class BillingReminderService {
   private academyId: string;
-  private financialsRef: CollectionReference;
-  private billingContactLogRef: CollectionReference;
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.financialsRef = collections.financials(academyId);
-    this.billingContactLogRef = collections.billingContactLog(academyId);
+  }
+
+  private get stagesBase() {
+    return `/v1/academies/${this.academyId}/billing/stages`;
+  }
+
+  private get contactsBase() {
+    return `/v1/academies/${this.academyId}/billing-contacts`;
   }
 
   // ============================================
   // Get Overdue Financials Grouped by Stage
   // ============================================
   async getOverdueWithStages(): Promise<Record<BillingStage, Financial[]>> {
-    const snapshot = await getDocs(this.financialsRef);
-    const financials = snapshot.docs.map(docToFinancial);
-
     const result: Record<BillingStage, Financial[]> = {
       'D+0': [],
       'D+1': [],
@@ -143,17 +113,13 @@ export class BillingReminderService {
       'D+30': [],
     };
 
-    financials.forEach((financial) => {
-      if (financial.status !== 'overdue' && financial.status !== 'pending') return;
+    const raw = await api.get<BillingStagesResult>(this.stagesBase);
 
-      const daysOverdue = calculateDaysOverdue(financial.dueDate);
-      if (daysOverdue < 0) return;
-
-      const stage = classifyStage(daysOverdue);
-      if (stage) {
-        result[stage].push(financial);
-      }
-    });
+    for (const [goKey, entries] of Object.entries(raw.stages)) {
+      const stage = mapGoStageKey(goKey);
+      const financials = (entries as BillingStageEntry[]).map(mapStageEntryToFinancial);
+      result[stage].push(...financials);
+    }
 
     // Sort each stage by daysOverdue desc (most overdue first)
     for (const stage of Object.keys(result) as BillingStage[]) {
@@ -183,24 +149,20 @@ export class BillingReminderService {
   ): Promise<BillingContactLog> {
     const now = new Date();
 
-    const docData = {
-      financialId,
-      studentId,
-      studentName,
+    const raw = await api.post<{ id: string }>(this.contactsBase, {
+      financial_id: financialId,
+      student_id: studentId,
+      student_name: studentName,
       type,
       notes,
       stage,
-      daysOverdue,
-      contactedBy,
-      contactedByName,
-      academyId: this.academyId,
-      createdAt: Timestamp.fromDate(now),
-    };
-
-    const docRef = await addDoc(this.billingContactLogRef, docData);
+      days_overdue: daysOverdue,
+      contacted_by: contactedBy,
+      contacted_by_name: contactedByName,
+    });
 
     return {
-      id: docRef.id,
+      id: raw.id,
       financialId,
       studentId,
       studentName,
@@ -219,22 +181,33 @@ export class BillingReminderService {
   // Get Contact Log for a Financial Record
   // ============================================
   async getContactLog(financialId: string): Promise<BillingContactLog[]> {
-    const q = query(
-      this.billingContactLogRef,
-      where('financialId', '==', financialId),
-      orderBy('createdAt', 'desc')
+    const res = await api.get<{ items: unknown[] } | unknown[]>(
+      `${this.contactsBase}?financial_id=${financialId}`
     );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToContactLog);
+    const raw = Array.isArray(res) ? res : (res as { items: unknown[] }).items ?? [];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return raw.map((item: any) => ({
+      id: item.id,
+      financialId: item.financial_id,
+      studentId: item.student_id,
+      studentName: item.student_name,
+      type: item.type,
+      notes: item.notes,
+      stage: item.stage,
+      daysOverdue: item.days_overdue,
+      contactedBy: item.contacted_by,
+      contactedByName: item.contacted_by_name,
+      academyId: item.academy_id || this.academyId,
+      createdAt: new Date(item.created_at),
+    }));
   }
 
   // ============================================
   // Get Collection Stats
+  // Derived client-side from the stages response.
   // ============================================
   async getCollectionStats(): Promise<CollectionStats> {
-    const snapshot = await getDocs(this.financialsRef);
-    const financials = snapshot.docs.map(docToFinancial);
+    const stagesGrouped = await this.getOverdueWithStages();
 
     const stats: CollectionStats = {
       totalOverdue: 0,
@@ -255,29 +228,21 @@ export class BillingReminderService {
     const uniqueStudents = new Set<string>();
     let totalDaysOverdue = 0;
 
-    financials.forEach((financial) => {
-      if (financial.status !== 'overdue' && financial.status !== 'pending') return;
-
-      const daysOverdue = calculateDaysOverdue(financial.dueDate);
-      if (daysOverdue < 0) return;
-
-      const stage = classifyStage(daysOverdue);
-      if (!stage) return;
-
-      stats.totalOverdue++;
-      stats.totalOverdueAmount += financial.amount;
-      totalDaysOverdue += daysOverdue;
-      uniqueStudents.add(financial.studentId);
-
-      stats.byStage[stage].count++;
-      stats.byStage[stage].amount += financial.amount;
-    });
+    for (const stage of Object.keys(stagesGrouped) as BillingStage[]) {
+      for (const financial of stagesGrouped[stage]) {
+        const daysOverdue = calculateDaysOverdue(financial.dueDate);
+        stats.totalOverdue++;
+        stats.totalOverdueAmount += financial.amount;
+        totalDaysOverdue += daysOverdue;
+        uniqueStudents.add(financial.studentId);
+        stats.byStage[stage].count++;
+        stats.byStage[stage].amount += financial.amount;
+      }
+    }
 
     stats.totalStudentsOverdue = uniqueStudents.size;
-    stats.averageDaysOverdue = stats.totalOverdue > 0
-      ? Math.round(totalDaysOverdue / stats.totalOverdue)
-      : 0;
-    // Recovery rate is a placeholder; needs historical data to compute accurately
+    stats.averageDaysOverdue =
+      stats.totalOverdue > 0 ? Math.round(totalDaysOverdue / stats.totalOverdue) : 0;
     stats.recoveryRate = 0;
 
     return stats;
@@ -285,60 +250,62 @@ export class BillingReminderService {
 
   // ============================================
   // Get Billing Reminder Settings
+  // Stored as a single settings key in the Go backend.
   // ============================================
   async getBillingReminderSettings(): Promise<BillingReminderSettings> {
-    const settingsRef = doc(db, `academies/${this.academyId}/settings`, 'billingReminders');
-    const docSnap = await getDoc(settingsRef);
-
-    if (!docSnap.exists()) {
+    try {
+      const raw = await api.get<{ value: BillingReminderSettings }>(
+        `/v1/academies/${this.academyId}/settings/billingReminders`
+      );
+      const data = raw.value ?? (raw as unknown as BillingReminderSettings);
+      return {
+        enabled: data.enabled ?? DEFAULT_SETTINGS.enabled,
+        stages: data.stages ?? DEFAULT_SETTINGS.stages,
+        whatsappEnabled: data.whatsappEnabled ?? false,
+        emailEnabled: data.emailEnabled ?? false,
+        messageTemplates: data.messageTemplates,
+      };
+    } catch {
       return DEFAULT_SETTINGS;
     }
-
-    const data = docSnap.data();
-    return {
-      enabled: data.enabled ?? DEFAULT_SETTINGS.enabled,
-      stages: data.stages ?? DEFAULT_SETTINGS.stages,
-      whatsappEnabled: data.whatsappEnabled ?? false,
-      emailEnabled: data.emailEnabled ?? false,
-      messageTemplates: data.messageTemplates,
-    };
   }
 
   // ============================================
-  // Get Student Contacts Map (for notifications)
+  // Get Student Contacts Map
+  // Fetches via billing contacts endpoint.
   // ============================================
   async getStudentContacts(): Promise<Map<string, StudentContact>> {
-    const studentsRef = collections.students(this.academyId);
-    const snapshot = await getDocs(studentsRef);
-    const contactsMap = new Map<string, StudentContact>();
-
-    snapshot.docs.forEach((docSnap) => {
-      const data = docSnap.data();
-      if (!data) return;
-
-      contactsMap.set(docSnap.id, {
-        studentId: docSnap.id,
-        studentName: data.fullName || '',
-        phone: data.phone || undefined,
-        email: data.email || undefined,
-        guardianPhone: data.guardian?.phone || undefined,
-        guardianEmail: data.guardian?.email || undefined,
-        category: data.category || 'adult',
+    try {
+      const res = await api.get<{ items: unknown[] } | unknown[]>(this.contactsBase);
+      const raw = Array.isArray(res) ? res : (res as { items: unknown[] }).items ?? [];
+      const map = new Map<string, StudentContact>();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      raw.forEach((item: any) => {
+        if (!map.has(item.student_id)) {
+          map.set(item.student_id, {
+            studentId: item.student_id,
+            studentName: item.student_name || '',
+            phone: item.student_phone || undefined,
+            email: item.student_email || undefined,
+            guardianPhone: item.guardian_phone || undefined,
+            guardianEmail: item.guardian_email || undefined,
+            category: item.category || 'adult',
+          });
+        }
       });
-    });
-
-    return contactsMap;
+      return map;
+    } catch {
+      return new Map();
+    }
   }
 
   // ============================================
   // Save Billing Reminder Settings
   // ============================================
   async saveBillingReminderSettings(settings: BillingReminderSettings): Promise<void> {
-    const settingsRef = doc(db, `academies/${this.academyId}/settings`, 'billingReminders');
-    await setDoc(settingsRef, removeUndefinedDeep({
-      ...settings,
-      updatedAt: Timestamp.fromDate(new Date()),
-    }));
+    await api.put(`/v1/academies/${this.academyId}/settings/billingReminders`, {
+      value: settings,
+    });
   }
 }
 

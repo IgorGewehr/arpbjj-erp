@@ -123,6 +123,7 @@ export function useStudents(options: UseStudentsOptions = {}) {
     queryKey: [QUERY_KEYS.activeStudents, academyId],
     queryFn: () => studentService.getActive(),
     staleTime: 1000 * 60 * 5,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -437,6 +438,7 @@ export function useAllStudents() {
     queryKey: ['allStudents', academyId],
     queryFn: () => studentService.getAll(),
     staleTime: 1000 * 60 * 5, // 5 minutes
+    enabled: !!academyId,
   });
 
   return {

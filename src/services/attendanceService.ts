@@ -1,93 +1,78 @@
-import {
-  getDocs,
-  addDoc,
-  deleteDoc,
-  query,
-  where,
-  Timestamp,
-  DocumentSnapshot,
-  writeBatch,
-  updateDoc,
-  increment,
-  CollectionReference,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { collections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import { Attendance, AttendanceFilters } from '@/types';
-import { startOfDay, endOfDay, format } from 'date-fns';
-import { createAchievementService } from './achievementService';
-import { createStudentService } from './studentService';
+import { format } from 'date-fns';
 
 // Default academy for backwards compatibility
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
-// Attendance milestones for achievements
-const ATTENDANCE_MILESTONES = [50, 100, 200, 500, 1000];
+// ============================================
+// Go API response shapes
+// ============================================
+interface AttendanceDTO {
+  id: string;
+  academy_id: string;
+  student_id: string;
+  class_id: string;
+  date: string;
+  verified_by_uid: string;
+  weight: string;
+  created_at: string;
+}
 
+interface AttendancePageDTO {
+  items: AttendanceDTO[];
+  has_more: boolean;
+  next_cursor?: string;
+}
+
+interface RecordAttendanceResultDTO {
+  status: string;
+  attendance?: AttendanceDTO;
+  error?: string;
+}
+
+interface RecordAttendanceResponseDTO {
+  results: RecordAttendanceResultDTO[];
+  promotion_eligible_student_ids?: string[];
+}
 
 // ============================================
-// Helper: Convert Firestore document to Attendance
+// Mapper: Go DTO → Attendance
 // ============================================
-const docToAttendance = (doc: DocumentSnapshot): Attendance => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
-
-  return {
-    id: doc.id,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    classId: data.classId,
-    className: data.className,
-    date: data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date),
-    verifiedBy: data.verifiedBy,
-    verifiedByName: data.verifiedByName,
-    notes: data.notes,
-    weight: typeof data.weight === 'number' ? data.weight : undefined,
-    // createdAt might not be set immediately when using serverTimestamp()
-    createdAt: data.createdAt instanceof Timestamp
-      ? data.createdAt.toDate()
-      : data.createdAt
-        ? new Date(data.createdAt)
-        : new Date(),
-  };
-};
+const dtoToAttendance = (dto: AttendanceDTO): Attendance => ({
+  id: dto.id,
+  studentId: dto.student_id,
+  classId: dto.class_id,
+  date: new Date(dto.date),
+  verifiedBy: dto.verified_by_uid,
+  weight: dto.weight ? parseFloat(dto.weight) : undefined,
+  createdAt: new Date(dto.created_at),
+});
 
 // ============================================
 // Attendance Service (Multi-Tenant)
 // ============================================
 export class AttendanceService {
   private academyId: string;
-  private attendanceRef: CollectionReference;
-  private studentService: ReturnType<typeof createStudentService>;
-  private achievementService: ReturnType<typeof createAchievementService>;
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.attendanceRef = collections.attendance(academyId);
-    this.studentService = createStudentService(academyId);
-    this.achievementService = createAchievementService(academyId);
+  }
+
+  private base(): string {
+    return `/v1/academies/${this.academyId}/attendance`;
   }
 
   // ============================================
   // Get Attendance by Date and Class
   // ============================================
   async getByDateAndClass(date: Date, classId: string): Promise<Attendance[]> {
-    const start = startOfDay(date);
-    const end = endOfDay(date);
-
-    // Query by classId first, then filter by date in memory
-    // This avoids needing a composite index
-    const q = query(
-      this.attendanceRef,
-      where('classId', '==', classId)
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const res = await api.get<AttendancePageDTO>(
+      `${this.base()}?classId=${classId}&dateFrom=${dateStr}&dateTo=${dateStr}&limit=10000`
     );
-
-    const snapshot = await getDocs(q);
-    const allAttendance = snapshot.docs.map(docToAttendance);
-
-    // Filter by date range using getTime() for robust comparison
-    return allAttendance
-      .filter(a => a.date.getTime() >= start.getTime() && a.date.getTime() <= end.getTime())
+    return res.items
+      .map(dtoToAttendance)
       .sort((a, b) => b.date.getTime() - a.date.getTime());
   }
 
@@ -102,17 +87,12 @@ export class AttendanceService {
   // Get Attendance by Student
   // ============================================
   async getByStudent(studentId: string, limitCount = 50): Promise<Attendance[]> {
-    const q = query(
-      this.attendanceRef,
-      where('studentId', '==', studentId)
+    const res = await api.get<AttendancePageDTO>(
+      `${this.base()}?studentId=${studentId}&limit=${limitCount}`
     );
-
-    const snapshot = await getDocs(q);
-    const attendance = snapshot.docs.map(docToAttendance);
-    // Sort client-side and limit
-    return attendance
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, limitCount);
+    return res.items
+      .map(dtoToAttendance)
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
   }
 
   // ============================================
@@ -123,50 +103,28 @@ export class AttendanceService {
     endDate: Date,
     filters?: AttendanceFilters
   ): Promise<Attendance[]> {
-    // Fetch all attendance and filter in memory to avoid composite index
-    const snapshot = await getDocs(this.attendanceRef);
-    let results = snapshot.docs.map(docToAttendance);
+    const from = format(startDate, 'yyyy-MM-dd');
+    const to = format(endDate, 'yyyy-MM-dd');
 
-    const start = startOfDay(startDate);
-    const end = endOfDay(endDate);
+    let url = `${this.base()}?dateFrom=${from}&dateTo=${to}&limit=10000`;
+    if (filters?.classId) url += `&classId=${filters.classId}`;
+    if (filters?.studentId) url += `&studentId=${filters.studentId}`;
 
-    // Filter by date range using getTime() for robust comparison
-    results = results.filter(a => a.date.getTime() >= start.getTime() && a.date.getTime() <= end.getTime());
-
-    // Apply additional filters in memory
-    if (filters?.classId) {
-      results = results.filter((a) => a.classId === filters.classId);
-    }
-    if (filters?.studentId) {
-      results = results.filter((a) => a.studentId === filters.studentId);
-    }
-
-    // Sort by date descending
-    return results.sort((a, b) => b.date.getTime() - a.date.getTime());
+    const res = await api.get<AttendancePageDTO>(url);
+    return res.items
+      .map(dtoToAttendance)
+      .sort((a, b) => b.date.getTime() - a.date.getTime());
   }
 
   // ============================================
   // Check if Student is Present
   // ============================================
   async isStudentPresent(studentId: string, classId: string, date: Date): Promise<boolean> {
-    const start = startOfDay(date);
-    const end = endOfDay(date);
-
-    // Query by studentId only and filter in memory to avoid composite index
-    const q = query(
-      this.attendanceRef,
-      where('studentId', '==', studentId)
+    const dateStr = format(date, 'yyyy-MM-dd');
+    const res = await api.get<AttendancePageDTO>(
+      `${this.base()}?studentId=${studentId}&classId=${classId}&dateFrom=${dateStr}&dateTo=${dateStr}&limit=1`
     );
-
-    const snapshot = await getDocs(q);
-    const attendance = snapshot.docs.map(docToAttendance);
-
-    // Filter by classId and date in memory using getTime() for robust comparison
-    return attendance.some(
-      a => a.classId === classId &&
-           a.date.getTime() >= start.getTime() &&
-           a.date.getTime() <= end.getTime()
-    );
+    return res.items.length > 0;
   }
 
   // ============================================
@@ -191,199 +149,53 @@ export class AttendanceService {
     notes?: string,
     weight?: number
   ): Promise<Attendance> {
-    // Normalize date to noon to avoid timezone issues
-    const normalizedDate = new Date(date);
-    normalizedDate.setHours(12, 0, 0, 0);
+    const dateStr = format(date, 'yyyy-MM-dd');
 
-    // Check if already marked
-    const isPresent = await this.isStudentPresent(studentId, classId, normalizedDate);
-    if (isPresent) {
-      throw new Error('Aluno já marcado como presente');
-    }
-
-    const now = new Date();
-    const docData: Record<string, unknown> = {
-      studentId,
-      studentName,
-      classId,
-      className,
-      date: Timestamp.fromDate(normalizedDate),
-      verifiedBy,
-      verifiedByName,
-      createdAt: Timestamp.fromDate(now),
+    const body: Record<string, unknown> = {
+      class_id: classId,
+      date: dateStr,
     };
-
-    // Only add notes if it has a value (Firestore doesn't accept undefined)
-    if (notes) {
-      docData.notes = notes;
-    }
-
-    // Snapshot the weight so historical counts stay stable if the class
-    // weight changes later. Only persist when it's not the default (1) to
-    // keep older docs interchangeable with newly created ones.
     if (weight !== undefined && weight !== 1) {
-      docData.weight = weight;
+      body.weight = weight.toString();
     }
 
-    const docRef = await addDoc(this.attendanceRef, docData);
+    const dto = await api.post<AttendanceDTO>(
+      `/v1/academies/${this.academyId}/students/${studentId}/attendance`,
+      body
+    );
 
-    // Increment the student's attendanceCount (async, don't block main flow)
-    const studentDocRef = collections.student(this.academyId, studentId);
-    updateDoc(studentDocRef, {
-      attendanceCount: increment(1),
-    }).catch(() => {
-      // Silently ignore errors - don't break attendance flow
-    });
-
-    // Return the attendance object directly without re-fetching
-    const attendance: Attendance = {
-      id: docRef.id,
-      studentId,
-      studentName,
-      classId,
-      className,
-      date: normalizedDate,
-      verifiedBy,
-      verifiedByName,
-      notes,
-      weight,
-      createdAt: now,
-    };
-
-    // Check for attendance milestones (async, don't block)
-    this.checkAttendanceMilestone(studentId, studentName, verifiedBy).catch(() => {
-      // Silently ignore errors - don't break attendance flow
-    });
-
-    return attendance;
+    return dtoToAttendance(dto);
   }
 
   // ============================================
   // Get Weighted Attendance Count
-  //
-  // Sums Attendance.weight (defaulting to 1 for legacy docs). Use this instead
-  // of getStudentAttendanceCount when the academy has useClassWeights enabled.
   // ============================================
   async getStudentWeightedAttendanceCount(studentId: string): Promise<number> {
-    const q = query(
-      this.attendanceRef,
-      where('studentId', '==', studentId)
-    );
-    const snapshot = await getDocs(q);
-    let total = 0;
-    for (const doc of snapshot.docs) {
-      const w = doc.data().weight;
-      total += typeof w === 'number' && w > 0 ? w : 1;
-    }
-    return total;
+    const attendance = await this.getByStudent(studentId, 100000);
+    return attendance.reduce((sum, a) => sum + (a.weight ?? 1), 0);
   }
 
   // ============================================
-  // Check Attendance Milestone
+  // Check Attendance Milestone (no-op — backend fires outbox events)
   // ============================================
   async checkAttendanceMilestone(
-    studentId: string,
-    studentName: string,
-    createdBy: string
+    _studentId: string,
+    _studentName: string,
+    _createdBy: string
   ): Promise<void> {
-    // Get system attendance count
-    const systemCount = await this.getStudentAttendanceCount(studentId);
-
-    // Get student to access initialAttendanceCount (previous trainings)
-    const student = await this.studentService.getById(studentId);
-    const initialCount = student?.initialAttendanceCount || 0;
-
-    // Total count = system + previous trainings
-    const totalCount = systemCount + initialCount;
-
-    // Check if current total matches any milestone
-    if (ATTENDANCE_MILESTONES.includes(totalCount)) {
-      // IMPORTANT: Only create achievement if the milestone was reached through
-      // system attendance records, not through initialAttendanceCount alone
-      // This ensures we have an accurate date for the achievement
-      //
-      // Example: if initialCount = 300, milestones 50, 100, 200 were already passed
-      // before the system, so we skip them. The first achievement would be 500.
-      if (initialCount >= totalCount) {
-        // This milestone was already reached before system records - skip
-        return;
-      }
-
-      // Check if achievement already exists
-      const existingAchievements = await this.achievementService.getByStudent(studentId);
-      const alreadyHasMilestone = existingAchievements.some(
-        (a) => a.type === 'milestone' && a.milestone === `${totalCount}_presencas`
-      );
-
-      if (!alreadyHasMilestone) {
-        // The milestone was reached in the system, find the exact attendance date
-        const targetSystemIndex = totalCount - initialCount; // Which system attendance hit the milestone
-        const allAttendance = await this.getByStudent(studentId, 10000);
-        // Sort by date ascending to find the N-th attendance
-        const sortedAsc = allAttendance.sort((a, b) => a.date.getTime() - b.date.getTime());
-
-        let milestoneDate: Date | undefined;
-        if (sortedAsc.length >= targetSystemIndex) {
-          milestoneDate = sortedAsc[targetSystemIndex - 1].date;
-        }
-
-        await this.achievementService.createAttendanceMilestone(
-          studentId,
-          studentName,
-          totalCount,
-          milestoneDate,
-          createdBy
-        );
-      }
-    }
+    // The Go backend handles milestone events automatically via outbox.
+    // Nothing to do on the frontend.
   }
 
   // ============================================
   // Remove Attendance (Unmark)
   // ============================================
   async unmarkPresent(studentId: string, classId: string, date: Date): Promise<void> {
-    // Normalize date for consistent comparison
-    const normalizedDate = new Date(date);
-    normalizedDate.setHours(12, 0, 0, 0);
-    const start = startOfDay(normalizedDate);
-    const end = endOfDay(normalizedDate);
-
-    // Query by studentId only and filter in memory to avoid composite index
-    const q = query(
-      this.attendanceRef,
-      where('studentId', '==', studentId)
+    const dateStr = format(date, 'yyyy-MM-dd');
+    await api.delete(
+      `/v1/academies/${this.academyId}/students/${studentId}/attendance`,
+      { class_id: classId, date: dateStr }
     );
-
-    const snapshot = await getDocs(q);
-
-    // Filter by classId and date in memory using getTime() for robust comparison
-    const matchingDocs = snapshot.docs.filter(doc => {
-      const data = doc.data();
-      const docDate = data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date);
-      return data.classId === classId &&
-             docDate.getTime() >= start.getTime() &&
-             docDate.getTime() <= end.getTime();
-    });
-
-    if (matchingDocs.length === 0) {
-      throw new Error('Presença não encontrada');
-    }
-
-    // Delete all matches (should be only one)
-    const batch = writeBatch(db);
-    matchingDocs.forEach((docSnapshot) => {
-      batch.delete(docSnapshot.ref);
-    });
-
-    await batch.commit();
-
-    // Decrement the student's attendanceCount (async, don't block main flow)
-    const studentDocRef = collections.student(this.academyId, studentId);
-    updateDoc(studentDocRef, {
-      attendanceCount: increment(-matchingDocs.length),
-    }).catch(() => {
-      // Silently ignore errors
-    });
   }
 
   // ============================================
@@ -398,46 +210,38 @@ export class AttendanceService {
     date: Date = new Date(),
     weight?: number
   ): Promise<Attendance[]> {
-    // Normalize date for consistency
-    const normalizedDate = new Date(date);
-    normalizedDate.setHours(12, 0, 0, 0);
+    const dateStr = format(date, 'yyyy-MM-dd');
 
-    const results: Attendance[] = [];
-
-    for (const student of students) {
-      try {
-        const attendance = await this.markPresent(
-          student.id,
-          student.name,
-          classId,
-          className,
-          verifiedBy,
-          verifiedByName,
-          normalizedDate,
-          undefined,
-          weight
-        );
-        results.push(attendance);
-      } catch {
-        // Student already marked, skip
-        continue;
+    const entries = students.map((s) => {
+      const entry: Record<string, unknown> = {
+        student_id: s.id,
+        class_id: classId,
+        date: dateStr,
+      };
+      if (weight !== undefined && weight !== 1) {
+        entry.weight = weight.toString();
       }
-    }
+      return entry;
+    });
 
-    return results;
+    const res = await api.post<RecordAttendanceResponseDTO>(
+      `${this.base()}`,
+      { items: entries }
+    );
+
+    return res.results
+      .filter((r) => r.status === 'created' && r.attendance)
+      .map((r) => dtoToAttendance(r.attendance!));
   }
 
   // ============================================
-  // Get Student Attendance Count (system only, without initial)
+  // Get Student Attendance Count (system only)
   // ============================================
   async getStudentAttendanceCount(studentId: string): Promise<number> {
-    const q = query(
-      this.attendanceRef,
-      where('studentId', '==', studentId)
+    const res = await api.get<AttendancePageDTO>(
+      `${this.base()}?studentId=${studentId}&limit=10000`
     );
-
-    const snapshot = await getDocs(q);
-    return snapshot.size;
+    return res.items.length;
   }
 
   // ============================================
@@ -481,18 +285,11 @@ export class AttendanceService {
   // Get Today's Total Attendance
   // ============================================
   async getTodayTotal(): Promise<number> {
-    const today = new Date();
-    const start = startOfDay(today);
-    const end = endOfDay(today);
-
-    const q = query(
-      this.attendanceRef,
-      where('date', '>=', Timestamp.fromDate(start)),
-      where('date', '<=', Timestamp.fromDate(end))
+    const today = format(new Date(), 'yyyy-MM-dd');
+    const res = await api.get<AttendancePageDTO>(
+      `${this.base()}?dateFrom=${today}&dateTo=${today}&limit=10000`
     );
-
-    const snapshot = await getDocs(q);
-    return snapshot.size;
+    return res.items.length;
   }
 
   // ============================================
@@ -503,15 +300,11 @@ export class AttendanceService {
     startDate: Date,
     totalPossibleClasses: number
   ): Promise<number> {
-    const q = query(
-      this.attendanceRef,
-      where('studentId', '==', studentId),
-      where('date', '>=', Timestamp.fromDate(startDate))
+    const from = format(startDate, 'yyyy-MM-dd');
+    const res = await api.get<AttendancePageDTO>(
+      `${this.base()}?studentId=${studentId}&dateFrom=${from}&limit=10000`
     );
-
-    const snapshot = await getDocs(q);
-    const attended = snapshot.size;
-
+    const attended = res.items.length;
     if (totalPossibleClasses === 0) return 0;
     return (attended / totalPossibleClasses) * 100;
   }
@@ -520,33 +313,25 @@ export class AttendanceService {
   // Delete Attendance by ID
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = collections.attendanceDoc(this.academyId, id);
-    await deleteDoc(docRef);
+    await api.delete(`${this.base()}/${id}`);
   }
 
   // ============================================
-  // Recalculate All Achievements for a Student
-  // (Attendance milestones are only created when reached through
-  // system attendance records, not initial counts)
+  // Recalculate Achievements for Student (no-op — backend handles)
   // ============================================
   async recalculateAchievementsForStudent(
-    studentId: string,
-    studentName: string,
-    createdBy: string
+    _studentId: string,
+    _studentName: string,
+    _createdBy: string
   ): Promise<{ anniversaryCreated: string[]; attendanceCreated: string[] }> {
-    const result = {
-      anniversaryCreated: [] as string[],
-      attendanceCreated: [] as string[],
-    };
-
-    return result;
+    return { anniversaryCreated: [], attendanceCreated: [] };
   }
 
   // ============================================
-  // Recalculate All Achievements for All Students
+  // Recalculate All Achievements (no-op — backend handles)
   // ============================================
   async recalculateAllAchievements(
-    createdBy: string
+    _createdBy: string
   ): Promise<{
     studentsProcessed: number;
     totalAnniversaryCreated: number;
@@ -558,42 +343,12 @@ export class AttendanceService {
       attendanceCreated: string[];
     }>;
   }> {
-    const result = {
+    return {
       studentsProcessed: 0,
       totalAnniversaryCreated: 0,
       totalAttendanceCreated: 0,
-      details: [] as Array<{
-        studentId: string;
-        studentName: string;
-        anniversaryCreated: string[];
-        attendanceCreated: string[];
-      }>,
+      details: [],
     };
-
-    // Get all active students
-    const activeStudents = await this.studentService.getByStatus('active');
-
-    for (const student of activeStudents) {
-      const studentResult = await this.recalculateAchievementsForStudent(
-        student.id,
-        student.fullName,
-        createdBy
-      );
-
-      result.studentsProcessed++;
-      result.totalAnniversaryCreated += studentResult.anniversaryCreated.length;
-      result.totalAttendanceCreated += studentResult.attendanceCreated.length;
-
-      if (studentResult.anniversaryCreated.length > 0 || studentResult.attendanceCreated.length > 0) {
-        result.details.push({
-          studentId: student.id,
-          studentName: student.fullName,
-          ...studentResult,
-        });
-      }
-    }
-
-    return result;
   }
 }
 

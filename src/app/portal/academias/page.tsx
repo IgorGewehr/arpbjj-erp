@@ -35,9 +35,8 @@ import {
   Info,
   Building2,
 } from 'lucide-react';
-import { doc, updateDoc, deleteDoc, getDoc, collection, query, where, getDocs, arrayRemove } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { api } from '@/lib/api/client';
 import { useFeedback } from '@/components/providers';
 import { useAcademy, AcademyInfo } from '@/contexts/AcademyContext';
 
@@ -97,68 +96,18 @@ export default function AcademiasPage() {
       const academyId = unlinkDialog.id;
       const userId = firebaseUser.uid;
 
-      // Get current mapping
-      const mappingRef = doc(db, 'userAcademyMapping', userId);
-      const mappingSnap = await getDoc(mappingRef);
-
-      if (!mappingSnap.exists()) {
-        throw new Error('Mapping not found');
-      }
-
-      const mapping = mappingSnap.data();
-      const currentAcademyIds = mapping.academyIds || [];
-      const currentDetails = mapping.academyDetails || {};
-      const studentId = currentDetails[academyId]?.studentId;
-
-      // Remove academy from user's mapping
-      const newAcademyIds = currentAcademyIds.filter((id: string) => id !== academyId);
-      const newDetails = { ...currentDetails };
-      delete newDetails[academyId];
-
-      // Determine new primary
-      const newPrimaryId = mapping.primaryAcademyId === academyId
-        ? (newAcademyIds.length > 0 ? newAcademyIds[0] : null)
-        : mapping.primaryAcademyId;
-
-      // Update mapping
-      await updateDoc(mappingRef, {
-        academyIds: newAcademyIds,
-        primaryAcademyId: newPrimaryId,
-        academyDetails: newDetails,
-        updatedAt: new Date(),
-      });
-
-      // If no more academies, set user back to 'free'
-      if (newAcademyIds.length === 0) {
-        const userRef = doc(db, 'users', userId);
-        await updateDoc(userRef, {
-          accountType: 'free',
-          updatedAt: new Date(),
-        });
-      }
-
-      // Unlink student from user in academy
-      if (studentId) {
-        const studentRef = doc(db, `academies/${academyId}/students`, studentId);
-        await updateDoc(studentRef, {
-          linkedUserId: null,
-          updatedAt: new Date(),
-        });
-      }
-
-      // Delete academy user document
-      const academyUserRef = doc(db, `academies/${academyId}/users`, userId);
-      await deleteDoc(academyUserRef);
+      await api.delete(`/v1/academies/${academyId}/users/${userId}`);
 
       success(`Desvinculado de ${unlinkDialog.name}`);
       setUnlinkDialog(null);
 
-      // Refresh data
       await refreshAcademiesInfo();
 
-      // If we unlinked the currently selected academy, switch to another
-      if (academyId === selectedAcademyId && newAcademyIds.length > 0) {
-        await setAcademy(newAcademyIds[0]);
+      if (academyId === selectedAcademyId) {
+        const remaining = academiesInfo.filter(a => a.id !== academyId);
+        if (remaining.length > 0) {
+          await setAcademy(remaining[0].id);
+        }
       }
     } catch (err) {
       console.error('Error unlinking academy:', err);
@@ -166,7 +115,7 @@ export default function AcademiasPage() {
     } finally {
       setIsUnlinking(false);
     }
-  }, [unlinkDialog, firebaseUser, selectedAcademyId, setAcademy, refreshAcademiesInfo, success, showError]);
+  }, [unlinkDialog, firebaseUser, selectedAcademyId, academiesInfo, setAcademy, refreshAcademiesInfo, success, showError]);
 
   if (isLoading) {
     return (

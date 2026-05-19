@@ -1,22 +1,4 @@
-import {
-  doc,
-  getDoc,
-  getDocs,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  serverTimestamp,
-  Timestamp,
-  increment,
-  setDoc,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { collections } from '@/lib/firebase/collections';
-import { removeUndefinedDeep } from '@/lib/firestoreUtils';
+import { api } from '@/lib/api/client';
 import {
   StoreProduct,
   StoreOrder,
@@ -58,44 +40,84 @@ export interface CreateOrderData {
 }
 
 // ============================================
+// Mappers
+// ============================================
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapProduct = (raw: any): StoreProduct => ({
+  id: raw.id,
+  academyId: raw.academy_id,
+  name: raw.name,
+  description: raw.description,
+  price: typeof raw.price === 'string' ? parseFloat(raw.price) : raw.price,
+  images: raw.images || [],
+  category: raw.category,
+  stockType: raw.stock_type,
+  stockQuantity: raw.stock_quantity,
+  sizes: raw.sizes || [],
+  colors: raw.colors || [],
+  active: raw.active ?? true,
+  createdAt: new Date(raw.created_at),
+  updatedAt: new Date(raw.updated_at),
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapOrderItem = (item: any): StoreOrderItem => ({
+  productId: item.product_id ?? item.productId,
+  productName: item.product_name ?? item.productName,
+  quantity: item.quantity,
+  unitPrice: typeof (item.unit_price ?? item.unitPrice) === 'string'
+    ? parseFloat(item.unit_price ?? item.unitPrice)
+    : (item.unit_price ?? item.unitPrice ?? 0),
+  size: item.size,
+  color: item.color,
+});
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapOrder = (raw: any): StoreOrder => ({
+  id: raw.id,
+  academyId: raw.academy_id,
+  studentId: raw.student_id,
+  studentName: raw.student_name,
+  items: (raw.items || []).map(mapOrderItem),
+  totalAmount: typeof (raw.total_amount ?? raw.total) === 'string'
+    ? parseFloat(raw.total_amount ?? raw.total)
+    : (raw.total_amount ?? raw.total ?? 0),
+  status: raw.status,
+  paymentMethod: raw.payment_method,
+  abacatePayTransactionId: raw.abacate_pay_transaction_id,
+  pixCode: raw.pix_code,
+  qrCodeUrl: raw.qr_code_url,
+  notes: raw.notes,
+  createdAt: new Date(raw.created_at),
+  updatedAt: new Date(raw.updated_at),
+  paidAt: raw.paid_at ? new Date(raw.paid_at) : undefined,
+  deliveredAt: raw.delivered_at ? new Date(raw.delivered_at) : undefined,
+});
+
+// ============================================
 // Store Service Class (Multi-Tenant)
 // ============================================
 class StoreService {
   private academyId: string;
-  private apiBaseUrl = 'https://api.abacatepay.com/v1';
 
   constructor(academyId: string) {
     this.academyId = academyId;
   }
 
-  private get productsRef() {
-    return collections.storeProducts(this.academyId);
+  private get productsBase() {
+    return `/v1/academies/${this.academyId}/store/products`;
   }
 
-  private get ordersRef() {
-    return collections.storeOrders(this.academyId);
-  }
-
-  // ============================================
-  // Get Global API Key (from environment)
-  // ============================================
-  private getApiKey(): string | null {
-    // API Key is global (single AbacatePay account for all academies)
-    return process.env.ABACATEPAY_API_KEY || null;
+  private get ordersBase() {
+    return `/v1/academies/${this.academyId}/store/orders`;
   }
 
   // ============================================
-  // Check if AbacatePay is Enabled
+  // Payment enabled — no longer stored per-academy in Firestore,
+  // now driven by Go backend settings. Always return true.
   // ============================================
   async isPaymentEnabled(): Promise<boolean> {
-    const academyRef = doc(db, 'academies', this.academyId);
-    const academySnap = await getDoc(academyRef);
-
-    if (!academySnap.exists()) {
-      return false;
-    }
-
-    return academySnap.data().abacatePayEnabled === true;
+    return true;
   }
 
   // ============================================
@@ -103,106 +125,72 @@ class StoreService {
   // ============================================
 
   async getProducts(): Promise<StoreProduct[]> {
-    const q = query(this.productsRef, orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map((doc) => this.mapProductDoc(doc));
+    const res = await api.get<{ items: unknown[] } | unknown[]>(this.productsBase);
+    const raw = Array.isArray(res) ? res : (res as { items: unknown[] }).items ?? [];
+    return raw.map(mapProduct);
   }
 
   async getActiveProducts(): Promise<StoreProduct[]> {
-    // Fetch all products and filter client-side to avoid composite index requirement
-    const q = query(this.productsRef, orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs
-      .map((doc) => this.mapProductDoc(doc))
-      .filter((product) => product.active === true);
+    const products = await this.getProducts();
+    return products.filter((p) => p.active === true);
   }
 
   async getProductById(id: string): Promise<StoreProduct | null> {
-    const docRef = collections.storeProduct(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
+    try {
+      const raw = await api.get<unknown>(`${this.productsBase}/${id}`);
+      return mapProduct(raw);
+    } catch {
       return null;
     }
-
-    return this.mapProductDoc(docSnap);
   }
 
   async createProduct(data: CreateProductData): Promise<StoreProduct> {
-    const productData: Record<string, unknown> = {
-      academyId: this.academyId,
+    const raw = await api.post<unknown>(this.productsBase, {
       name: data.name,
       description: data.description || '',
       price: data.price,
       images: data.images || [],
       category: data.category,
-      stockType: data.stockType,
+      stock_type: data.stockType,
+      stock_quantity: data.stockQuantity ?? null,
       sizes: data.sizes || [],
       colors: data.colors || [],
       active: data.active ?? true,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-
-    if (data.stockType === 'in_stock') {
-      productData.stockQuantity = data.stockQuantity || 0;
-    }
-
-    const docRef = await addDoc(this.productsRef, productData);
-
-    return {
-      id: docRef.id,
-      ...productData,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as StoreProduct;
+    });
+    return mapProduct(raw);
   }
 
   async updateProduct(id: string, data: Partial<CreateProductData>): Promise<StoreProduct> {
-    const docRef = collections.storeProduct(this.academyId, id);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const body: Record<string, any> = {};
+    if (data.name !== undefined) body.name = data.name;
+    if (data.description !== undefined) body.description = data.description;
+    if (data.price !== undefined) body.price = data.price;
+    if (data.images !== undefined) body.images = data.images;
+    if (data.category !== undefined) body.category = data.category;
+    if (data.stockType !== undefined) body.stock_type = data.stockType;
+    if (data.stockQuantity !== undefined) body.stock_quantity = data.stockQuantity;
+    if (data.sizes !== undefined) body.sizes = data.sizes;
+    if (data.colors !== undefined) body.colors = data.colors;
+    if (data.active !== undefined) body.active = data.active;
 
-    const updateData: Record<string, unknown> = {
-      updatedAt: serverTimestamp(),
-    };
-
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.price !== undefined) updateData.price = data.price;
-    if (data.images !== undefined) updateData.images = data.images;
-    if (data.category !== undefined) updateData.category = data.category;
-    if (data.stockType !== undefined) updateData.stockType = data.stockType;
-    if (data.stockQuantity !== undefined) updateData.stockQuantity = data.stockQuantity;
-    if (data.sizes !== undefined) updateData.sizes = data.sizes;
-    if (data.colors !== undefined) updateData.colors = data.colors;
-    if (data.active !== undefined) updateData.active = data.active;
-
-    await updateDoc(docRef, updateData);
-
-    const updated = await this.getProductById(id);
-    return updated!;
+    const raw = await api.patch<unknown>(`${this.productsBase}/${id}`, body);
+    return mapProduct(raw);
   }
 
   async deleteProduct(id: string): Promise<void> {
-    const docRef = collections.storeProduct(this.academyId, id);
-    await deleteDoc(docRef);
+    await api.delete(`${this.productsBase}/${id}`);
   }
 
   async updateStock(id: string, quantity: number): Promise<void> {
-    const docRef = collections.storeProduct(this.academyId, id);
-    await updateDoc(docRef, {
-      stockQuantity: quantity,
-      updatedAt: serverTimestamp(),
-    });
+    await api.patch(`${this.productsBase}/${id}`, { stock_quantity: quantity });
   }
 
   async decrementStock(id: string, amount: number): Promise<void> {
-    const docRef = collections.storeProduct(this.academyId, id);
-    await updateDoc(docRef, {
-      stockQuantity: increment(-amount),
-      updatedAt: serverTimestamp(),
-    });
+    const product = await this.getProductById(id);
+    if (!product) return;
+    const newQuantity = (product.stockQuantity ?? 0) - amount;
+    await this.updateStock(id, newQuantity);
   }
 
   // ============================================
@@ -210,537 +198,85 @@ class StoreService {
   // ============================================
 
   async createOrder(data: CreateOrderData): Promise<StoreOrder> {
-    // SECURITY: Fetch product prices from database - NEVER trust client prices
-    const validatedItems: StoreOrderItem[] = [];
-
-    for (const item of data.items) {
-      const product = await this.getProductById(item.productId);
-
-      if (!product) {
-        throw new Error(`Produto não encontrado: ${item.productId}`);
-      }
-
-      if (!product.active) {
-        throw new Error(`Produto indisponível: ${product.name}`);
-      }
-
-      // Validate stock for in_stock products
-      if (product.stockType === 'in_stock') {
-        const availableStock = product.stockQuantity ?? 0;
-        if (availableStock < item.quantity) {
-          throw new Error(
-            `Estoque insuficiente para "${product.name}". Disponível: ${availableStock}, Solicitado: ${item.quantity}`
-          );
-        }
-      }
-
-      // Validate size if product has sizes
-      if (product.sizes && product.sizes.length > 0 && item.size) {
-        if (!product.sizes.includes(item.size)) {
-          throw new Error(`Tamanho inválido para "${product.name}": ${item.size}`);
-        }
-      }
-
-      // Validate color if product has colors
-      if (product.colors && product.colors.length > 0 && item.color) {
-        if (!product.colors.includes(item.color)) {
-          throw new Error(`Cor inválida para "${product.name}": ${item.color}`);
-        }
-      }
-
-      // Build validated item with SERVER-SIDE price
-      // Note: Firestore doesn't accept undefined values, so we only include optional fields if they have values
-      const validatedItem: StoreOrderItem = {
-        productId: product.id,
-        productName: product.name,
+    const raw = await api.post<unknown>(this.ordersBase, {
+      student_id: data.studentId,
+      student_name: data.studentName,
+      items: data.items.map((item) => ({
+        product_id: item.productId,
         quantity: item.quantity,
-        unitPrice: product.price, // SECURITY: Always use database price
-      };
-
-      // Only add size/color if they have values (Firestore rejects undefined)
-      if (item.size) validatedItem.size = item.size;
-      if (item.color) validatedItem.color = item.color;
-
-      validatedItems.push(validatedItem);
-    }
-
-    // Calculate total from validated items (server-side prices)
-    const total = validatedItems.reduce(
-      (sum, item) => sum + item.unitPrice * item.quantity,
-      0
-    );
-
-    // Build order data - ensure no undefined values for Firestore
-    const orderData: Record<string, unknown> = {
-      academyId: this.academyId,
-      studentId: data.studentId,
-      studentName: data.studentName,
-      items: validatedItems,
-      total,
-      status: 'pending_payment' as StoreOrderStatus,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    };
-
-    // Only add notes if provided (Firestore rejects undefined)
-    if (data.notes) {
-      orderData.notes = data.notes;
-    }
-
-    const docRef = await addDoc(this.ordersRef, orderData);
-
-    // Notify admin about new order (non-blocking - student may not have notification permissions)
-    this.notifyAdmin(
-      'Novo Pedido',
-      `${data.studentName} fez um pedido de R$ ${total.toFixed(2)}.`,
-      `/loja/pedidos?id=${docRef.id}`
-    ).catch(() => {});
-
-    return {
-      id: docRef.id,
-      ...orderData,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    } as StoreOrder;
+        size: item.size ?? null,
+        color: item.color ?? null,
+      })),
+      notes: data.notes ?? null,
+    });
+    return mapOrder(raw);
   }
 
   async getOrders(): Promise<StoreOrder[]> {
-    const q = query(this.ordersRef, orderBy('createdAt', 'desc'));
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map((doc) => this.mapOrderDoc(doc));
+    const res = await api.get<{ items: unknown[] } | unknown[]>(this.ordersBase);
+    const raw = Array.isArray(res) ? res : (res as { items: unknown[] }).items ?? [];
+    return raw.map(mapOrder);
   }
 
   async getOrdersByStatus(status: StoreOrderStatus): Promise<StoreOrder[]> {
-    const q = query(
-      this.ordersRef,
-      where('status', '==', status),
-      orderBy('createdAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map((doc) => this.mapOrderDoc(doc));
+    const orders = await this.getOrders();
+    return orders.filter((o) => o.status === status);
   }
 
   async getOrdersByStudent(studentId: string): Promise<StoreOrder[]> {
-    const q = query(
-      this.ordersRef,
-      where('studentId', '==', studentId),
-      orderBy('createdAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
-
-    return snapshot.docs.map((doc) => this.mapOrderDoc(doc));
+    const orders = await this.getOrders();
+    return orders.filter((o) => o.studentId === studentId);
   }
 
   async getOrderById(id: string): Promise<StoreOrder | null> {
-    const docRef = collections.storeOrder(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
+    try {
+      const raw = await api.get<unknown>(`${this.ordersBase}/${id}`);
+      return mapOrder(raw);
+    } catch {
       return null;
     }
-
-    return this.mapOrderDoc(docSnap);
   }
 
   async updateOrderStatus(id: string, status: StoreOrderStatus): Promise<StoreOrder> {
-    const docRef = collections.storeOrder(this.academyId, id);
-    const order = await this.getOrderById(id);
-
-    if (!order) {
-      throw new Error('Order not found');
-    }
-
-    // If changing to "paid" status, validate and decrement stock
-    if (status === 'paid' && order.status === 'pending_payment') {
-      // SECURITY: Validate stock before payment (prevent race conditions)
-      for (const item of order.items) {
-        const product = await this.getProductById(item.productId);
-        if (!product) {
-          throw new Error(`Produto não encontrado: ${item.productName}`);
-        }
-
-        if (product.stockType === 'in_stock') {
-          const availableStock = product.stockQuantity ?? 0;
-          if (availableStock < item.quantity) {
-            throw new Error(
-              `Estoque insuficiente para "${product.name}".\n` +
-              `Disponível: ${availableStock}, Solicitado: ${item.quantity}`
-            );
-          }
-        }
-      }
-
-      // Decrement stock for in_stock items (only after validation)
-      for (const item of order.items) {
-        const product = await this.getProductById(item.productId);
-        if (product && product.stockType === 'in_stock') {
-          await this.decrementStock(item.productId, item.quantity);
-        }
-      }
-    }
-
-    const updateData: Record<string, unknown> = {
-      status,
-      updatedAt: serverTimestamp(),
-    };
-
-    if (status === 'delivered') {
-      updateData.deliveredAt = serverTimestamp();
-    }
-
-    await updateDoc(docRef, updateData);
-
-    // Notify student about status change
-    await this.notifyStudent(
-      order.studentId,
-      this.getStatusNotificationTitle(status),
-      this.getStatusNotificationMessage(status, order.id),
-      `/portal/loja/pedidos`
-    );
-
-    const updated = await this.getOrderById(id);
-    return updated!;
+    const raw = await api.patch<unknown>(`${this.ordersBase}/${id}`, { status });
+    return mapOrder(raw);
   }
 
   async cancelOrder(id: string): Promise<void> {
-    const order = await this.getOrderById(id);
-
-    if (!order) {
-      throw new Error('Order not found');
-    }
-
-    // Only allow cancellation if not yet paid or by admin
-    const docRef = collections.storeOrder(this.academyId, id);
-    await updateDoc(docRef, {
-      status: 'cancelled',
-      updatedAt: serverTimestamp(),
-    });
-
-    // If items had stock deducted, restore them
-    if (order.status !== 'pending_payment') {
-      for (const item of order.items) {
-        const product = await this.getProductById(item.productId);
-        if (product && product.stockType === 'in_stock') {
-          await updateDoc(collections.storeProduct(this.academyId, item.productId), {
-            stockQuantity: increment(item.quantity),
-            updatedAt: serverTimestamp(),
-          });
-        }
-      }
-    }
+    await api.patch(`${this.ordersBase}/${id}`, { status: 'cancelled' });
   }
 
   // ============================================
   // PAYMENT
+  // Payment generation is now handled by the Go backend via Asaas/AbacatePay.
+  // These methods are kept for signature compatibility but delegate to backend.
   // ============================================
 
-  async generateOrderPayment(orderId: string, method: 'PIX' | 'CARD' = 'PIX'): Promise<FinancialPaymentLink | null> {
-    const order = await this.getOrderById(orderId);
-
-    if (!order) {
-      console.error('Order not found');
-      return null;
-    }
-
-    if (order.status !== 'pending_payment') {
-      console.error('Order is not pending payment');
-      return null;
-    }
-
-    const apiKey = this.getApiKey();
-
-    if (!apiKey) {
-      console.error('ABACATEPAY_API_KEY not configured in environment');
-      return null;
-    }
-
+  async generateOrderPayment(
+    orderId: string,
+    _method: 'PIX' | 'CARD' = 'PIX'
+  ): Promise<FinancialPaymentLink | null> {
     try {
-      const response = await fetch(`${this.apiBaseUrl}/billing/create`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          frequency: 'ONE_TIME',
-          methods: [method],
-          products: order.items.map(item => ({
-            externalId: item.productId,
-            name: item.productName,
-            quantity: item.quantity,
-            price: item.unitPrice,
-          })),
-          returnUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/loja/pedidos`,
-          completionUrl: `${process.env.NEXT_PUBLIC_APP_URL || ''}/portal/loja/pedidos?success=true`,
-          metadata: {
-            academyId: this.academyId,
-            orderId: orderId,
-            studentId: order.studentId,
-            type: 'store_order',
-          },
-        }),
-      });
+      const raw = await api.post<{
+        pix_code?: string;
+        qr_code_url?: string;
+        expires_at?: string;
+      }>(`${this.ordersBase}/${orderId}/payment`, { method: _method });
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        console.error('AbacatePay API error:', errorData);
-        return null;
-      }
-
-      const data = await response.json();
-
-      // Update order with payment info
-      const docRef = collections.storeOrder(this.academyId, orderId);
-
-      if (method === 'PIX') {
-        await updateDoc(docRef, {
-          abacatePayTransactionId: data.data.id,
-          pixCode: data.data.pix?.brcode,
-          qrCodeUrl: data.data.pix?.qrcode,
-          paymentMethod: 'pix',
-          updatedAt: serverTimestamp(),
-        });
-
-        return {
-          pixCode: data.data.pix?.brcode || '',
-          qrCodeUrl: data.data.pix?.qrcode || '',
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24 hours
-          createdAt: new Date(),
-        };
-      } else {
-        // For CARD, AbacatePay returns a checkout URL
-        await updateDoc(docRef, {
-          abacatePayTransactionId: data.data.id,
-          paymentMethod: 'credit_card',
-          updatedAt: serverTimestamp(),
-        });
-
-        return {
-          pixCode: '', // Not used for card
-          qrCodeUrl: data.data.url || '', // Checkout URL for card
-          expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-          createdAt: new Date(),
-        };
-      }
+      return {
+        pixCode: raw.pix_code || '',
+        qrCodeUrl: raw.qr_code_url || '',
+        expiresAt: raw.expires_at ? new Date(raw.expires_at) : new Date(Date.now() + 24 * 60 * 60 * 1000),
+        createdAt: new Date(),
+      };
     } catch (error) {
       console.error('Error generating payment:', error);
       return null;
     }
   }
 
-  async handlePaymentConfirmation(orderId: string, transactionId: string): Promise<void> {
-    const order = await this.getOrderById(orderId);
-
-    if (!order) {
-      console.error('Order not found');
-      return;
-    }
-
-    // SECURITY: Validate stock before payment (prevent race conditions)
-    // This prevents two customers from buying the same last item
-    for (const item of order.items) {
-      const product = await this.getProductById(item.productId);
-      if (!product) {
-        throw new Error(`Produto não encontrado: ${item.productName}`);
-      }
-
-      if (product.stockType === 'in_stock') {
-        const availableStock = product.stockQuantity ?? 0;
-        if (availableStock < item.quantity) {
-          throw new Error(
-            `Estoque insuficiente para "${product.name}".\n` +
-            `O produto foi vendido enquanto seu pedido estava pendente.\n` +
-            `Disponível: ${availableStock}, Solicitado: ${item.quantity}\n\n` +
-            `Por favor, ajuste a quantidade ou remova o item do pedido.`
-          );
-        }
-      }
-    }
-
-    // Deduct stock for in_stock products (only after validation)
-    for (const item of order.items) {
-      const product = await this.getProductById(item.productId);
-      if (product && product.stockType === 'in_stock') {
-        await this.decrementStock(item.productId, item.quantity);
-      }
-    }
-
-    // Update order status to paid
-    const docRef = collections.storeOrder(this.academyId, orderId);
-    await updateDoc(docRef, {
-      status: 'paid',
-      abacatePayTransactionId: transactionId,
-      paidAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-
-    // Notify admin
-    await this.notifyAdmin(
-      'Pedido Pago',
-      `${order.studentName} pagou o pedido #${orderId.slice(-6).toUpperCase()}.`,
-      `/loja/pedidos?id=${orderId}`
-    );
-
-    // Notify student
-    await this.notifyStudent(
-      order.studentId,
-      'Pagamento Confirmado',
-      'Seu pedido foi pago com sucesso! Em breve iniciaremos a preparacao.',
-      '/portal/loja/pedidos'
-    );
-  }
-
-  // ============================================
-  // NOTIFICATIONS
-  // ============================================
-
-  private async notifyAdmin(title: string, message: string, actionUrl?: string): Promise<void> {
-    const academyRef = doc(db, 'academies', this.academyId);
-    const academySnap = await getDoc(academyRef);
-
-    if (!academySnap.exists()) return;
-
-    const ownerId = academySnap.data().ownerId;
-    if (!ownerId) return;
-
-    const notificationsRef = collections.notifications(this.academyId);
-    const notifData: Record<string, unknown> = {
-      academyId: this.academyId,
-      userId: ownerId,
-      type: 'system',
-      priority: 'normal',
-      title,
-      message,
-      read: false,
-      channels: ['in_app'],
-      sentVia: ['in_app'],
-      createdAt: serverTimestamp(),
-    };
-    if (actionUrl) {
-      notifData.actionUrl = actionUrl;
-      notifData.actionLabel = 'Ver pedido';
-    }
-    await addDoc(notificationsRef, notifData);
-  }
-
-  private async notifyStudent(
-    studentId: string,
-    title: string,
-    message: string,
-    actionUrl?: string
-  ): Promise<void> {
-    // Get the user linked to this student
-    const studentsRef = collections.students(this.academyId);
-    const studentQuery = query(studentsRef, where('id', '==', studentId));
-    const studentSnap = await getDocs(studentQuery);
-
-    if (studentSnap.empty) return;
-
-    const studentData = studentSnap.docs[0].data();
-    const linkedUserId = studentData.linkedUserId;
-
-    if (!linkedUserId) return;
-
-    const notificationsRef = collections.notifications(this.academyId);
-    const notifData: Record<string, unknown> = {
-      academyId: this.academyId,
-      userId: linkedUserId,
-      type: 'system',
-      priority: 'normal',
-      title,
-      message,
-      read: false,
-      channels: ['in_app'],
-      sentVia: ['in_app'],
-      createdAt: serverTimestamp(),
-    };
-    if (actionUrl) {
-      notifData.actionUrl = actionUrl;
-      notifData.actionLabel = 'Ver pedidos';
-    }
-    await addDoc(notificationsRef, notifData);
-  }
-
-  private getStatusNotificationTitle(status: StoreOrderStatus): string {
-    switch (status) {
-      case 'preparing':
-        return 'Pedido em Preparacao';
-      case 'ready':
-        return 'Pedido Pronto';
-      case 'delivered':
-        return 'Pedido Entregue';
-      case 'cancelled':
-        return 'Pedido Cancelado';
-      default:
-        return 'Atualizacao do Pedido';
-    }
-  }
-
-  private getStatusNotificationMessage(status: StoreOrderStatus, orderId: string): string {
-    const orderCode = orderId.slice(-6).toUpperCase();
-    switch (status) {
-      case 'preparing':
-        return `Seu pedido #${orderCode} esta sendo preparado.`;
-      case 'ready':
-        return `Seu pedido #${orderCode} esta pronto para retirada!`;
-      case 'delivered':
-        return `Seu pedido #${orderCode} foi entregue. Obrigado!`;
-      case 'cancelled':
-        return `Seu pedido #${orderCode} foi cancelado.`;
-      default:
-        return `Atualizacao no pedido #${orderCode}.`;
-    }
-  }
-
-  // ============================================
-  // HELPERS
-  // ============================================
-
-  private mapProductDoc(doc: any): StoreProduct {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      academyId: data.academyId,
-      name: data.name,
-      description: data.description,
-      price: data.price,
-      images: data.images || [],
-      category: data.category,
-      stockType: data.stockType,
-      stockQuantity: data.stockQuantity,
-      sizes: data.sizes || [],
-      colors: data.colors || [],
-      active: data.active ?? true,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-    };
-  }
-
-  private mapOrderDoc(doc: any): StoreOrder {
-    const data = doc.data();
-    return {
-      id: doc.id,
-      academyId: data.academyId,
-      studentId: data.studentId,
-      studentName: data.studentName,
-      items: (data.items || []).map((item: any) => ({
-        ...item,
-        unitPrice: item.unitPrice ?? item.price ?? 0,
-      })),
-      totalAmount: data.total ?? data.totalAmount,
-      status: data.status,
-      paymentMethod: data.paymentMethod,
-      abacatePayTransactionId: data.abacatePayTransactionId,
-      pixCode: data.pixCode,
-      qrCodeUrl: data.qrCodeUrl,
-      notes: data.notes,
-      createdAt: data.createdAt?.toDate() || new Date(),
-      updatedAt: data.updatedAt?.toDate() || new Date(),
-      paidAt: data.paidAt?.toDate(),
-      deliveredAt: data.deliveredAt?.toDate(),
-    };
+  async handlePaymentConfirmation(_orderId: string, _transactionId: string): Promise<void> {
+    // Payment confirmation is handled server-side via webhook; no-op on client.
   }
 }
 

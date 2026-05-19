@@ -10,10 +10,9 @@ import {
   useRef,
   ReactNode
 } from 'react';
-import { doc, getDoc, onSnapshot, updateDoc, type Unsubscribe } from 'firebase/firestore';
 import { useQueryClient } from '@tanstack/react-query';
-import { db } from '@/lib/firebase';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { api, academyApi } from '@/lib/api/client';
 import { Academy, UserAcademyMapping, AcademyUser, UserRole } from '@/types';
 
 // ============================================
@@ -23,22 +22,22 @@ import { Academy, UserAcademyMapping, AcademyUser, UserRole } from '@/types';
 // Keep this list in sync with the QUERY_KEYS objects in src/hooks/.
 // ============================================
 const ACADEMY_SCOPED_KEY_FRAGMENTS = [
-  'student',          // student, students, studentEligibility, studentPlan, studentPayments, etc.
+  'student',
   'allStudents',
-  'class',            // class, classes, allClasses, todayClasses, currentClass, weeklySchedule
-  'plan',             // plans, plan, activePlans, studentPlan, studentPlans
-  'payment',          // pendingPayments, overduePayments, studentPayments
-  'financial',        // financials, financial
+  'class',
+  'plan',
+  'payment',
+  'financial',
   'monthlySummary',
   'revenueStats',
-  'attendance',       // attendance, todayAttendance, classesForDate, studentAttendance, presentStudentIds
-  'eligibility',      // eligibilitySnapshot, studentEligibility
-  'assessment',       // assessments, recentAssessments, latestAssessment, assessmentEvolution
-  'competition',      // upcomingCompetitions, studentCompetitionResults, competitionPhotos
-  'photo',            // competitionPhotos, studentPhotos, photoCount, highlightPhotos
-  'checkin',          // checkinStatus, studentCheckins
+  'attendance',
+  'eligibility',
+  'assessment',
+  'competition',
+  'photo',
+  'checkin',
   'billing',
-  'guardian',         // guardianChildren, guardianChildrenAttendance, guardianChildrenPayments
+  'guardian',
   'news',
   'event',
   'store',
@@ -74,26 +73,17 @@ export interface AcademyInfo {
 // Academy Context Types
 // ============================================
 interface AcademyContextType {
-  // Current selected academy
   academyId: string | null;
   academy: Academy | null;
   academyUser: AcademyUser | null;
-
-  // Primary academy (user's default)
   primaryAcademyId: string | null;
-
-  // User's academies (for multi-academy users)
   userAcademies: string[];
   academiesInfo: AcademyInfo[];
   hasMultipleAcademies: boolean;
   userAcademyMapping: UserAcademyMapping | null;
-
-  // Loading state
   isLoading: boolean;
   isSwitching: boolean;
   error: string | null;
-
-  // Actions
   setAcademy: (academyId: string) => Promise<void>;
   setPrimaryAcademy: (academyId: string) => Promise<void>;
   refreshAcademy: () => Promise<void>;
@@ -104,14 +94,127 @@ interface AcademyContextType {
 const AcademyContext = createContext<AcademyContextType | undefined>(undefined);
 
 // ============================================
-// Academy Provider Component
+// Go API wire shapes
 // ============================================
-interface AcademyProviderProps {
-  children: ReactNode;
+interface GoMembership {
+  uid: string;
+  academy_id: string;
+  role: string;
+  student_id?: string;
+  joined_at: string;
+  status: string;
+  extra_permissions: string[];
 }
 
-export function AcademyProvider({ children }: AcademyProviderProps) {
-  const { user, firebaseUser, isAuthenticated, loading: authLoading } = useAuth();
+interface GoMeUser {
+  uid: string;
+  email: string;
+  display_name?: string;
+  photo_url?: string;
+  phone?: string;
+}
+
+interface GoCurrentUser {
+  user: GoMeUser;
+  memberships: GoMembership[];
+  primary_academy_id?: string;
+}
+
+interface GoAddress {
+  street?: string;
+  city?: string;
+  state?: string;
+  zip_code?: string;
+}
+
+interface GoAcademy {
+  id: string;
+  name: string;
+  slug: string;
+  owner_uid: string;
+  cnpj?: string;
+  email?: string;
+  phone?: string;
+  pix_key?: string;
+  pix_key_type?: string;
+  address?: GoAddress;
+  abacatepay_enabled: boolean;
+  asaas_enabled: boolean;
+  asaas_onboarding_status?: string;
+  auto_graduation_enabled: boolean;
+  auto_graduation_attendances: number;
+  use_class_weights: boolean;
+  store_enabled: boolean;
+  store_published: boolean;
+  student_checkin_enabled: boolean;
+  subscription_plan?: string;
+  subscription_status?: string;
+  subscription_expires_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================
+// Mappers
+// ============================================
+function goAcademyToTS(a: GoAcademy): Academy {
+  return {
+    id: a.id,
+    name: a.name,
+    slug: a.slug,
+    ownerId: a.owner_uid,
+    cnpj: a.cnpj || undefined,
+    email: a.email || undefined,
+    phone: a.phone || undefined,
+    pixKey: a.pix_key || undefined,
+    pixKeyType: a.pix_key_type as Academy['pixKeyType'],
+    address: a.address?.street || undefined,
+    city: a.address?.city || undefined,
+    state: a.address?.state || undefined,
+    zipCode: a.address?.zip_code || undefined,
+    abacatePayEnabled: a.abacatepay_enabled,
+    asaasEnabled: a.asaas_enabled,
+    asaasOnboardingStatus: a.asaas_onboarding_status as Academy['asaasOnboardingStatus'],
+    autoGraduationEnabled: a.auto_graduation_enabled,
+    autoGraduationAttendances: a.auto_graduation_attendances,
+    useClassWeights: a.use_class_weights,
+    storeEnabled: a.store_enabled,
+    storePublished: a.store_published,
+    studentCheckinEnabled: a.student_checkin_enabled,
+    subscription: a.subscription_plan
+      ? {
+          plan: a.subscription_plan as Academy['subscription'] extends object ? Academy['subscription']['plan'] : never,
+          status: (a.subscription_status || 'active') as Academy['subscription'] extends object ? Academy['subscription']['status'] : never,
+          expiresAt: a.subscription_expires_at ? new Date(a.subscription_expires_at) : undefined,
+        }
+      : undefined,
+    createdAt: new Date(a.created_at),
+    updatedAt: new Date(a.updated_at),
+  };
+}
+
+function buildAcademyUser(goUser: GoMeUser, m: GoMembership): AcademyUser {
+  return {
+    id: goUser.uid,
+    email: goUser.email,
+    displayName: goUser.display_name || goUser.email || '',
+    photoUrl: goUser.photo_url || undefined,
+    phone: goUser.phone || undefined,
+    role: m.role as UserRole,
+    studentId: m.student_id,
+    extraPermissions: m.extra_permissions as AcademyUser['extraPermissions'],
+    status: m.status as AcademyUser['status'],
+    joinedAt: new Date(m.joined_at),
+    createdAt: new Date(m.joined_at),
+    updatedAt: new Date(),
+  };
+}
+
+// ============================================
+// Academy Provider Component
+// ============================================
+export function AcademyProvider({ children }: { children: ReactNode }) {
+  const { firebaseUser, isAuthenticated, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
 
   const [academyId, setAcademyId] = useState<string | null>(null);
@@ -125,167 +228,95 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
   const [isSwitching, setIsSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Ref to the active onSnapshot unsubscribe so we can tear down the
-  // previous listener BEFORE attaching a new one (preventing leaks /
-  // multiple listeners stacking up across academy switches).
-  const academySnapshotUnsubRef = useRef<Unsubscribe | null>(null);
+  // Cache /v1/me data so academy switches don't need another round-trip
+  const meUserRef = useRef<GoMeUser | null>(null);
+  const membershipsRef = useRef<GoMembership[]>([]);
 
-  // ============================================
-  // Load Academy Info for all user's academies
-  //
-  // Parallelizes the fan-out reads via Promise.allSettled so a single
-  // failed/missing doc does not block the rest. Replaces the previous
-  // for...await that issued N sequential getDoc calls.
-  // ============================================
-  const loadAcademiesInfo = useCallback(async (academyIds: string[], mapping: UserAcademyMapping) => {
-    const settled = await Promise.allSettled(
-      academyIds.map(async (id) => {
-        const academyRef = doc(db, 'academies', id);
-        const academySnap = await getDoc(academyRef);
+  // Polling interval that replaces onSnapshot
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-        if (!academySnap.exists()) return null;
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current !== null) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
 
-        const data = academySnap.data();
-        const details = mapping.academyDetails?.[id];
+  // Load a single academy from the Go backend
+  const loadAcademyData = useCallback(async (id: string): Promise<void> => {
+    const goAcademy = await api.get<GoAcademy>(`/v1/academies/${id}`);
+    setAcademy(goAcademyToTS(goAcademy));
+    setAcademyId(id);
+  }, []);
 
-        const info: AcademyInfo = {
-          id,
-          name: data.name || 'Academia',
-          logoUrl: data.logoUrl,
-          studentId: details?.studentId,
-          role: (details?.role as UserRole) || 'student',
+  const startPolling = useCallback((id: string) => {
+    stopPolling();
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        await loadAcademyData(id);
+      } catch {
+        // Silent — polling errors shouldn't interrupt the UI
+      }
+    }, 60_000);
+  }, [stopPolling, loadAcademyData]);
+
+  // Fetch /v1/me and update all membership-derived state
+  const loadMe = useCallback(async (): Promise<GoCurrentUser | null> => {
+    const me = await api.get<GoCurrentUser>('/v1/me');
+    meUserRef.current = me.user;
+    membershipsRef.current = me.memberships;
+
+    const active = me.memberships.filter(m => m.status === 'active');
+    const academyIds = active.map(m => m.academy_id);
+    setUserAcademies(academyIds);
+
+    const primaryId = me.primary_academy_id || academyIds[0] || null;
+    setPrimaryAcademyIdState(primaryId);
+
+    const mapping: UserAcademyMapping = {
+      id: me.user.uid,
+      academyIds,
+      primaryAcademyId: primaryId || undefined,
+      academyDetails: Object.fromEntries(
+        active.map(m => [
+          m.academy_id,
+          {
+            role: m.role as UserRole,
+            studentId: m.student_id,
+            joinedAt: new Date(m.joined_at),
+            status: m.status as 'active' | 'inactive' | 'pending',
+            extraPermissions: m.extra_permissions as AcademyUser['extraPermissions'],
+          },
+        ])
+      ),
+    };
+    setUserAcademyMapping(mapping);
+
+    return me;
+  }, []);
+
+  // Load academy name/role list for the switcher
+  const loadAcademiesInfo = useCallback(async (active: GoMembership[]): Promise<void> => {
+    if (active.length === 0) {
+      setAcademiesInfo([]);
+      return;
+    }
+    const { items } = await api.get<{ items: GoAcademy[] }>('/v1/academies');
+    setAcademiesInfo(
+      items.map(a => {
+        const m = active.find(m => m.academy_id === a.id);
+        return {
+          id: a.id,
+          name: a.name,
+          studentId: m?.student_id,
+          role: (m?.role as UserRole) || 'student',
         };
-        return info;
       })
     );
-
-    const infos: AcademyInfo[] = [];
-    settled.forEach((result, idx) => {
-      if (result.status === 'fulfilled') {
-        if (result.value) infos.push(result.value);
-      } else {
-        console.error(`Error loading academy info for ${academyIds[idx]}:`, result.reason);
-      }
-    });
-
-    setAcademiesInfo(infos);
-    return infos;
   }, []);
 
   // ============================================
-  // Load Academy User Data (defined first - no dependencies on other callbacks)
-  // ============================================
-  const loadAcademyUser = useCallback(async (academyId: string) => {
-    if (!firebaseUser) return;
-
-    try {
-      const userRef = doc(db, `academies/${academyId}/users`, firebaseUser.uid);
-      const userSnap = await getDoc(userRef);
-
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        setAcademyUser({
-          id: userSnap.id,
-          email: data.email || firebaseUser.email || '',
-          displayName: data.displayName || firebaseUser.displayName || '',
-          photoUrl: data.photoUrl,
-          role: data.role || 'student',
-          phone: data.phone,
-          studentId: data.studentId,
-          linkedStudentIds: data.linkedStudentIds,
-          instructorId: data.instructorId,
-          pendingStudentLink: data.pendingStudentLink,
-          approvedAt: data.approvedAt?.toDate(),
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-        });
-      } else {
-        console.log('[AcademyContext] No academy user document found for user:', firebaseUser.uid);
-        setAcademyUser(null);
-      }
-    } catch (err) {
-      console.error('Error loading academy user:', err);
-    }
-  }, [firebaseUser]);
-
-  // ============================================
-  // Load Academy Data (depends on loadAcademyUser)
-  // ============================================
-  const loadAcademy = useCallback(async (id: string) => {
-    if (!firebaseUser) return;
-
-    try {
-      const academyRef = doc(db, 'academies', id);
-      const academySnap = await getDoc(academyRef);
-
-      if (academySnap.exists()) {
-        const data = academySnap.data();
-        const academyData: Academy = {
-          id: academySnap.id,
-          name: data.name || '',
-          slug: data.slug || '',
-          logoUrl: data.logoUrl,
-          // Branding
-          portalSlogan: data.portalSlogan,
-          sidebarLogoUrl: data.sidebarLogoUrl,
-          portalBackgroundUrl: data.portalBackgroundUrl,
-          adminBackgroundUrl: data.adminBackgroundUrl,
-          sidebarBackgroundUrl: data.sidebarBackgroundUrl,
-          // Contact
-          cnpj: data.cnpj,
-          email: data.email,
-          phone: data.phone,
-          address: data.address,
-          city: data.city,
-          state: data.state,
-          zipCode: data.zipCode,
-          // Responsible Person
-          responsibleBirthDate: data.responsibleBirthDate,
-          // Financial
-          pixKey: data.pixKey,
-          pixKeyType: data.pixKeyType,
-          abacatePayEnabled: data.abacatePayEnabled || false,
-          // Auto-graduation
-          autoGraduationEnabled: data.autoGraduationEnabled || false,
-          autoGraduationAttendances: data.autoGraduationAttendances,
-          // Store
-          storeEnabled: data.storeEnabled || false,
-          storePublished: data.storePublished || false,
-          storeCreditCardEnabled: data.storeCreditCardEnabled || false,
-          storeWelcomeMessage: data.storeWelcomeMessage,
-          storeMinOrderAmount: data.storeMinOrderAmount,
-          // Student Check-in
-          studentCheckinEnabled: data.studentCheckinEnabled || false,
-          // Monitors
-          monitorIds: data.monitorIds || [],
-          // Asaas
-          asaasEnabled: data.asaasEnabled || false,
-          asaasSubAccountId: data.asaasSubAccountId,
-          asaasOnboardingStatus: data.asaasOnboardingStatus,
-          asaasKycStatus: data.asaasKycStatus,
-          // Subscription & Metadata
-          subscription: data.subscription,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-          ownerId: data.ownerId,
-        };
-
-        setAcademy(academyData);
-        setAcademyId(id);
-
-        // Load academy user data
-        await loadAcademyUser(id);
-      } else {
-        setError('Academia não encontrada');
-      }
-    } catch (err) {
-      console.error('Error loading academy:', err);
-      setError('Erro ao carregar dados da academia');
-    }
-  }, [firebaseUser, loadAcademyUser]);
-
-  // ============================================
-  // Load User's Academy Mapping (depends on loadAcademy)
+  // Initial load on auth state change
   // ============================================
   useEffect(() => {
     if (authLoading) return;
@@ -295,90 +326,74 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
       setAcademy(null);
       setAcademyUser(null);
       setUserAcademies([]);
+      setAcademiesInfo([]);
+      setUserAcademyMapping(null);
+      setPrimaryAcademyIdState(null);
+      meUserRef.current = null;
+      membershipsRef.current = [];
       setIsLoading(false);
+      stopPolling();
       return;
     }
 
-    const loadUserAcademyMapping = async () => {
+    const init = async () => {
       setIsLoading(true);
       setError(null);
-
       try {
-        // Try to get user's academy mapping
-        const mappingRef = doc(db, 'userAcademyMapping', firebaseUser.uid);
-        const mappingSnap = await getDoc(mappingRef);
+        const me = await loadMe();
+        if (!me) return;
 
-        if (mappingSnap.exists()) {
-          const mapping = mappingSnap.data() as UserAcademyMapping;
-          setUserAcademyMapping(mapping);
-          setUserAcademies(mapping.academyIds || []);
+        const active = me.memberships.filter(m => m.status === 'active');
+        const primaryId = me.primary_academy_id || active[0]?.academy_id || null;
 
-          // Set primary academy ID
-          const primaryId = mapping.primaryAcademyId || mapping.academyIds[0];
-          setPrimaryAcademyIdState(primaryId || null);
+        const tasks: Promise<void>[] = [loadAcademiesInfo(active)];
 
-          // Load academy info for all academies (for switcher)
-          if (mapping.academyIds?.length > 0) {
-            await loadAcademiesInfo(mapping.academyIds, mapping);
-          }
-
-          // Load primary academy
-          if (primaryId) {
-            await loadAcademy(primaryId);
-          }
-        } else {
-          // No mapping found - user is not linked to any academy
-          console.log('[AcademyContext] No userAcademyMapping found for user:', firebaseUser.uid);
-          setUserAcademyMapping(null);
-          setUserAcademies([]);
-          setAcademiesInfo([]);
-          setPrimaryAcademyIdState(null);
-          setAcademyId(null);
-          setAcademy(null);
+        if (primaryId) {
+          const membership = active.find(m => m.academy_id === primaryId);
+          if (membership) setAcademyUser(buildAcademyUser(me.user, membership));
+          tasks.push(loadAcademyData(primaryId));
         }
+
+        await Promise.allSettled(tasks);
+        if (primaryId) startPolling(primaryId);
       } catch (err) {
-        console.error('Error loading user academy mapping:', err);
+        console.error('[AcademyContext] init error:', err);
         setError('Erro ao carregar dados da academia');
       } finally {
         setIsLoading(false);
       }
     };
 
-    loadUserAcademyMapping();
-  }, [firebaseUser, isAuthenticated, authLoading, loadAcademy]);
+    init();
+    return stopPolling;
+  }, [firebaseUser, isAuthenticated, authLoading, loadMe, loadAcademiesInfo, loadAcademyData, startPolling, stopPolling]);
 
   // ============================================
-  // Set Active Academy (switch without changing primary)
-  //
-  // Also invalidates the React Query cache. Without this, lists like
-  // /alunos and /chamada continue showing the previous academy's data
-  // for up to staleTime (5min) after the switcher fires.
+  // Switch active academy (without changing primary)
   // ============================================
   const setAcademyAction = useCallback(async (newAcademyId: string) => {
     if (!userAcademies.includes(newAcademyId)) {
       setError('Você não tem acesso a esta academia');
       return;
     }
-
     if (newAcademyId === academyId) return;
 
     setIsSwitching(true);
     setError(null);
+    stopPolling();
 
     try {
-      // Tear down the previous academy's onSnapshot listener before
-      // we change academyId — otherwise the dependency-driven cleanup
-      // and the new subscription overlap for a tick.
-      academySnapshotUnsubRef.current?.();
-      academySnapshotUnsubRef.current = null;
+      await loadAcademyData(newAcademyId);
 
-      await loadAcademy(newAcademyId);
+      const membership = membershipsRef.current.find(
+        m => m.academy_id === newAcademyId && m.status === 'active'
+      );
+      if (membership && meUserRef.current) {
+        setAcademyUser(buildAcademyUser(meUserRef.current, membership));
+      }
 
-      // Drop only per-academy cached queries so the UI refetches with
-      // the new academyId in the key. Skips queries like currentUser /
-      // userPreferences / userAcademyMapping that are NOT scoped per
-      // academy. Doing this after loadAcademy so refetches fire with
-      // the right academy already set.
+      startPolling(newAcademyId);
+
       await queryClient.invalidateQueries({
         predicate: (query) => {
           const key = query.queryKey;
@@ -387,264 +402,65 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
         },
       });
     } catch (err) {
-      console.error('Error switching academy:', err);
+      console.error('[AcademyContext] switch error:', err);
       setError('Erro ao trocar de academia');
     } finally {
       setIsSwitching(false);
     }
-  }, [userAcademies, academyId, loadAcademy, queryClient]);
+  }, [userAcademies, academyId, loadAcademyData, startPolling, stopPolling, queryClient]);
 
   // ============================================
-  // Set Primary Academy (updates Firestore)
+  // Set Primary Academy
   // ============================================
   const setPrimaryAcademyAction = useCallback(async (newPrimaryId: string) => {
-    if (!firebaseUser || !userAcademies.includes(newPrimaryId)) {
+    if (!userAcademies.includes(newPrimaryId)) {
       setError('Você não tem acesso a esta academia');
       return;
     }
-
     try {
-      const mappingRef = doc(db, 'userAcademyMapping', firebaseUser.uid);
-      await updateDoc(mappingRef, {
-        primaryAcademyId: newPrimaryId,
-        updatedAt: new Date(),
-      });
-
+      await academyApi.setPrimary(newPrimaryId);
       setPrimaryAcademyIdState(newPrimaryId);
     } catch (err) {
-      console.error('Error setting primary academy:', err);
+      console.error('[AcademyContext] setPrimary error:', err);
       setError('Erro ao definir academia principal');
     }
-  }, [firebaseUser, userAcademies]);
+  }, [userAcademies]);
 
-  // ============================================
-  // Refresh Academy Data
-  // ============================================
   const refreshAcademy = useCallback(async () => {
     if (!academyId) return;
-    await loadAcademy(academyId);
-  }, [academyId, loadAcademy]);
+    await loadAcademyData(academyId);
+  }, [academyId, loadAcademyData]);
 
-  // ============================================
-  // Refresh Academies Info (for switcher)
-  // ============================================
   const refreshAcademiesInfo = useCallback(async () => {
-    if (!firebaseUser || !userAcademyMapping) return;
-    await loadAcademiesInfo(userAcademyMapping.academyIds || [], userAcademyMapping);
-  }, [firebaseUser, userAcademyMapping, loadAcademiesInfo]);
+    const active = membershipsRef.current.filter(m => m.status === 'active');
+    await loadAcademiesInfo(active);
+  }, [loadAcademiesInfo]);
 
-  // ============================================
-  // Reload User Mapping (force re-read from Firestore)
-  // Returns the loaded AcademyUser or null
-  // ============================================
   const reloadUserMapping = useCallback(async (): Promise<AcademyUser | null> => {
-    if (!firebaseUser) return null;
-
     try {
-      const mappingRef = doc(db, 'userAcademyMapping', firebaseUser.uid);
-      const mappingSnap = await getDoc(mappingRef);
+      const me = await loadMe();
+      if (!me) return null;
 
-      if (!mappingSnap.exists()) return null;
+      const active = me.memberships.filter(m => m.status === 'active');
+      const targetId = academyId || me.primary_academy_id || active[0]?.academy_id;
+      if (!targetId) return null;
 
-      const mapping = mappingSnap.data() as UserAcademyMapping;
-      setUserAcademyMapping(mapping);
-      setUserAcademies(mapping.academyIds || []);
+      const membership = active.find(m => m.academy_id === targetId);
+      if (!membership) return null;
 
-      const primaryId = mapping.primaryAcademyId || mapping.academyIds?.[0];
-      setPrimaryAcademyIdState(primaryId || null);
+      const academyUserData = buildAcademyUser(me.user, membership);
+      setAcademyUser(academyUserData);
+      await loadAcademiesInfo(active);
 
-      if (mapping.academyIds?.length > 0) {
-        await loadAcademiesInfo(mapping.academyIds, mapping);
-      }
-
-      if (primaryId) {
-        // Load academy
-        const academyRef = doc(db, 'academies', primaryId);
-        const academySnap = await getDoc(academyRef);
-
-        if (academySnap.exists()) {
-          const data = academySnap.data();
-          setAcademy({
-            id: academySnap.id,
-            name: data.name || '',
-            slug: data.slug || '',
-            logoUrl: data.logoUrl,
-            portalSlogan: data.portalSlogan,
-            sidebarLogoUrl: data.sidebarLogoUrl,
-            portalBackgroundUrl: data.portalBackgroundUrl,
-            adminBackgroundUrl: data.adminBackgroundUrl,
-            sidebarBackgroundUrl: data.sidebarBackgroundUrl,
-            cnpj: data.cnpj,
-            email: data.email,
-            phone: data.phone,
-            address: data.address,
-            city: data.city,
-            state: data.state,
-            zipCode: data.zipCode,
-            responsibleBirthDate: data.responsibleBirthDate,
-            pixKey: data.pixKey,
-            pixKeyType: data.pixKeyType,
-            abacatePayEnabled: data.abacatePayEnabled || false,
-            autoGraduationEnabled: data.autoGraduationEnabled || false,
-            autoGraduationAttendances: data.autoGraduationAttendances,
-            storeEnabled: data.storeEnabled || false,
-            storePublished: data.storePublished || false,
-            storeCreditCardEnabled: data.storeCreditCardEnabled || false,
-            storeWelcomeMessage: data.storeWelcomeMessage,
-            storeMinOrderAmount: data.storeMinOrderAmount,
-            studentCheckinEnabled: data.studentCheckinEnabled || false,
-            monitorIds: data.monitorIds || [],
-            asaasEnabled: data.asaasEnabled || false,
-            asaasSubAccountId: data.asaasSubAccountId,
-            asaasOnboardingStatus: data.asaasOnboardingStatus,
-            asaasKycStatus: data.asaasKycStatus,
-            subscription: data.subscription,
-            createdAt: data.createdAt?.toDate() || new Date(),
-            updatedAt: data.updatedAt?.toDate() || new Date(),
-            ownerId: data.ownerId,
-          });
-          setAcademyId(primaryId);
-        }
-
-        // Load academy user
-        const userRef = doc(db, `academies/${primaryId}/users`, firebaseUser.uid);
-        const userSnap = await getDoc(userRef);
-
-        if (userSnap.exists()) {
-          const userData = userSnap.data();
-          const loadedUser: AcademyUser = {
-            id: userSnap.id,
-            email: userData.email || firebaseUser.email || '',
-            displayName: userData.displayName || firebaseUser.displayName || '',
-            photoUrl: userData.photoUrl,
-            role: userData.role || 'student',
-            phone: userData.phone,
-            studentId: userData.studentId,
-            linkedStudentIds: userData.linkedStudentIds,
-            instructorId: userData.instructorId,
-            pendingStudentLink: userData.pendingStudentLink,
-            approvedAt: userData.approvedAt?.toDate(),
-            createdAt: userData.createdAt?.toDate() || new Date(),
-            updatedAt: userData.updatedAt?.toDate() || new Date(),
-          };
-          setAcademyUser(loadedUser);
-          setIsLoading(false);
-          return loadedUser;
-        }
-      }
-
-      setIsLoading(false);
-      return null;
+      return academyUserData;
     } catch (err) {
-      console.error('Error reloading user mapping:', err);
-      setIsLoading(false);
+      console.error('[AcademyContext] reloadUserMapping error:', err);
       return null;
     }
-  }, [firebaseUser, loadAcademiesInfo]);
+  }, [loadMe, loadAcademiesInfo, academyId]);
 
-  // ============================================
-  // Real-time Academy Updates
-  //
-  // Stores the unsubscribe in a ref so setAcademyAction can tear down
-  // the previous listener immediately on switch (instead of waiting
-  // for React's effect cleanup to run on the next render).
-  // ============================================
-  useEffect(() => {
-    if (!academyId) return;
+  const hasMultipleAcademies = useMemo(() => userAcademies.length > 1, [userAcademies]);
 
-    // Defensive: if a previous listener is still attached (e.g. fast
-    // remounts under StrictMode), drop it before subscribing again.
-    academySnapshotUnsubRef.current?.();
-
-    const academyRef = doc(db, 'academies', academyId);
-    const unsubscribe = onSnapshot(academyRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        setAcademy({
-          id: snapshot.id,
-          name: data.name || '',
-          slug: data.slug || '',
-          logoUrl: data.logoUrl,
-          // Branding
-          portalSlogan: data.portalSlogan,
-          sidebarLogoUrl: data.sidebarLogoUrl,
-          portalBackgroundUrl: data.portalBackgroundUrl,
-          adminBackgroundUrl: data.adminBackgroundUrl,
-          sidebarBackgroundUrl: data.sidebarBackgroundUrl,
-          // Contact
-          cnpj: data.cnpj,
-          email: data.email,
-          phone: data.phone,
-          address: data.address,
-          city: data.city,
-          state: data.state,
-          zipCode: data.zipCode,
-          // Responsible Person
-          responsibleBirthDate: data.responsibleBirthDate,
-          // Financial
-          pixKey: data.pixKey,
-          pixKeyType: data.pixKeyType,
-          abacatePayEnabled: data.abacatePayEnabled || false,
-          // Auto-graduation
-          autoGraduationEnabled: data.autoGraduationEnabled || false,
-          autoGraduationAttendances: data.autoGraduationAttendances,
-          // Store
-          storeEnabled: data.storeEnabled || false,
-          storePublished: data.storePublished || false,
-          storeCreditCardEnabled: data.storeCreditCardEnabled || false,
-          storeWelcomeMessage: data.storeWelcomeMessage,
-          storeMinOrderAmount: data.storeMinOrderAmount,
-          // Student Check-in
-          studentCheckinEnabled: data.studentCheckinEnabled || false,
-          // Monitors
-          monitorIds: data.monitorIds || [],
-          // Asaas
-          asaasEnabled: data.asaasEnabled || false,
-          asaasSubAccountId: data.asaasSubAccountId,
-          asaasOnboardingStatus: data.asaasOnboardingStatus,
-          asaasKycStatus: data.asaasKycStatus,
-          // Subscription & Metadata
-          subscription: data.subscription,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          updatedAt: data.updatedAt?.toDate() || new Date(),
-          ownerId: data.ownerId,
-        });
-      }
-    }, (err) => {
-      console.error('Error listening to academy updates:', err);
-    });
-
-    academySnapshotUnsubRef.current = unsubscribe;
-
-    return () => {
-      unsubscribe();
-      // Clear the ref only if it still points to *this* unsubscribe —
-      // a fast switch may have already replaced it with the new one.
-      if (academySnapshotUnsubRef.current === unsubscribe) {
-        academySnapshotUnsubRef.current = null;
-      }
-    };
-  }, [academyId]);
-
-  // Final cleanup on provider unmount (covers signout and route teardown).
-  useEffect(() => {
-    return () => {
-      academySnapshotUnsubRef.current?.();
-      academySnapshotUnsubRef.current = null;
-    };
-  }, []);
-
-  // ============================================
-  // Computed Values
-  // ============================================
-  const hasMultipleAcademies = useMemo(
-    () => userAcademies.length > 1,
-    [userAcademies]
-  );
-
-  // ============================================
-  // Context Value
-  // ============================================
   const contextValue = useMemo<AcademyContextType>(() => ({
     academyId,
     academy,
@@ -689,7 +505,7 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
 }
 
 // ============================================
-// Custom Hook
+// Custom Hooks
 // ============================================
 export function useAcademy() {
   const context = useContext(AcademyContext);
@@ -699,9 +515,6 @@ export function useAcademy() {
   return context;
 }
 
-// ============================================
-// Require Academy Hook (throws if no academy)
-// ============================================
 export function useRequireAcademy() {
   const { academyId, academy, isLoading, error } = useAcademy();
 

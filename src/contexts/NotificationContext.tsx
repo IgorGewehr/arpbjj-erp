@@ -10,38 +10,19 @@ import {
   useRef,
   ReactNode
 } from 'react';
-import {
-  collection,
-  query,
-  where,
-  orderBy,
-  limit,
-  onSnapshot,
-  doc,
-  updateDoc,
-  deleteDoc,
-  serverTimestamp,
-  Timestamp,
-  type Unsubscribe,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useAcademy } from './AcademyContext';
+import { api } from '@/lib/api/client';
 import { Notification, NotificationType, NotificationPriority } from '@/types';
 
 // ============================================
 // Notification Context Types
 // ============================================
 interface NotificationContextType {
-  // Notifications
   notifications: Notification[];
   unreadCount: number;
-
-  // Loading state
   isLoading: boolean;
   error: string | null;
-
-  // Actions
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: () => Promise<void>;
   deleteNotification: (notificationId: string) => Promise<void>;
@@ -50,68 +31,84 @@ interface NotificationContextType {
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined);
 
+// Go API wire shape
+interface GoNotification {
+  id: string;
+  academy_id?: string;
+  recipient_uid: string;
+  type: string;
+  title: string;
+  body?: string;
+  channels?: string[];
+  metadata?: Record<string, unknown>;
+  read_at?: string | null;
+  created_at: string;
+}
+
+function goNotificationToTS(n: GoNotification, fallbackAcademyId: string): Notification {
+  return {
+    id: n.id,
+    academyId: n.academy_id || fallbackAcademyId,
+    userId: n.recipient_uid,
+    type: (n.type as NotificationType) || 'custom',
+    priority: 'normal' as NotificationPriority,
+    title: n.title,
+    message: n.body || '',
+    channels: ((n.channels || ['in_app']) as Notification['channels']),
+    read: n.read_at != null,
+    readAt: n.read_at ? new Date(n.read_at) : undefined,
+    studentId: n.metadata?.student_id as string | undefined,
+    financialId: n.metadata?.financial_id as string | undefined,
+    competitionId: n.metadata?.competition_id as string | undefined,
+    actionUrl: n.metadata?.action_url as string | undefined,
+    actionLabel: n.metadata?.action_label as string | undefined,
+    createdAt: new Date(n.created_at),
+  };
+}
+
 // ============================================
 // Notification Provider Component
 // ============================================
-interface NotificationProviderProps {
-  children: ReactNode;
-}
-
-export function NotificationProvider({ children }: NotificationProviderProps) {
-  const { firebaseUser, isAuthenticated } = useAuth();
+export function NotificationProvider({ children }: { children: ReactNode }) {
+  const { isAuthenticated } = useAuth();
   const { academyId } = useAcademy();
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState<boolean>(() =>
-    typeof navigator === 'undefined' ? true : navigator.onLine
-  );
 
-  // Active onSnapshot unsubscribe (kept in a ref so the online/offline
-  // listeners can tear it down without re-running the effect).
-  const unsubRef = useRef<Unsubscribe | null>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const academyIdRef = useRef<string | null>(null);
 
-  // ============================================
-  // Track browser online/offline status
-  // ============================================
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
+  const fetchNotifications = useCallback(async () => {
+    const currentAcademyId = academyIdRef.current;
+    if (!currentAcademyId) return;
 
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
+    try {
+      const data = await api.get<{ items: GoNotification[]; has_more: boolean }>(
+        '/v1/me/notifications?limit=50'
+      );
+      setNotifications(
+        (data.items || []).map(n => goNotificationToTS(n, currentAcademyId))
+      );
+    } catch (err) {
+      console.error('[NotificationContext] fetch error:', err);
+      setError('Erro ao carregar notificações');
+    }
   }, []);
 
   // ============================================
-  // Real-time Notification Listener
-  //
-  // Only attaches the onSnapshot when the browser reports online —
-  // when offline we tear down the listener (keeps last-known data on
-  // screen) and re-subscribe automatically when connectivity returns.
+  // Subscribe / unsubscribe on auth + academy changes
   // ============================================
   useEffect(() => {
-    if (!firebaseUser || !academyId || !isAuthenticated) {
-      // Tear down any prior subscription on signout / academy switch.
-      unsubRef.current?.();
-      unsubRef.current = null;
-      setNotifications([]);
-      setIsLoading(false);
-      return;
-    }
+    academyIdRef.current = academyId;
 
-    if (!isOnline) {
-      // Drop the live listener while offline. UI keeps the last list
-      // it had; no need to wipe it (would flicker on quick blips).
-      unsubRef.current?.();
-      unsubRef.current = null;
+    if (!isAuthenticated || !academyId) {
+      if (pollIntervalRef.current !== null) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      setNotifications([]);
       setIsLoading(false);
       return;
     }
@@ -119,167 +116,78 @@ export function NotificationProvider({ children }: NotificationProviderProps) {
     setIsLoading(true);
     setError(null);
 
-    const notificationsRef = collection(
-      db,
-      `academies/${academyId}/notifications`
-    );
+    fetchNotifications().finally(() => setIsLoading(false));
 
-    // Query for user's notifications, ordered by creation date
-    const q = query(
-      notificationsRef,
-      where('userId', '==', firebaseUser.uid),
-      orderBy('createdAt', 'desc'),
-      limit(50)
-    );
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const notificationList: Notification[] = [];
-        const now = new Date();
-
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-
-          // Skip expired notifications
-          const expiresAt = data.expiresAt?.toDate();
-          if (expiresAt && expiresAt < now) {
-            return;
-          }
-
-          notificationList.push({
-            id: doc.id,
-            academyId: data.academyId || academyId,
-            userId: data.userId,
-            type: data.type as NotificationType,
-            priority: data.priority as NotificationPriority || 'normal',
-            title: data.title || '',
-            message: data.message || '',
-            imageUrl: data.imageUrl,
-            actionUrl: data.actionUrl,
-            actionLabel: data.actionLabel,
-            studentId: data.studentId,
-            financialId: data.financialId,
-            competitionId: data.competitionId,
-            read: data.read || false,
-            readAt: data.readAt?.toDate(),
-            channels: data.channels || ['in_app'],
-            sentVia: data.sentVia,
-            createdAt: data.createdAt?.toDate() || new Date(),
-            expiresAt: expiresAt,
-          });
-        });
-
-        setNotifications(notificationList);
-        setIsLoading(false);
-      },
-      (err) => {
-        console.error('Error listening to notifications:', err);
-        setError('Erro ao carregar notificações');
-        setIsLoading(false);
-      }
-    );
-
-    unsubRef.current = unsubscribe;
+    // Poll every 30 seconds for new notifications
+    pollIntervalRef.current = setInterval(fetchNotifications, 30_000);
 
     return () => {
-      unsubscribe();
-      if (unsubRef.current === unsubscribe) {
-        unsubRef.current = null;
+      if (pollIntervalRef.current !== null) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
       }
     };
-  }, [firebaseUser, academyId, isAuthenticated, isOnline]);
+  }, [isAuthenticated, academyId, fetchNotifications]);
 
   // ============================================
   // Mark Single Notification as Read
   // ============================================
   const markAsRead = useCallback(async (notificationId: string) => {
-    if (!academyId) return;
-
     try {
-      const notificationRef = doc(
-        db,
-        `academies/${academyId}/notifications`,
-        notificationId
+      await api.patch(`/v1/me/notifications/${notificationId}`, { read: true });
+      setNotifications(prev =>
+        prev.map(n =>
+          n.id === notificationId ? { ...n, read: true, readAt: new Date() } : n
+        )
       );
-
-      await updateDoc(notificationRef, {
-        read: true,
-        readAt: serverTimestamp(),
-      });
     } catch (err) {
-      console.error('Error marking notification as read:', err);
+      console.error('[NotificationContext] markAsRead error:', err);
       throw err;
     }
-  }, [academyId]);
+  }, []);
 
   // ============================================
   // Mark All Notifications as Read
   // ============================================
   const markAllAsRead = useCallback(async () => {
-    if (!academyId) return;
-
-    const unreadNotifications = notifications.filter((n) => !n.read);
-
     try {
-      await Promise.all(
-        unreadNotifications.map((notification) =>
-          updateDoc(
-            doc(db, `academies/${academyId}/notifications`, notification.id),
-            {
-              read: true,
-              readAt: serverTimestamp(),
-            }
-          )
-        )
+      await api.post('/v1/me/notifications/mark-all-read');
+      const now = new Date();
+      setNotifications(prev =>
+        prev.map(n => ({ ...n, read: true, readAt: now }))
       );
     } catch (err) {
-      console.error('Error marking all notifications as read:', err);
+      console.error('[NotificationContext] markAllAsRead error:', err);
       throw err;
     }
-  }, [academyId, notifications]);
+  }, []);
 
   // ============================================
   // Delete Notification
   // ============================================
   const deleteNotification = useCallback(async (notificationId: string) => {
-    if (!academyId) return;
-
     try {
-      const notificationRef = doc(
-        db,
-        `academies/${academyId}/notifications`,
-        notificationId
-      );
-
-      await deleteDoc(notificationRef);
+      await api.delete(`/v1/me/notifications/${notificationId}`);
+      setNotifications(prev => prev.filter(n => n.id !== notificationId));
     } catch (err) {
-      console.error('Error deleting notification:', err);
+      console.error('[NotificationContext] delete error:', err);
       throw err;
     }
-  }, [academyId]);
+  }, []);
 
   // ============================================
   // Refresh (for manual reload)
   // ============================================
   const refreshNotifications = useCallback(() => {
-    // The onSnapshot listener handles real-time updates
-    // This is just for UI feedback
     setIsLoading(true);
-    setTimeout(() => setIsLoading(false), 300);
-  }, []);
+    fetchNotifications().finally(() => setIsLoading(false));
+  }, [fetchNotifications]);
 
-  // ============================================
-  // Computed Values
-  // ============================================
   const unreadCount = useMemo(
-    () => notifications.filter((n) => !n.read).length,
+    () => notifications.filter(n => !n.read).length,
     [notifications]
   );
 
-  // ============================================
-  // Context Value
-  // ============================================
   const contextValue = useMemo<NotificationContextType>(() => ({
     notifications,
     unreadCount,

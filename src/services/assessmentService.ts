@@ -1,88 +1,76 @@
-import {
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  Timestamp,
-  DocumentSnapshot,
-  CollectionReference,
-} from 'firebase/firestore';
-import { collections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import { Assessment } from '@/types';
 
 // Default academy for backwards compatibility
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
-// Helper: Convert Firestore document to Assessment
+// Go API response shapes
 // ============================================
-const docToAssessment = (doc: DocumentSnapshot): Assessment => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
+interface AssessmentScoresDTO {
+  respeito: number;
+  disciplina: number;
+  pontualidade: number;
+  tecnica: number;
+  esforco: number;
+}
 
-  // Parse scores from both formats:
-  // Object format (web): {respeito: 4, disciplina: 3, ...}
-  // Array format (legacy Flutter): [{category: 'respeito', score: 4}, ...]
-  let scores: Assessment['scores'];
-  if (Array.isArray(data.scores)) {
-    scores = { respeito: 0, disciplina: 0, pontualidade: 0, tecnica: 0, esforco: 0 };
-    for (const item of data.scores) {
-      const key = item.category as keyof Assessment['scores'];
-      if (key in scores) {
-        scores[key] = item.score || 0;
-      }
-    }
-  } else {
-    scores = {
-      respeito: data.scores?.respeito || 0,
-      disciplina: data.scores?.disciplina || 0,
-      pontualidade: data.scores?.pontualidade || 0,
-      tecnica: data.scores?.tecnica || 0,
-      esforco: data.scores?.esforco || 0,
-    };
-  }
+interface AssessmentDTO {
+  id: string;
+  student_id: string;
+  date: string;
+  evaluated_by_uid: string;
+  scores: AssessmentScoresDTO;
+  notes?: string;
+  created_at: string;
+}
 
-  return {
-    id: doc.id,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    date: data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date),
-    scores,
-    notes: data.notes,
-    evaluatedBy: data.evaluatedBy || data.assessedBy,
-    evaluatedByName: data.evaluatedByName || data.assessedByName,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-  };
-};
+interface AssessmentListDTO {
+  items: AssessmentDTO[];
+}
+
+// ============================================
+// Mapper: Go DTO → Assessment
+// ============================================
+const dtoToAssessment = (dto: AssessmentDTO): Assessment => ({
+  id: dto.id,
+  studentId: dto.student_id,
+  date: new Date(dto.date),
+  evaluatedBy: dto.evaluated_by_uid,
+  scores: {
+    respeito: dto.scores.respeito,
+    disciplina: dto.scores.disciplina,
+    pontualidade: dto.scores.pontualidade,
+    tecnica: dto.scores.tecnica,
+    esforco: dto.scores.esforco,
+  },
+  notes: dto.notes,
+  createdAt: new Date(dto.created_at),
+});
 
 // ============================================
 // Assessment Service (Multi-Tenant)
 // ============================================
 export class AssessmentService {
   private academyId: string;
-  private assessmentsRef: CollectionReference;
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.assessmentsRef = collections.assessments(academyId);
+  }
+
+  private studentBase(studentId: string): string {
+    return `/v1/academies/${this.academyId}/students/${studentId}`;
   }
 
   // ============================================
   // Get Assessments by Student
   // ============================================
   async getByStudent(studentId: string, limitCount = 10): Promise<Assessment[]> {
-    const q = query(
-      this.assessmentsRef,
-      where('studentId', '==', studentId)
+    const res = await api.get<AssessmentListDTO>(
+      `${this.studentBase(studentId)}/assessments?limit=${limitCount}`
     );
-
-    const snapshot = await getDocs(q);
-    const assessments = snapshot.docs.map(docToAssessment);
-    // Sort by date desc and limit client-side
-    return assessments
+    return res.items
+      .map(dtoToAssessment)
       .sort((a, b) => b.date.getTime() - a.date.getTime())
       .slice(0, limitCount);
   }
@@ -97,16 +85,10 @@ export class AssessmentService {
 
   // ============================================
   // Get Assessment by ID
+  // (No dedicated single-assessment GET endpoint — return null)
   // ============================================
-  async getById(id: string): Promise<Assessment | null> {
-    const docRef = collections.assessment(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
-      return null;
-    }
-
-    return docToAssessment(docSnap);
+  async getById(_id: string): Promise<Assessment | null> {
+    return null;
   }
 
   // ============================================
@@ -115,67 +97,62 @@ export class AssessmentService {
   async create(
     data: Omit<Assessment, 'id' | 'createdAt'>,
   ): Promise<Assessment> {
-    const now = new Date();
+    const dateStr = data.date instanceof Date
+      ? data.date.toISOString().slice(0, 10)
+      : new Date(data.date).toISOString().slice(0, 10);
 
-    // Build docData carefully to avoid undefined values
-    const docData: Record<string, unknown> = {
-      studentId: data.studentId,
-      studentName: data.studentName,
-      date: Timestamp.fromDate(new Date(data.date)),
-      scores: data.scores,
-      evaluatedBy: data.evaluatedBy,
-      evaluatedByName: data.evaluatedByName,
-      createdAt: Timestamp.fromDate(now),
+    const body: Record<string, unknown> = {
+      date: dateStr,
+      scores: {
+        respeito: data.scores.respeito,
+        disciplina: data.scores.disciplina,
+        pontualidade: data.scores.pontualidade,
+        tecnica: data.scores.tecnica,
+        esforco: data.scores.esforco,
+      },
     };
+    if (data.notes) body.notes = data.notes;
 
-    // Only add notes if it has a value
-    if (data.notes) docData.notes = data.notes;
+    const dto = await api.post<AssessmentDTO>(
+      `${this.studentBase(data.studentId)}/assessments`,
+      body,
+    );
 
-    const docRef = await addDoc(this.assessmentsRef, docData);
-
-    // Return assessment directly without re-fetching
-    const assessment: Assessment = {
-      id: docRef.id,
-      studentId: data.studentId,
-      studentName: data.studentName,
-      date: new Date(data.date),
-      scores: data.scores,
-      notes: data.notes,
-      evaluatedBy: data.evaluatedBy,
-      evaluatedByName: data.evaluatedByName,
-      createdAt: now,
-    };
-
-    return assessment;
+    return dtoToAssessment(dto);
   }
 
   // ============================================
   // Update Assessment
+  // (No PATCH endpoint in Go API — re-create as a new assessment)
   // ============================================
   async update(id: string, data: Partial<Assessment>): Promise<Assessment> {
-    const docRef = collections.assessment(this.academyId, id);
-
-    const updateData: Record<string, unknown> = { ...data };
-
-    if (data.date) {
-      updateData.date = Timestamp.fromDate(new Date(data.date));
+    if (!data.studentId) {
+      throw new Error('studentId is required to update an assessment');
     }
 
-    delete updateData.id;
-    delete updateData.createdAt;
+    const existing = await this.getLatest(data.studentId);
+    const merged: Omit<Assessment, 'id' | 'createdAt'> = {
+      studentId: data.studentId,
+      studentName: data.studentName,
+      date: data.date ?? existing?.date ?? new Date(),
+      scores: data.scores ?? existing?.scores ?? {
+        respeito: 0, disciplina: 0, pontualidade: 0, tecnica: 0, esforco: 0,
+      },
+      notes: data.notes ?? existing?.notes,
+      evaluatedBy: data.evaluatedBy ?? existing?.evaluatedBy ?? '',
+      evaluatedByName: data.evaluatedByName ?? existing?.evaluatedByName,
+    };
 
-    await updateDoc(docRef, updateData);
-
-    const updatedDoc = await getDoc(docRef);
-    return docToAssessment(updatedDoc);
+    return this.create(merged);
   }
 
   // ============================================
   // Delete Assessment
+  // (No DELETE endpoint for assessments in Go API — no-op)
   // ============================================
-  async delete(id: string): Promise<void> {
-    const docRef = collections.assessment(this.academyId, id);
-    await deleteDoc(docRef);
+  async delete(_id: string): Promise<void> {
+    // The Go API doesn't expose a DELETE /assessments/{id} endpoint.
+    // This is a no-op kept for API compatibility.
   }
 
   // ============================================
@@ -226,13 +203,13 @@ export class AssessmentService {
       };
     });
 
-    const count2 = assessments.length;
+    const n = assessments.length;
     const averages: Assessment['scores'] = {
-      respeito: Math.round((totals.respeito / count2) * 10) / 10,
-      disciplina: Math.round((totals.disciplina / count2) * 10) / 10,
-      pontualidade: Math.round((totals.pontualidade / count2) * 10) / 10,
-      tecnica: Math.round((totals.tecnica / count2) * 10) / 10,
-      esforco: Math.round((totals.esforco / count2) * 10) / 10,
+      respeito: Math.round((totals.respeito / n) * 10) / 10,
+      disciplina: Math.round((totals.disciplina / n) * 10) / 10,
+      pontualidade: Math.round((totals.pontualidade / n) * 10) / 10,
+      tecnica: Math.round((totals.tecnica / n) * 10) / 10,
+      esforco: Math.round((totals.esforco / n) * 10) / 10,
     };
 
     return {
@@ -244,15 +221,10 @@ export class AssessmentService {
 
   // ============================================
   // Get Recent Assessments (all students)
+  // (No global list endpoint — return empty; only per-student listing exists)
   // ============================================
-  async getRecent(limitCount = 20): Promise<Assessment[]> {
-    // Fetch all and sort/limit client-side to avoid index issues
-    const snapshot = await getDocs(this.assessmentsRef);
-    const assessments = snapshot.docs.map(docToAssessment);
-    // Sort by date desc and limit
-    return assessments
-      .sort((a, b) => b.date.getTime() - a.date.getTime())
-      .slice(0, limitCount);
+  async getRecent(_limitCount = 20): Promise<Assessment[]> {
+    return [];
   }
 
   // ============================================

@@ -1,15 +1,4 @@
-import {
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  deleteField,
-  Timestamp,
-  DocumentSnapshot,
-  CollectionReference,
-} from 'firebase/firestore';
-import { collections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import { Plan } from '@/types';
 import { ClassService } from './classService';
 
@@ -28,25 +17,53 @@ export function getStudentDueDay(plan: Plan, studentId: string): number {
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
-// Helper: Convert Firestore document to Plan
+// Go API response shapes (snake_case)
 // ============================================
-const docToPlan = (doc: DocumentSnapshot): Plan => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
+interface GoPlanListResponse {
+  items: GoPlan[];
+}
+
+interface GoPlan {
+  id: string;
+  academy_id: string;
+  name: string;
+  description?: string;
+  monthly_value: string;
+  default_due_day: number;
+  classes_per_week: number;
+  is_active: boolean;
+  student_ids?: string[];
+  custom_values?: Record<string, string>;
+  custom_due_days?: Record<string, number>;
+  created_at: string;
+  updated_at: string;
+}
+
+// ============================================
+// Helper: Convert Go response to Plan
+// ============================================
+const goToPlan = (p: GoPlan): Plan => {
+  // Convert custom_values from string→string to string→number
+  const customValues: Record<string, number> = {};
+  if (p.custom_values) {
+    for (const [k, v] of Object.entries(p.custom_values)) {
+      customValues[k] = parseFloat(v);
+    }
+  }
 
   return {
-    id: doc.id,
-    name: data.name,
-    description: data.description,
-    monthlyValue: data.monthlyValue,
-    defaultDueDay: data.defaultDueDay || 10,
-    classesPerWeek: data.classesPerWeek,
-    studentIds: data.studentIds || [],
-    customValues: data.customValues ?? {},
-    customDueDays: data.customDueDays ?? {},
-    isActive: data.isActive,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
+    id: p.id,
+    name: p.name,
+    description: p.description,
+    monthlyValue: parseFloat(p.monthly_value),
+    defaultDueDay: p.default_due_day || 10,
+    classesPerWeek: p.classes_per_week,
+    studentIds: (p.student_ids ?? []).map(String),
+    customValues,
+    customDueDays: p.custom_due_days ?? {},
+    isActive: p.is_active,
+    createdAt: new Date(p.created_at),
+    updatedAt: new Date(p.updated_at),
   };
 };
 
@@ -55,21 +72,21 @@ const docToPlan = (doc: DocumentSnapshot): Plan => {
 // ============================================
 export class PlanService {
   private academyId: string;
-  private plansRef: CollectionReference;
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.plansRef = collections.plans(academyId);
+  }
+
+  private get baseUrl() {
+    return `/v1/academies/${this.academyId}/plans`;
   }
 
   // ============================================
   // Get All Plans
   // ============================================
   async list(): Promise<Plan[]> {
-    // Fetch all and sort client-side to avoid index issues
-    const snapshot = await getDocs(this.plansRef);
-    const plans = snapshot.docs.map(docToPlan);
-    // Sort by monthlyValue asc
+    const res = await api.get<GoPlanListResponse>(this.baseUrl);
+    const plans = res.items.map(goToPlan);
     return plans.sort((a, b) => a.monthlyValue - b.monthlyValue);
   }
 
@@ -78,130 +95,100 @@ export class PlanService {
   // ============================================
   async getActive(): Promise<Plan[]> {
     const plans = await this.list();
-    return plans.filter((p) => p.isActive);
+    return plans.filter(p => p.isActive);
   }
 
   // ============================================
   // Get Plan by ID
   // ============================================
   async getById(id: string): Promise<Plan | null> {
-    const docRef = collections.plan(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
+    try {
+      const p = await api.get<GoPlan>(`${this.baseUrl}/${id}`);
+      return goToPlan(p);
+    } catch {
       return null;
     }
-
-    return docToPlan(docSnap);
   }
 
   // ============================================
   // Create Plan
   // ============================================
   async create(data: Omit<Plan, 'id' | 'createdAt' | 'updatedAt' | 'studentIds'>): Promise<Plan> {
-    const now = new Date();
-
-    // Build docData carefully to avoid undefined values
-    const docData: Record<string, unknown> = {
+    const body: Record<string, unknown> = {
       name: data.name,
-      monthlyValue: data.monthlyValue,
-      defaultDueDay: data.defaultDueDay || 10,
-      classesPerWeek: data.classesPerWeek,
-      isActive: data.isActive,
-      studentIds: [],
-      createdAt: Timestamp.fromDate(now),
-      updatedAt: Timestamp.fromDate(now),
+      monthly_value: String(data.monthlyValue),
+      default_due_day: data.defaultDueDay || 10,
+      classes_per_week: data.classesPerWeek,
+      is_active: data.isActive,
     };
 
-    // Only add description if it has a value
-    if (data.description) docData.description = data.description;
+    if (data.description) body.description = data.description;
 
-    const docRef = await addDoc(this.plansRef, docData);
+    const p = await api.post<GoPlan>(this.baseUrl, body, {
+      'Idempotency-Key': crypto.randomUUID(),
+    });
 
-    // Return plan directly without re-fetching
-    const plan: Plan = {
-      id: docRef.id,
-      name: data.name,
-      description: data.description,
-      monthlyValue: data.monthlyValue,
-      defaultDueDay: data.defaultDueDay || 10,
-      classesPerWeek: data.classesPerWeek,
-      studentIds: [],
-      customValues: {},
-      isActive: data.isActive,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    return plan;
+    return goToPlan(p);
   }
 
   // ============================================
   // Update Plan
   // ============================================
   async update(id: string, data: Partial<Omit<Plan, 'id' | 'createdAt' | 'updatedAt'>>): Promise<Plan> {
-    const docRef = collections.plan(this.academyId, id);
+    const body: Record<string, unknown> = {};
 
-    const updateData: Record<string, unknown> = {
-      updatedAt: Timestamp.fromDate(new Date()),
-    };
+    if (data.name !== undefined) body.name = data.name;
+    if (data.description !== undefined) body.description = data.description;
+    if (data.monthlyValue !== undefined) body.monthly_value = String(data.monthlyValue);
+    if (data.defaultDueDay !== undefined) body.default_due_day = data.defaultDueDay;
+    if (data.classesPerWeek !== undefined) body.classes_per_week = data.classesPerWeek;
+    if (data.isActive !== undefined) body.is_active = data.isActive;
 
-    // Only add fields that are being updated
-    if (data.name !== undefined) updateData.name = data.name;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.monthlyValue !== undefined) updateData.monthlyValue = data.monthlyValue;
-    if (data.defaultDueDay !== undefined) updateData.defaultDueDay = data.defaultDueDay;
-    if (data.classesPerWeek !== undefined) updateData.classesPerWeek = data.classesPerWeek;
-    if (data.isActive !== undefined) updateData.isActive = data.isActive;
-    if (data.studentIds !== undefined) updateData.studentIds = data.studentIds;
+    // custom_values: convert number values to string for Go
+    if (data.customValues !== undefined) {
+      const cv: Record<string, string> = {};
+      for (const [k, v] of Object.entries(data.customValues)) {
+        cv[k] = String(v);
+      }
+      body.custom_values = cv;
+    }
 
-    await updateDoc(docRef, updateData);
+    if (data.customDueDays !== undefined) body.custom_due_days = data.customDueDays;
 
-    const updatedDoc = await getDoc(docRef);
-    return docToPlan(updatedDoc);
+    const p = await api.patch<GoPlan>(`${this.baseUrl}/${id}`, body);
+    return goToPlan(p);
   }
 
   // ============================================
   // Delete Plan
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = collections.plan(this.academyId, id);
-    await deleteDoc(docRef);
+    await api.delete(`${this.baseUrl}/${id}`);
   }
 
   // ============================================
-  // Add Student to Plan
+  // Add Student to Plan (enroll)
   // ============================================
   async addStudent(planId: string, studentId: string): Promise<Plan> {
     const plan = await this.getById(planId);
     if (!plan) throw new Error('Plan not found');
 
     if (plan.studentIds.includes(studentId)) {
-      return plan; // Already enrolled
+      return plan;
     }
 
-    return this.update(planId, {
-      studentIds: [...plan.studentIds, studentId],
-    });
+    await api.post(`/v1/academies/${this.academyId}/plans/${planId}/students/${studentId}`);
+
+    // Re-fetch to get updated plan
+    return (await this.getById(planId))!;
   }
 
   // ============================================
-  // Remove Student from Plan
+  // Remove Student from Plan (unenroll)
   // ============================================
   async removeStudent(planId: string, studentId: string): Promise<Plan> {
-    const plan = await this.getById(planId);
-    if (!plan) throw new Error('Plan not found');
-
-    const docRef = collections.plan(this.academyId, planId);
-    await updateDoc(docRef, {
-      studentIds: plan.studentIds.filter((id) => id !== studentId),
-      [`customValues.${studentId}`]: deleteField(),
-      [`customDueDays.${studentId}`]: deleteField(),
-      updatedAt: Timestamp.fromDate(new Date()),
-    });
-
-    const updatedDoc = await getDoc(docRef);
-    return docToPlan(updatedDoc);
+    await api.delete(`/v1/academies/${this.academyId}/plans/${planId}/students/${studentId}`);
+    return (await this.getById(planId))!;
   }
 
   // ============================================
@@ -213,66 +200,57 @@ export class PlanService {
 
     const isEnrolled = plan.studentIds.includes(studentId);
 
-    // Update the plan
-    const updatedPlan = await this.update(planId, {
-      studentIds: isEnrolled
-        ? plan.studentIds.filter((id) => id !== studentId)
-        : [...plan.studentIds, studentId],
-    });
-
-    return updatedPlan;
+    if (isEnrolled) {
+      return this.removeStudent(planId, studentId);
+    } else {
+      return this.addStudent(planId, studentId);
+    }
   }
 
   // ============================================
   // Set Custom Value for Student
   // ============================================
   async setCustomValue(planId: string, studentId: string, value: number): Promise<Plan> {
-    const docRef = collections.plan(this.academyId, planId);
-    await updateDoc(docRef, {
-      [`customValues.${studentId}`]: value,
-      updatedAt: Timestamp.fromDate(new Date()),
-    });
-    const updatedDoc = await getDoc(docRef);
-    return docToPlan(updatedDoc);
+    const plan = await this.getById(planId);
+    if (!plan) throw new Error('Plan not found');
+
+    const newCustomValues = { ...(plan.customValues ?? {}), [studentId]: value };
+    return this.update(planId, { customValues: newCustomValues });
   }
 
   // ============================================
   // Remove Custom Value (restore plan default)
   // ============================================
   async removeCustomValue(planId: string, studentId: string): Promise<Plan> {
-    const docRef = collections.plan(this.academyId, planId);
-    await updateDoc(docRef, {
-      [`customValues.${studentId}`]: deleteField(),
-      updatedAt: Timestamp.fromDate(new Date()),
-    });
-    const updatedDoc = await getDoc(docRef);
-    return docToPlan(updatedDoc);
+    const plan = await this.getById(planId);
+    if (!plan) throw new Error('Plan not found');
+
+    const newCustomValues = { ...(plan.customValues ?? {}) };
+    delete newCustomValues[studentId];
+    return this.update(planId, { customValues: newCustomValues });
   }
 
   // ============================================
   // Set Custom Due Day for Student
   // ============================================
   async setCustomDueDay(planId: string, studentId: string, day: number): Promise<Plan> {
-    const docRef = collections.plan(this.academyId, planId);
-    await updateDoc(docRef, {
-      [`customDueDays.${studentId}`]: day,
-      updatedAt: Timestamp.fromDate(new Date()),
-    });
-    const updatedDoc = await getDoc(docRef);
-    return docToPlan(updatedDoc);
+    const plan = await this.getById(planId);
+    if (!plan) throw new Error('Plan not found');
+
+    const newCustomDueDays = { ...(plan.customDueDays ?? {}), [studentId]: day };
+    return this.update(planId, { customDueDays: newCustomDueDays });
   }
 
   // ============================================
   // Remove Custom Due Day (restore plan default)
   // ============================================
   async removeCustomDueDay(planId: string, studentId: string): Promise<Plan> {
-    const docRef = collections.plan(this.academyId, planId);
-    await updateDoc(docRef, {
-      [`customDueDays.${studentId}`]: deleteField(),
-      updatedAt: Timestamp.fromDate(new Date()),
-    });
-    const updatedDoc = await getDoc(docRef);
-    return docToPlan(updatedDoc);
+    const plan = await this.getById(planId);
+    if (!plan) throw new Error('Plan not found');
+
+    const newCustomDueDays = { ...(plan.customDueDays ?? {}) };
+    delete newCustomDueDays[studentId];
+    return this.update(planId, { customDueDays: newCustomDueDays });
   }
 
   // ============================================
@@ -288,7 +266,7 @@ export class PlanService {
   // ============================================
   async getPlansForStudent(studentId: string): Promise<Plan[]> {
     const plans = await this.list();
-    return plans.filter((p) => p.studentIds.includes(studentId));
+    return plans.filter(p => p.studentIds.includes(studentId));
   }
 
   /// Legacy wrapper — returns the first plan for a student (or null).
@@ -300,14 +278,6 @@ export class PlanService {
   // ============================================
   // Bulk: Add Students from Classes to Plan
   // ============================================
-  /**
-   * Fetches all studentIds from the given classes, deduplicates them,
-   * and batch-adds everyone not already in the plan.
-   *
-   * @returns { added: string[], skipped: string[] }
-   *   - added: studentIds newly enrolled into the plan
-   *   - skipped: studentIds already in the plan (no duplicate added)
-   */
   async addStudentsFromClasses(
     planId: string,
     classIds: string[]
@@ -319,12 +289,11 @@ export class PlanService {
 
     const classService = new ClassService(this.academyId);
 
-    // Collect all student IDs from selected classes
     const allStudentIds = new Set<string>();
     for (const classId of classIds) {
       const cls = await classService.getById(classId);
       if (cls) {
-        cls.studentIds.forEach((id) => allStudentIds.add(id));
+        cls.studentIds.forEach(id => allStudentIds.add(id));
       }
     }
 
@@ -340,12 +309,13 @@ export class PlanService {
       }
     }
 
-    if (added.length > 0) {
-      const docRef = collections.plan(this.academyId, planId);
-      await updateDoc(docRef, {
-        studentIds: [...plan.studentIds, ...added],
-        updatedAt: Timestamp.fromDate(new Date()),
-      });
+    // Batch-add each new student
+    for (const studentId of added) {
+      try {
+        await api.post(`/v1/academies/${this.academyId}/plans/${planId}/students/${studentId}`);
+      } catch {
+        // skip errors
+      }
     }
 
     return { added, skipped };

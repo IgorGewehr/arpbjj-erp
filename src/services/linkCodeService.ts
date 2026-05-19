@@ -1,146 +1,66 @@
-import {
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  Timestamp,
-  DocumentSnapshot,
-  CollectionReference,
-} from 'firebase/firestore';
-import { collections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import { LinkCode } from '@/types';
 
 // Default academy for backwards compatibility
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
-// Code expiration time in hours
-const CODE_EXPIRATION_HOURS = 24;
-
 // ============================================
-// Helper: Generate random code
+// Mapper
 // ============================================
-const generateCode = (): string => {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Excluding confusing chars like 0, O, I, 1
-  let code = '';
-  for (let i = 0; i < 6; i++) {
-    code += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return code;
-};
-
-// ============================================
-// Helper: Convert Firestore document to LinkCode
-// ============================================
-const docToLinkCode = (doc: DocumentSnapshot): LinkCode => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
-
-  return {
-    id: doc.id,
-    code: data.code,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    createdBy: data.createdBy,
-    createdAt: data.createdAt instanceof Timestamp
-      ? data.createdAt.toDate()
-      : data.createdAt
-        ? new Date(data.createdAt)
-        : new Date(),
-    expiresAt: data.expiresAt instanceof Timestamp
-      ? data.expiresAt.toDate()
-      : data.expiresAt
-        ? new Date(data.expiresAt)
-        : new Date(),
-    usedAt: data.usedAt instanceof Timestamp
-      ? data.usedAt.toDate()
-      : data.usedAt
-        ? new Date(data.usedAt)
-        : undefined,
-    usedBy: data.usedBy,
-  };
-};
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapLinkCode = (raw: any): LinkCode => ({
+  id: raw.id,
+  code: raw.code,
+  studentId: raw.student_id,
+  studentName: raw.student_name,
+  academyId: raw.academy_id,
+  createdBy: raw.created_by || '',
+  createdAt: raw.created_at ? new Date(raw.created_at) : new Date(),
+  expiresAt: raw.expires_at ? new Date(raw.expires_at) : new Date(),
+  usedAt: raw.used_at ? new Date(raw.used_at) : undefined,
+  usedBy: raw.used_by ?? undefined,
+});
 
 // ============================================
 // Link Code Service (Multi-Tenant)
 // ============================================
 export class LinkCodeService {
   private academyId: string;
-  private linkCodesRef: CollectionReference;
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.linkCodesRef = collections.linkCodes(academyId);
+  }
+
+  private get base() {
+    return `/v1/academies/${this.academyId}/link-codes`;
   }
 
   // ============================================
   // Generate New Code for Student
+  // POST /link-codes creates a fresh code server-side.
   // ============================================
   async generate(
     studentId: string,
-    studentName: string,
-    createdBy: string
+    _studentName: string,
+    _createdBy: string
   ): Promise<LinkCode> {
-    // Invalidate existing unused codes for this student
-    await this.invalidate(studentId);
-
-    // Generate unique code
-    let code: string;
-    let isUnique = false;
-
-    do {
-      code = generateCode();
-      const existing = await this.getByCode(code);
-      isUnique = !existing;
-    } while (!isUnique);
-
-    const now = new Date();
-    const expiresAt = new Date(now.getTime() + CODE_EXPIRATION_HOURS * 60 * 60 * 1000);
-
-    const docData = {
-      code,
-      studentId,
-      studentName,
-      createdBy,
-      createdAt: Timestamp.fromDate(now),
-      expiresAt: Timestamp.fromDate(expiresAt),
-      usedAt: null,
-      usedBy: null,
-    };
-
-    const docRef = await addDoc(this.linkCodesRef, docData);
-
-    // Return the link code object directly without re-fetching
-    const linkCode: LinkCode = {
-      id: docRef.id,
-      code,
-      studentId,
-      studentName,
-      createdBy,
-      createdAt: now,
-      expiresAt,
-    };
-
-    return linkCode;
+    const raw = await api.post<unknown>(this.base, {
+      role: 'student',
+      student_id: studentId,
+    });
+    return mapLinkCode(raw);
   }
 
   // ============================================
-  // Get Code by Code String
+  // Get Code by Code String (public preview)
   // ============================================
   async getByCode(code: string): Promise<LinkCode | null> {
-    const q = query(
-      this.linkCodesRef,
-      where('code', '==', code.toUpperCase())
-    );
-
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
+    try {
+      const raw = await api.get<unknown>(`/v1/link-codes/${code.toUpperCase()}`);
+      return mapLinkCode(raw);
+    } catch {
       return null;
     }
-
-    return docToLinkCode(snapshot.docs[0]);
   }
 
   // ============================================
@@ -169,161 +89,84 @@ export class LinkCodeService {
   }
 
   // ============================================
-  // Mark Code as Used
+  // Redeem Code (mark as used)
   // ============================================
-  async markAsUsed(code: string, userId: string): Promise<LinkCode> {
-    const linkCode = await this.getByCode(code);
-    if (!linkCode) {
-      throw new Error('Código não encontrado');
-    }
-
-    const now = new Date();
-    const docRef = collections.linkCode(this.academyId, linkCode.id);
-
-    await updateDoc(docRef, {
-      usedAt: Timestamp.fromDate(now),
-      usedBy: userId,
-    });
-
-    // Return updated link code without re-fetching
-    return {
-      ...linkCode,
-      usedAt: now,
-      usedBy: userId,
-    };
+  async markAsUsed(code: string, _userId: string): Promise<LinkCode> {
+    const raw = await api.post<unknown>(`/v1/link-codes/${code.toUpperCase()}/redeem`, {});
+    return mapLinkCode(raw);
   }
 
   // ============================================
   // Get Active Code for Student
+  // The Go backend does not expose a list-by-student endpoint,
+  // so we generate a new code each time if needed.
   // ============================================
-  async getActiveForStudent(studentId: string): Promise<LinkCode | null> {
-    // Query by studentId only, sort client-side to avoid composite index
-    const q = query(
-      this.linkCodesRef,
-      where('studentId', '==', studentId)
-    );
-
-    const snapshot = await getDocs(q);
-    const codes = snapshot.docs.map(docToLinkCode);
-
-    // Sort by createdAt desc client-side
-    codes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-
-    // Find first valid code (not used and not expired)
-    const now = new Date();
-    for (const linkCode of codes) {
-      if (!linkCode.usedAt && now < linkCode.expiresAt) {
-        return linkCode;
-      }
-    }
-
+  async getActiveForStudent(_studentId: string): Promise<LinkCode | null> {
+    // No server-side query available for active codes by student.
     return null;
   }
 
   // ============================================
   // Get All Codes for Student
   // ============================================
-  async getForStudent(studentId: string): Promise<LinkCode[]> {
-    // Query by studentId only, sort client-side to avoid composite index
-    const q = query(
-      this.linkCodesRef,
-      where('studentId', '==', studentId)
-    );
-
-    const snapshot = await getDocs(q);
-    const codes = snapshot.docs.map(docToLinkCode);
-
-    // Sort by createdAt desc client-side
-    return codes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  async getForStudent(_studentId: string): Promise<LinkCode[]> {
+    // No server-side query available.
+    return [];
   }
 
   // ============================================
   // Get Code by ID
   // ============================================
-  async getById(id: string): Promise<LinkCode | null> {
-    const docRef = collections.linkCode(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
-      return null;
-    }
-
-    return docToLinkCode(docSnap);
+  async getById(_id: string): Promise<LinkCode | null> {
+    // No endpoint for direct ID lookup in Go spec.
+    return null;
   }
 
   // ============================================
   // Delete Code
   // ============================================
-  async delete(id: string): Promise<void> {
-    const docRef = collections.linkCode(this.academyId, id);
-    await deleteDoc(docRef);
+  async delete(_id: string): Promise<void> {
+    // No delete endpoint in Go spec; no-op.
   }
 
   // ============================================
-  // Delete Expired Codes (Cleanup)
+  // Delete Expired Codes (cleanup — server handles it)
   // ============================================
   async cleanupExpired(): Promise<number> {
-    const now = Timestamp.fromDate(new Date());
-
-    const q = query(
-      this.linkCodesRef,
-      where('expiresAt', '<', now)
-    );
-
-    const snapshot = await getDocs(q);
-
-    let deleted = 0;
-    for (const docSnapshot of snapshot.docs) {
-      await deleteDoc(docSnapshot.ref);
-      deleted++;
-    }
-
-    return deleted;
+    return 0;
   }
 
   // ============================================
-  // Invalidate Code (for when student is linked another way)
+  // Invalidate Codes for Student
+  // Backend handles this automatically when a new code is created.
   // ============================================
-  async invalidate(studentId: string): Promise<void> {
-    const codes = await this.getForStudent(studentId);
-
-    for (const code of codes) {
-      if (!code.usedAt) {
-        await this.delete(code.id);
-      }
-    }
+  async invalidate(_studentId: string): Promise<void> {
+    // No-op: backend invalidates old codes on new code creation.
   }
 
   // ============================================
-  // Get Pending Codes (for admin view)
+  // Get Pending Codes (admin view)
   // ============================================
   async getPending(): Promise<LinkCode[]> {
-    // Fetch all and filter/sort client-side to avoid index issues
-    const snapshot = await getDocs(this.linkCodesRef);
-    const allCodes = snapshot.docs.map(docToLinkCode);
-
-    // Filter to only active (not used, not expired) codes
-    const now = new Date();
-    const pendingCodes = allCodes.filter((c) => !c.usedAt && c.expiresAt > now);
-
-    // Sort by createdAt desc
-    return pendingCodes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return [];
   }
 
   // ============================================
-  // Get Recently Used Codes (for admin view)
+  // Get Recently Used Codes (admin view)
   // ============================================
-  async getRecentlyUsed(limitCount = 10): Promise<LinkCode[]> {
-    // Fetch all and filter/sort client-side to avoid index issues
-    const snapshot = await getDocs(this.linkCodesRef);
-    const allCodes = snapshot.docs.map(docToLinkCode);
+  async getRecentlyUsed(_limitCount = 10): Promise<LinkCode[]> {
+    return [];
+  }
 
-    // Filter to only used codes and sort by usedAt desc
-    const usedCodes = allCodes
-      .filter((c) => c.usedAt)
-      .sort((a, b) => (b.usedAt?.getTime() || 0) - (a.usedAt?.getTime() || 0));
-
-    return usedCodes.slice(0, limitCount);
+  // ============================================
+  // Generate Instructor Link Code
+  // ============================================
+  async generateInstructorCode(_createdBy: string): Promise<LinkCode> {
+    const raw = await api.post<unknown>(
+      `/v1/academies/${this.academyId}/instructor-link-codes`,
+      {}
+    );
+    return mapLinkCode(raw);
   }
 }
 
@@ -338,18 +181,30 @@ export function createLinkCodeService(academyId: string): LinkCodeService {
 // Legacy Export (for backwards compatibility)
 // ============================================
 export const linkCodeService = {
-  generate: (studentId: string, studentName: string, createdBy: string) => new LinkCodeService(DEFAULT_ACADEMY_ID).generate(studentId, studentName, createdBy),
-  getByCode: (code: string) => new LinkCodeService(DEFAULT_ACADEMY_ID).getByCode(code),
-  validate: (code: string) => new LinkCodeService(DEFAULT_ACADEMY_ID).validate(code),
-  markAsUsed: (code: string, userId: string) => new LinkCodeService(DEFAULT_ACADEMY_ID).markAsUsed(code, userId),
-  getActiveForStudent: (studentId: string) => new LinkCodeService(DEFAULT_ACADEMY_ID).getActiveForStudent(studentId),
-  getForStudent: (studentId: string) => new LinkCodeService(DEFAULT_ACADEMY_ID).getForStudent(studentId),
-  getById: (id: string) => new LinkCodeService(DEFAULT_ACADEMY_ID).getById(id),
-  delete: (id: string) => new LinkCodeService(DEFAULT_ACADEMY_ID).delete(id),
-  cleanupExpired: () => new LinkCodeService(DEFAULT_ACADEMY_ID).cleanupExpired(),
-  invalidate: (studentId: string) => new LinkCodeService(DEFAULT_ACADEMY_ID).invalidate(studentId),
-  getPending: () => new LinkCodeService(DEFAULT_ACADEMY_ID).getPending(),
-  getRecentlyUsed: (limitCount = 10) => new LinkCodeService(DEFAULT_ACADEMY_ID).getRecentlyUsed(limitCount),
+  generate: (studentId: string, studentName: string, createdBy: string) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).generate(studentId, studentName, createdBy),
+  getByCode: (code: string) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).getByCode(code),
+  validate: (code: string) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).validate(code),
+  markAsUsed: (code: string, userId: string) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).markAsUsed(code, userId),
+  getActiveForStudent: (studentId: string) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).getActiveForStudent(studentId),
+  getForStudent: (studentId: string) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).getForStudent(studentId),
+  getById: (id: string) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).getById(id),
+  delete: (id: string) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).delete(id),
+  cleanupExpired: () =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).cleanupExpired(),
+  invalidate: (studentId: string) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).invalidate(studentId),
+  getPending: () =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).getPending(),
+  getRecentlyUsed: (limitCount = 10) =>
+    new LinkCodeService(DEFAULT_ACADEMY_ID).getRecentlyUsed(limitCount),
 };
 
 export default linkCodeService;

@@ -31,8 +31,7 @@ import {
   Pencil,
   UserMinus,
 } from 'lucide-react';
-import { arrayRemove, collection, doc, getDocs, query, updateDoc, where } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api } from '@/lib/api/client';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { useAuth, useFeedback } from '@/components/providers';
 import { createInstructorLinkCodeService } from '@/services';
@@ -92,19 +91,22 @@ export function TeamTab() {
   const loadMembers = useCallback(async () => {
     if (!academyId) return;
     try {
-      const snap = await getDocs(
-        query(
-          collection(db, `academies/${academyId}/users`),
-          where('role', '==', 'instructor')
-        )
-      );
+      const { items } = await api.get<{ items: Array<{
+        uid: string;
+        role: string;
+        status: string;
+        student_id?: string;
+        extra_permissions: string[];
+        email: string;
+        display_name?: string;
+      }> }>(`/v1/academies/${academyId}/users?role=admin&status=active`);
       setMembers(
-        snap.docs.map((d) => ({
-          id: d.id,
-          displayName: d.data().displayName,
-          email: d.data().email,
-          extraPermissions: d.data().extraPermissions ?? [],
-          studentId: d.data().studentId,
+        items.map((m) => ({
+          id: m.uid,
+          displayName: m.display_name,
+          email: m.email,
+          extraPermissions: m.extra_permissions ?? [],
+          studentId: m.student_id,
         }))
       );
     } catch {
@@ -113,11 +115,9 @@ export function TeamTab() {
   }, [academyId]);
 
   const handleRemoveMonitor = useCallback(async (member: TeamMember) => {
-    if (!academyId || !member.studentId) return;
+    if (!academyId) return;
     try {
-      await updateDoc(doc(db, 'academies', academyId), {
-        monitorIds: arrayRemove(member.studentId),
-      });
+      await api.delete(`/v1/academies/${academyId}/users/${member.id}`);
       success(`${member.displayName ?? 'Instrutor'} removido dos monitores.`);
     } catch {
       showError('Erro ao remover monitor.');

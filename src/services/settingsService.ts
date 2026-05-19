@@ -1,13 +1,4 @@
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  serverTimestamp,
-  arrayUnion,
-  arrayRemove,
-} from 'firebase/firestore';
-import { db, collections, getAcademyRef } from '@/lib/firebase';
+import { api } from '@/lib/api/client';
 import { Academy } from '@/types';
 
 // ============================================
@@ -32,20 +23,20 @@ export interface AcademySettings {
 
   // Branding
   logoUrl?: string;
-  portalSlogan?: string;              // Frase exibida na TopAppBar do portal (ex: "Vamos avante, ombro a ombro")
-  sidebarLogoUrl?: string;            // Logo alternativo para sidebar (se diferente do logoUrl)
-  portalBackgroundUrl?: string;       // Background do portal do aluno
-  adminBackgroundUrl?: string;        // Background do painel admin/professor
-  sidebarBackgroundUrl?: string;      // Background da sidebar
+  portalSlogan?: string;
+  sidebarLogoUrl?: string;
+  portalBackgroundUrl?: string;
+  adminBackgroundUrl?: string;
+  sidebarBackgroundUrl?: string;
 
   // Financial
   pixKey?: string;
   pixKeyType?: 'cpf' | 'cnpj' | 'email' | 'phone' | 'random';
 
-  // AbacatePay Integration (API key is global in env, not per-academy)
+  // AbacatePay Integration
   abacatePayEnabled?: boolean;
 
-  // Asaas Integration (per-academy sub-account)
+  // Asaas Integration
   asaasEnabled?: boolean;
 
   // Asaas KYC
@@ -62,7 +53,7 @@ export interface AcademySettings {
   storePublished?: boolean;
   storeWelcomeMessage?: string;
   storeMinOrderAmount?: number;
-  storeCreditCardEnabled?: boolean;  // Enable credit card payments in store
+  storeCreditCardEnabled?: boolean;
 
   // Student Check-in Settings
   studentCheckinEnabled?: boolean;
@@ -71,6 +62,68 @@ export interface AcademySettings {
   monitorIds?: string[];
 
   updatedAt?: Date;
+}
+
+// ============================================
+// Go API setting shape
+// ============================================
+interface RawSetting {
+  academy_id: string;
+  key: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value: any;
+  updated_at: string;
+}
+
+// ============================================
+// Helper: settings array → plain object map
+// ============================================
+function settingsArrayToMap(items: RawSetting[]): Record<string, unknown> {
+  const map: Record<string, unknown> = {};
+  for (const item of items) {
+    map[item.key] = item.value;
+  }
+  return map;
+}
+
+// ============================================
+// Helper: map flat Go settings to AcademySettings
+// ============================================
+function mapToAcademySettings(data: Record<string, unknown>): AcademySettings {
+  return {
+    name: (data.name as string) || '',
+    slug: data.slug as string | undefined,
+    cnpj: data.cnpj as string | undefined,
+    email: data.email as string | undefined,
+    phone: data.phone as string | undefined,
+    address: data.address as string | undefined,
+    city: data.city as string | undefined,
+    state: data.state as string | undefined,
+    zipCode: data.zipCode as string | undefined,
+    responsibleBirthDate: data.responsibleBirthDate as string | undefined,
+    logoUrl: data.logoUrl as string | undefined,
+    portalSlogan: data.portalSlogan as string | undefined,
+    sidebarLogoUrl: data.sidebarLogoUrl as string | undefined,
+    portalBackgroundUrl: data.portalBackgroundUrl as string | undefined,
+    adminBackgroundUrl: data.adminBackgroundUrl as string | undefined,
+    sidebarBackgroundUrl: data.sidebarBackgroundUrl as string | undefined,
+    pixKey: data.pixKey as string | undefined,
+    pixKeyType: data.pixKeyType as AcademySettings['pixKeyType'],
+    abacatePayEnabled: (data.abacatePayEnabled as boolean) || false,
+    asaasEnabled: (data.asaasEnabled as boolean) || false,
+    asaasKycStatus: data.asaasKycStatus as AcademySettings['asaasKycStatus'],
+    asaasKycOnboardingUrl: data.asaasKycOnboardingUrl as string | undefined,
+    autoGraduationEnabled: (data.autoGraduationEnabled as boolean) || false,
+    autoGraduationAttendances: data.autoGraduationAttendances as number | undefined,
+    useClassWeights: (data.useClassWeights as boolean) || false,
+    storeEnabled: (data.storeEnabled as boolean) || false,
+    storePublished: (data.storePublished as boolean) || false,
+    storeWelcomeMessage: data.storeWelcomeMessage as string | undefined,
+    storeMinOrderAmount: data.storeMinOrderAmount as number | undefined,
+    storeCreditCardEnabled: (data.storeCreditCardEnabled as boolean) || false,
+    studentCheckinEnabled: (data.studentCheckinEnabled as boolean) || false,
+    monitorIds: (data.monitorIds as string[]) || [],
+  };
 }
 
 // ============================================
@@ -83,8 +136,18 @@ class SettingsService {
     this.academyId = academyId;
   }
 
-  private get academyRef() {
-    return getAcademyRef(this.academyId);
+  private get base() {
+    return `/v1/academies/${this.academyId}/settings`;
+  }
+
+  private async getAllSettings(): Promise<Record<string, unknown>> {
+    const res = await api.get<{ items: RawSetting[] } | RawSetting[]>(this.base);
+    const items = Array.isArray(res) ? res : (res as { items: RawSetting[] }).items ?? [];
+    return settingsArrayToMap(items);
+  }
+
+  private async setSetting(key: string, value: unknown): Promise<void> {
+    await api.put(`${this.base}/${key}`, { value });
   }
 
   // ============================================
@@ -92,51 +155,8 @@ class SettingsService {
   // ============================================
   async getAcademySettings(): Promise<AcademySettings | null> {
     try {
-      const docSnap = await getDoc(this.academyRef);
-
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        return {
-          name: data.name || '',
-          slug: data.slug,
-          cnpj: data.cnpj,
-          email: data.email,
-          phone: data.phone,
-          address: data.address,
-          city: data.city,
-          state: data.state,
-          zipCode: data.zipCode,
-          responsibleBirthDate: data.responsibleBirthDate,
-          logoUrl: data.logoUrl,
-          portalSlogan: data.portalSlogan,
-          sidebarLogoUrl: data.sidebarLogoUrl,
-          portalBackgroundUrl: data.portalBackgroundUrl,
-          adminBackgroundUrl: data.adminBackgroundUrl,
-          sidebarBackgroundUrl: data.sidebarBackgroundUrl,
-          pixKey: data.pixKey,
-          pixKeyType: data.pixKeyType,
-          abacatePayEnabled: data.abacatePayEnabled || false,
-          asaasEnabled: data.asaasEnabled || false,
-          asaasKycStatus: data.asaasKycStatus,
-          asaasKycOnboardingUrl: data.asaasKycOnboardingUrl,
-          autoGraduationEnabled: data.autoGraduationEnabled || false,
-          autoGraduationAttendances: data.autoGraduationAttendances,
-          useClassWeights: data.useClassWeights || false,
-          storeEnabled: data.storeEnabled || false,
-          storePublished: data.storePublished || false,
-          storeWelcomeMessage: data.storeWelcomeMessage,
-          storeMinOrderAmount: data.storeMinOrderAmount,
-          storeCreditCardEnabled: data.storeCreditCardEnabled || false,
-          studentCheckinEnabled: data.studentCheckinEnabled || false,
-          monitorIds: data.monitorIds || [],
-          updatedAt: data.updatedAt?.toDate(),
-        };
-      }
-
-      // Return default settings if academy doc not found
-      return {
-        name: 'Minha Academia',
-      };
+      const data = await this.getAllSettings();
+      return mapToAcademySettings(data);
     } catch (error) {
       console.error('Error fetching academy settings:', error);
       return null;
@@ -144,46 +164,43 @@ class SettingsService {
   }
 
   // ============================================
-  // Save Academy Settings
+  // Save Academy Settings (batch PUT per key)
   // ============================================
   async saveAcademySettings(settings: Partial<AcademySettings>): Promise<void> {
     try {
-      // Build settings object, excluding undefined values
-      const settingsData: Record<string, unknown> = {
-        updatedAt: serverTimestamp(),
-      };
+      const pairs: Array<[string, unknown]> = [];
 
-      if (settings.name !== undefined) settingsData.name = settings.name;
-      if (settings.slug !== undefined) settingsData.slug = settings.slug;
-      if (settings.cnpj !== undefined) settingsData.cnpj = settings.cnpj;
-      if (settings.email !== undefined) settingsData.email = settings.email;
-      if (settings.phone !== undefined) settingsData.phone = settings.phone;
-      if (settings.address !== undefined) settingsData.address = settings.address;
-      if (settings.city !== undefined) settingsData.city = settings.city;
-      if (settings.state !== undefined) settingsData.state = settings.state;
-      if (settings.zipCode !== undefined) settingsData.zipCode = settings.zipCode;
-      if (settings.responsibleBirthDate !== undefined) settingsData.responsibleBirthDate = settings.responsibleBirthDate;
-      if (settings.logoUrl !== undefined) settingsData.logoUrl = settings.logoUrl;
-      if (settings.portalSlogan !== undefined) settingsData.portalSlogan = settings.portalSlogan;
-      if (settings.sidebarLogoUrl !== undefined) settingsData.sidebarLogoUrl = settings.sidebarLogoUrl;
-      if (settings.portalBackgroundUrl !== undefined) settingsData.portalBackgroundUrl = settings.portalBackgroundUrl;
-      if (settings.adminBackgroundUrl !== undefined) settingsData.adminBackgroundUrl = settings.adminBackgroundUrl;
-      if (settings.sidebarBackgroundUrl !== undefined) settingsData.sidebarBackgroundUrl = settings.sidebarBackgroundUrl;
-      if (settings.pixKey !== undefined) settingsData.pixKey = settings.pixKey;
-      if (settings.pixKeyType !== undefined) settingsData.pixKeyType = settings.pixKeyType;
-      if (settings.abacatePayEnabled !== undefined) settingsData.abacatePayEnabled = settings.abacatePayEnabled;
-      if (settings.asaasEnabled !== undefined) settingsData.asaasEnabled = settings.asaasEnabled;
-      if (settings.autoGraduationEnabled !== undefined) settingsData.autoGraduationEnabled = settings.autoGraduationEnabled;
-      if (settings.autoGraduationAttendances !== undefined) settingsData.autoGraduationAttendances = settings.autoGraduationAttendances;
-      if (settings.useClassWeights !== undefined) settingsData.useClassWeights = settings.useClassWeights;
-      if (settings.storeEnabled !== undefined) settingsData.storeEnabled = settings.storeEnabled;
-      if (settings.storePublished !== undefined) settingsData.storePublished = settings.storePublished;
-      if (settings.storeWelcomeMessage !== undefined) settingsData.storeWelcomeMessage = settings.storeWelcomeMessage;
-      if (settings.storeMinOrderAmount !== undefined) settingsData.storeMinOrderAmount = settings.storeMinOrderAmount;
-      if (settings.storeCreditCardEnabled !== undefined) settingsData.storeCreditCardEnabled = settings.storeCreditCardEnabled;
-      if (settings.studentCheckinEnabled !== undefined) settingsData.studentCheckinEnabled = settings.studentCheckinEnabled;
+      if (settings.name !== undefined) pairs.push(['name', settings.name]);
+      if (settings.slug !== undefined) pairs.push(['slug', settings.slug]);
+      if (settings.cnpj !== undefined) pairs.push(['cnpj', settings.cnpj]);
+      if (settings.email !== undefined) pairs.push(['email', settings.email]);
+      if (settings.phone !== undefined) pairs.push(['phone', settings.phone]);
+      if (settings.address !== undefined) pairs.push(['address', settings.address]);
+      if (settings.city !== undefined) pairs.push(['city', settings.city]);
+      if (settings.state !== undefined) pairs.push(['state', settings.state]);
+      if (settings.zipCode !== undefined) pairs.push(['zipCode', settings.zipCode]);
+      if (settings.responsibleBirthDate !== undefined) pairs.push(['responsibleBirthDate', settings.responsibleBirthDate]);
+      if (settings.logoUrl !== undefined) pairs.push(['logoUrl', settings.logoUrl]);
+      if (settings.portalSlogan !== undefined) pairs.push(['portalSlogan', settings.portalSlogan]);
+      if (settings.sidebarLogoUrl !== undefined) pairs.push(['sidebarLogoUrl', settings.sidebarLogoUrl]);
+      if (settings.portalBackgroundUrl !== undefined) pairs.push(['portalBackgroundUrl', settings.portalBackgroundUrl]);
+      if (settings.adminBackgroundUrl !== undefined) pairs.push(['adminBackgroundUrl', settings.adminBackgroundUrl]);
+      if (settings.sidebarBackgroundUrl !== undefined) pairs.push(['sidebarBackgroundUrl', settings.sidebarBackgroundUrl]);
+      if (settings.pixKey !== undefined) pairs.push(['pixKey', settings.pixKey]);
+      if (settings.pixKeyType !== undefined) pairs.push(['pixKeyType', settings.pixKeyType]);
+      if (settings.abacatePayEnabled !== undefined) pairs.push(['abacatePayEnabled', settings.abacatePayEnabled]);
+      if (settings.asaasEnabled !== undefined) pairs.push(['asaasEnabled', settings.asaasEnabled]);
+      if (settings.autoGraduationEnabled !== undefined) pairs.push(['autoGraduationEnabled', settings.autoGraduationEnabled]);
+      if (settings.autoGraduationAttendances !== undefined) pairs.push(['autoGraduationAttendances', settings.autoGraduationAttendances]);
+      if (settings.useClassWeights !== undefined) pairs.push(['useClassWeights', settings.useClassWeights]);
+      if (settings.storeEnabled !== undefined) pairs.push(['storeEnabled', settings.storeEnabled]);
+      if (settings.storePublished !== undefined) pairs.push(['storePublished', settings.storePublished]);
+      if (settings.storeWelcomeMessage !== undefined) pairs.push(['storeWelcomeMessage', settings.storeWelcomeMessage]);
+      if (settings.storeMinOrderAmount !== undefined) pairs.push(['storeMinOrderAmount', settings.storeMinOrderAmount]);
+      if (settings.storeCreditCardEnabled !== undefined) pairs.push(['storeCreditCardEnabled', settings.storeCreditCardEnabled]);
+      if (settings.studentCheckinEnabled !== undefined) pairs.push(['studentCheckinEnabled', settings.studentCheckinEnabled]);
 
-      await setDoc(this.academyRef, settingsData, { merge: true });
+      await Promise.all(pairs.map(([key, value]) => this.setSetting(key, value)));
     } catch (error) {
       console.error('Error saving academy settings:', error);
       throw error;
@@ -194,37 +211,24 @@ class SettingsService {
   // Update Logo
   // ============================================
   async updateLogo(logoUrl: string): Promise<void> {
-    await updateDoc(this.academyRef, {
-      logoUrl,
-      updatedAt: serverTimestamp(),
-    });
+    await this.setSetting('logoUrl', logoUrl);
   }
 
   // ============================================
   // Toggle AbacatePay
-  // API key is global (in environment variable), not per-academy
   // ============================================
   async toggleAbacatePay(enabled: boolean): Promise<void> {
-    await updateDoc(this.academyRef, {
-      abacatePayEnabled: enabled,
-      updatedAt: serverTimestamp(),
-    });
+    await this.setSetting('abacatePayEnabled', enabled);
   }
 
   // ============================================
   // Update Auto-graduation Settings
   // ============================================
   async updateAutoGraduation(enabled: boolean, attendances?: number): Promise<void> {
-    const updateData: Record<string, unknown> = {
-      autoGraduationEnabled: enabled,
-      updatedAt: serverTimestamp(),
-    };
-
+    await this.setSetting('autoGraduationEnabled', enabled);
     if (attendances !== undefined) {
-      updateData.autoGraduationAttendances = attendances;
+      await this.setSetting('autoGraduationAttendances', attendances);
     }
-
-    await updateDoc(this.academyRef, updateData);
   }
 
   // ============================================
@@ -232,88 +236,68 @@ class SettingsService {
   // ============================================
   async getMonitors(): Promise<string[]> {
     try {
-      const docSnap = await getDoc(this.academyRef);
-      if (docSnap.exists()) {
-        return docSnap.data().monitorIds || [];
-      }
-      return [];
-    } catch (error) {
-      console.error('Error fetching monitors:', error);
+      const data = await this.getAllSettings();
+      return (data.monitorIds as string[]) || [];
+    } catch {
       return [];
     }
   }
 
   async addMonitor(studentId: string): Promise<void> {
-    await updateDoc(this.academyRef, {
-      monitorIds: arrayUnion(studentId),
-      updatedAt: serverTimestamp(),
-    });
+    const monitors = await this.getMonitors();
+    if (!monitors.includes(studentId)) {
+      await this.setSetting('monitorIds', [...monitors, studentId]);
+    }
   }
 
   async removeMonitor(studentId: string): Promise<void> {
-    await updateDoc(this.academyRef, {
-      monitorIds: arrayRemove(studentId),
-      updatedAt: serverTimestamp(),
-    });
+    const monitors = await this.getMonitors();
+    await this.setSetting('monitorIds', monitors.filter((id) => id !== studentId));
   }
 
   // ============================================
   // Get Full Academy Data
+  // Constructs an Academy object from settings keys.
   // ============================================
   async getAcademy(): Promise<Academy | null> {
     try {
-      const docSnap = await getDoc(this.academyRef);
-
-      if (!docSnap.exists()) {
-        return null;
-      }
-
-      const data = docSnap.data();
+      const data = await this.getAllSettings();
       return {
-        id: docSnap.id,
-        name: data.name || '',
-        slug: data.slug || '',
-        logoUrl: data.logoUrl,
-        // Branding
-        portalSlogan: data.portalSlogan,
-        sidebarLogoUrl: data.sidebarLogoUrl,
-        portalBackgroundUrl: data.portalBackgroundUrl,
-        adminBackgroundUrl: data.adminBackgroundUrl,
-        sidebarBackgroundUrl: data.sidebarBackgroundUrl,
-        // Contact
-        cnpj: data.cnpj,
-        email: data.email,
-        phone: data.phone,
-        address: data.address,
-        city: data.city,
-        state: data.state,
-        zipCode: data.zipCode,
-        // Responsible Person
-        responsibleBirthDate: data.responsibleBirthDate,
-        // Financial
-        pixKey: data.pixKey,
-        pixKeyType: data.pixKeyType,
-        abacatePayEnabled: data.abacatePayEnabled || false,
-        asaasEnabled: data.asaasEnabled || false,
-        // Auto-graduation
-        autoGraduationEnabled: data.autoGraduationEnabled || false,
-        autoGraduationAttendances: data.autoGraduationAttendances,
-        useClassWeights: data.useClassWeights || false,
-        // Store
-        storeEnabled: data.storeEnabled || false,
-        storePublished: data.storePublished || false,
-        storeWelcomeMessage: data.storeWelcomeMessage,
-        storeMinOrderAmount: data.storeMinOrderAmount,
-        storeCreditCardEnabled: data.storeCreditCardEnabled || false,
-        // Student Check-in
-        studentCheckinEnabled: data.studentCheckinEnabled || false,
-        // Monitors
-        monitorIds: data.monitorIds || [],
-        // Subscription & Metadata
-        subscription: data.subscription,
-        createdAt: data.createdAt?.toDate() || new Date(),
-        updatedAt: data.updatedAt?.toDate() || new Date(),
-        ownerId: data.ownerId,
+        id: this.academyId,
+        name: (data.name as string) || '',
+        slug: (data.slug as string) || '',
+        logoUrl: data.logoUrl as string | undefined,
+        portalSlogan: data.portalSlogan as string | undefined,
+        sidebarLogoUrl: data.sidebarLogoUrl as string | undefined,
+        portalBackgroundUrl: data.portalBackgroundUrl as string | undefined,
+        adminBackgroundUrl: data.adminBackgroundUrl as string | undefined,
+        sidebarBackgroundUrl: data.sidebarBackgroundUrl as string | undefined,
+        cnpj: data.cnpj as string | undefined,
+        email: data.email as string | undefined,
+        phone: data.phone as string | undefined,
+        address: data.address as string | undefined,
+        city: data.city as string | undefined,
+        state: data.state as string | undefined,
+        zipCode: data.zipCode as string | undefined,
+        responsibleBirthDate: data.responsibleBirthDate as string | undefined,
+        pixKey: data.pixKey as string | undefined,
+        pixKeyType: data.pixKeyType as Academy['pixKeyType'],
+        abacatePayEnabled: (data.abacatePayEnabled as boolean) || false,
+        asaasEnabled: (data.asaasEnabled as boolean) || false,
+        autoGraduationEnabled: (data.autoGraduationEnabled as boolean) || false,
+        autoGraduationAttendances: data.autoGraduationAttendances as number | undefined,
+        useClassWeights: (data.useClassWeights as boolean) || false,
+        storeEnabled: (data.storeEnabled as boolean) || false,
+        storePublished: (data.storePublished as boolean) || false,
+        storeWelcomeMessage: data.storeWelcomeMessage as string | undefined,
+        storeMinOrderAmount: data.storeMinOrderAmount as number | undefined,
+        storeCreditCardEnabled: (data.storeCreditCardEnabled as boolean) || false,
+        studentCheckinEnabled: (data.studentCheckinEnabled as boolean) || false,
+        monitorIds: (data.monitorIds as string[]) || [],
+        subscription: data.subscription as Academy['subscription'],
+        createdAt: data.createdAt ? new Date(data.createdAt as string) : new Date(),
+        updatedAt: data.updatedAt ? new Date(data.updatedAt as string) : new Date(),
+        ownerId: (data.ownerId as string) || '',
       };
     } catch (error) {
       console.error('Error fetching academy:', error);
@@ -331,85 +315,17 @@ export function createSettingsService(academyId: string): SettingsService {
 
 // ============================================
 // Legacy Export (for backwards compatibility)
+// Uses DEFAULT_ACADEMY_ID from env
 // ============================================
-const LEGACY_SETTINGS_DOC = 'academy';
-const LEGACY_SETTINGS_COLLECTION = 'settings';
+const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 export const settingsService = {
   async getAcademySettings(): Promise<AcademySettings | null> {
-    try {
-      const docRef = doc(db, LEGACY_SETTINGS_COLLECTION, LEGACY_SETTINGS_DOC);
-      const docSnap = await getDoc(docRef);
-
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        return {
-          name: data.name || '',
-          cnpj: data.cnpj,
-          email: data.email,
-          phone: data.phone,
-          address: data.address,
-          city: data.city,
-          state: data.state,
-          zipCode: data.zipCode,
-          logoUrl: data.logoUrl,
-          portalSlogan: data.portalSlogan,
-          sidebarLogoUrl: data.sidebarLogoUrl,
-          portalBackgroundUrl: data.portalBackgroundUrl,
-          adminBackgroundUrl: data.adminBackgroundUrl,
-          sidebarBackgroundUrl: data.sidebarBackgroundUrl,
-          pixKey: data.pixKey,
-          pixKeyType: data.pixKeyType,
-          abacatePayEnabled: data.abacatePayEnabled || false,
-          asaasEnabled: data.asaasEnabled || false,
-          autoGraduationEnabled: data.autoGraduationEnabled || false,
-          autoGraduationAttendances: data.autoGraduationAttendances,
-          updatedAt: data.updatedAt?.toDate(),
-        };
-      }
-
-      return { name: 'Minha Academia' };
-    } catch (error) {
-      console.error('Error fetching academy settings:', error);
-      return null;
-    }
+    return new SettingsService(DEFAULT_ACADEMY_ID).getAcademySettings();
   },
 
   async saveAcademySettings(settings: AcademySettings): Promise<void> {
-    try {
-      const docRef = doc(db, LEGACY_SETTINGS_COLLECTION, LEGACY_SETTINGS_DOC);
-
-      const settingsData: Record<string, unknown> = {
-        updatedAt: serverTimestamp(),
-      };
-
-      if (settings.name) settingsData.name = settings.name;
-      if (settings.cnpj) settingsData.cnpj = settings.cnpj;
-      if (settings.email) settingsData.email = settings.email;
-      if (settings.phone) settingsData.phone = settings.phone;
-      if (settings.address) settingsData.address = settings.address;
-      if (settings.city) settingsData.city = settings.city;
-      if (settings.state) settingsData.state = settings.state;
-      if (settings.zipCode) settingsData.zipCode = settings.zipCode;
-      if (settings.logoUrl) settingsData.logoUrl = settings.logoUrl;
-      if (settings.portalSlogan !== undefined) settingsData.portalSlogan = settings.portalSlogan;
-      if (settings.sidebarLogoUrl !== undefined) settingsData.sidebarLogoUrl = settings.sidebarLogoUrl;
-      if (settings.portalBackgroundUrl !== undefined) settingsData.portalBackgroundUrl = settings.portalBackgroundUrl;
-      if (settings.adminBackgroundUrl !== undefined) settingsData.adminBackgroundUrl = settings.adminBackgroundUrl;
-      if (settings.sidebarBackgroundUrl !== undefined) settingsData.sidebarBackgroundUrl = settings.sidebarBackgroundUrl;
-      if (settings.pixKey !== undefined) settingsData.pixKey = settings.pixKey;
-      if (settings.pixKeyType !== undefined) settingsData.pixKeyType = settings.pixKeyType;
-      if (settings.abacatePayEnabled !== undefined) settingsData.abacatePayEnabled = settings.abacatePayEnabled;
-      if (settings.asaasEnabled !== undefined) settingsData.asaasEnabled = settings.asaasEnabled;
-      if (settings.autoGraduationEnabled !== undefined) settingsData.autoGraduationEnabled = settings.autoGraduationEnabled;
-      if (settings.autoGraduationAttendances !== undefined) settingsData.autoGraduationAttendances = settings.autoGraduationAttendances;
-      if (settings.useClassWeights !== undefined) settingsData.useClassWeights = settings.useClassWeights;
-
-      await setDoc(docRef, settingsData, { merge: true });
-    } catch (error) {
-      console.error('Error saving academy settings:', error);
-      throw error;
-    }
+    return new SettingsService(DEFAULT_ACADEMY_ID).saveAcademySettings(settings);
   },
 };
 

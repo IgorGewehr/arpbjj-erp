@@ -1,24 +1,17 @@
 /**
  * Cross-Academy Service
  * Fetches data across all academies a user is linked to.
- * Used by monitors/professors to see a student's complete history.
+ * Uses /v1/me to get memberships, then queries per-academy endpoints.
  */
 
-import {
-  getDocs,
-  getDoc,
-  query,
-  where,
-  Timestamp,
-  DocumentSnapshot,
-} from 'firebase/firestore';
-import { collections, rootCollections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import {
   BeltProgression,
   CompetitionResult,
   UserAcademyMapping,
   BeltColor,
   KidsBeltColor,
+  UserRole,
 } from '@/types';
 
 // ============================================
@@ -66,67 +59,54 @@ export interface CrossAcademyStudentHistory {
 }
 
 // ============================================
-// Helper: Convert Firestore documents
+// Raw /v1/me response
 // ============================================
 
-const docToBeltProgression = (doc: DocumentSnapshot): BeltProgression => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
+interface RawMembership {
+  uid: string;
+  academy_id: string;
+  role: string;
+  student_id: string | null;
+  status: string;
+  joined_at: string;
+}
 
-  return {
-    id: doc.id,
-    studentId: data.studentId,
-    previousBelt: data.previousBelt,
-    previousStripes: data.previousStripes,
-    newBelt: data.newBelt,
-    newStripes: data.newStripes,
-    promotionDate: data.promotionDate instanceof Timestamp ? data.promotionDate.toDate() : new Date(data.promotionDate),
-    totalClasses: data.totalClasses,
-    promotedBy: data.promotedBy,
-    promotedByName: data.promotedByName,
-    notes: data.notes,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
+interface RawMeResponse {
+  user: {
+    uid: string;
+    email: string;
+    display_name: string;
+    photo_url?: string;
+    phone?: string;
   };
-};
-
-const docToCompetitionResult = (doc: DocumentSnapshot): CompetitionResult => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
-
-  return {
-    id: doc.id,
-    competitionId: data.competitionId,
-    competitionName: data.competitionName,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    position: data.position,
-    beltCategory: data.beltCategory,
-    ageCategory: data.ageCategory,
-    weightCategory: data.weightCategory,
-    notes: data.notes,
-    date: data.date instanceof Timestamp ? data.date.toDate() : new Date(data.date),
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
-    createdBy: data.createdBy,
-  };
-};
+  memberships: RawMembership[];
+  primary_academy_id: string | null;
+}
 
 // ============================================
-// Get Academy Name Helper
+// Helper: map /v1/me to UserAcademyMapping
 // ============================================
 
-async function getAcademyName(academyId: string): Promise<string> {
-  try {
-    const academyRef = collections.academy(academyId);
-    const academySnap = await getDoc(academyRef);
-    if (academySnap.exists()) {
-      const data = academySnap.data();
-      return (data?.name as string) || academyId;
-    }
-    return academyId;
-  } catch {
-    return academyId;
+function mapMeToUserAcademyMapping(raw: RawMeResponse): UserAcademyMapping {
+  const academyIds = raw.memberships.map((m) => m.academy_id);
+  const academyDetails: UserAcademyMapping['academyDetails'] = {};
+
+  for (const m of raw.memberships) {
+    academyDetails[m.academy_id] = {
+      studentId: m.student_id || undefined,
+      role: m.role as UserRole,
+      joinedAt: new Date(m.joined_at),
+      status: m.status as 'active' | 'inactive' | 'pending',
+    };
   }
+
+  return {
+    id: raw.user.uid,
+    academyIds,
+    primaryAcademyId: raw.primary_academy_id || undefined,
+    academyDetails,
+    updatedAt: new Date(),
+  };
 }
 
 // ============================================
@@ -134,40 +114,43 @@ async function getAcademyName(academyId: string): Promise<string> {
 // ============================================
 
 async function getUserAcademyMapping(linkedUserId: string): Promise<UserAcademyMapping | null> {
-  const mappingRef = rootCollections.userAcademyMappingDoc(linkedUserId);
-  const mappingSnap = await getDoc(mappingRef);
-
-  if (!mappingSnap.exists()) {
+  try {
+    const raw = await api.get<RawMeResponse>('/v1/me');
+    return mapMeToUserAcademyMapping(raw);
+  } catch {
     return null;
   }
-
-  const data = mappingSnap.data() as Record<string, unknown>;
-  return {
-    id: mappingSnap.id,
-    academyIds: (data.academyIds as string[]) || [],
-    primaryAcademyId: data.primaryAcademyId as string | undefined,
-    academyDetails: data.academyDetails as UserAcademyMapping['academyDetails'],
-    updatedAt: data.updatedAt
-      ? (data.updatedAt as Timestamp).toDate()
-      : undefined,
-  };
 }
 
 // ============================================
 // Check if Global User Profile is Public
 // ============================================
 
-async function isProfilePublic(linkedUserId: string): Promise<boolean> {
+async function isProfilePublic(_linkedUserId: string): Promise<boolean> {
   try {
-    const userRef = rootCollections.user(linkedUserId);
-    const userSnap = await getDoc(userRef);
-    if (userSnap.exists()) {
-      const data = userSnap.data();
-      return (data?.isProfilePublic as boolean) || false;
-    }
-    return false;
+    const raw = await api.get<RawMeResponse>('/v1/me');
+    // Go backend may expose isProfilePublic on user object
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (raw.user as any).is_profile_public ?? false;
   } catch {
     return false;
+  }
+}
+
+// ============================================
+// Get Academy Name Helper
+// ============================================
+
+async function getAcademyName(academyId: string): Promise<string> {
+  try {
+    const res = await api.get<{ items: Array<{ key: string; value: unknown }> } | Array<{ key: string; value: unknown }>>(
+      `/v1/academies/${academyId}/settings`
+    );
+    const items = Array.isArray(res) ? res : (res as { items: Array<{ key: string; value: unknown }> }).items ?? [];
+    const nameSetting = items.find((s) => s.key === 'name');
+    return (nameSetting?.value as string) || academyId;
+  } catch {
+    return academyId;
   }
 }
 
@@ -185,7 +168,6 @@ export async function getBeltProgressionsAcrossAcademies(
   const allProgressions: CrossAcademyBeltProgression[] = [];
 
   for (const academyId of mapping.academyIds) {
-    // Optionally exclude current academy
     if (excludeAcademyId && academyId === excludeAcademyId) continue;
 
     const academyDetail = mapping.academyDetails?.[academyId];
@@ -195,23 +177,34 @@ export async function getBeltProgressionsAcrossAcademies(
     const academyName = await getAcademyName(academyId);
 
     try {
-      const progressionsRef = collections.beltProgressions(academyId);
-      const q = query(progressionsRef, where('studentId', '==', studentId));
-      const snapshot = await getDocs(q);
-
-      const progressions = snapshot.docs.map((doc) => ({
-        ...docToBeltProgression(doc),
+      const _bpRes = await api.get<{ items: unknown[] } | unknown[]>(
+        `/v1/academies/${academyId}/students/${studentId}/belt-progressions`
+      );
+      const raw = Array.isArray(_bpRes) ? _bpRes : (_bpRes as { items: unknown[] }).items ?? [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const progressions: CrossAcademyBeltProgression[] = raw.map((r: any) => ({
+        id: r.id,
+        studentId: r.student_id,
+        previousBelt: r.previous_belt,
+        previousStripes: r.previous_stripes,
+        newBelt: r.new_belt,
+        newStripes: r.new_stripes,
+        promotionDate: new Date(r.promotion_date),
+        totalClasses: r.total_classes ?? 0,
+        effectiveCountAtPromotion: r.effective_count_at_promotion,
+        promotedBy: r.promoted_by,
+        promotedByName: r.promoted_by_name,
+        notes: r.notes,
+        createdAt: new Date(r.created_at),
         academyId,
         academyName,
       }));
-
       allProgressions.push(...progressions);
     } catch (error) {
       console.error(`Error fetching belt progressions for academy ${academyId}:`, error);
     }
   }
 
-  // Sort by promotion date descending
   return allProgressions.sort((a, b) => b.promotionDate.getTime() - a.promotionDate.getTime());
 }
 
@@ -229,7 +222,6 @@ export async function getCompetitionResultsAcrossAcademies(
   const allResults: CrossAcademyCompetitionResult[] = [];
 
   for (const academyId of mapping.academyIds) {
-    // Optionally exclude current academy
     if (excludeAcademyId && academyId === excludeAcademyId) continue;
 
     const academyDetail = mapping.academyDetails?.[academyId];
@@ -239,23 +231,50 @@ export async function getCompetitionResultsAcrossAcademies(
     const academyName = await getAcademyName(academyId);
 
     try {
-      const resultsRef = collections.competitionResults(academyId);
-      const q = query(resultsRef, where('studentId', '==', studentId));
-      const snapshot = await getDocs(q);
-
-      const results = snapshot.docs.map((doc) => ({
-        ...docToCompetitionResult(doc),
-        academyId,
-        academyName,
-      }));
-
-      allResults.push(...results);
+      // Fetch all competitions then collect results for student
+      const _compRes = await api.get<{ items: Array<{ id: string }> } | Array<{ id: string }>>(
+        `/v1/academies/${academyId}/competitions`
+      );
+      const competitions = Array.isArray(_compRes) ? _compRes : (_compRes as { items: Array<{ id: string }> }).items ?? [];
+      for (const comp of competitions) {
+        try {
+          const _rRes = await api.get<{ items: unknown[] } | unknown[]>(
+            `/v1/academies/${academyId}/competitions/${comp.id}/results`
+          );
+          const rawResults = Array.isArray(_rRes) ? _rRes : (_rRes as { items: unknown[] }).items ?? [];
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const studentResults = rawResults.filter((r: any) => r.student_id === studentId);
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const mapped: CrossAcademyCompetitionResult[] = studentResults.map((r: any) => ({
+            id: r.id,
+            competitionId: r.competition_id,
+            competitionName: r.competition_name,
+            studentId: r.student_id,
+            studentName: r.student_name,
+            position: r.position,
+            beltCategory: r.belt_category,
+            ageCategory: r.age_category,
+            weightCategory: r.weight_category,
+            modality: r.modality,
+            divisionType: r.division_type,
+            notes: r.notes,
+            date: new Date(r.date),
+            createdAt: new Date(r.created_at),
+            updatedAt: new Date(r.updated_at),
+            createdBy: r.created_by || '',
+            academyId,
+            academyName,
+          }));
+          allResults.push(...mapped);
+        } catch {
+          // skip
+        }
+      }
     } catch (error) {
       console.error(`Error fetching competition results for academy ${academyId}:`, error);
     }
   }
 
-  // Sort by date descending
   return allResults.sort((a, b) => b.date.getTime() - a.date.getTime());
 }
 
@@ -279,20 +298,16 @@ export async function getAttendanceStatsAcrossAcademies(
     const academyName = await getAcademyName(academyId);
 
     try {
-      // Get student to check for initialAttendanceCount
-      const studentRef = collections.student(academyId, studentId);
-      const studentSnap = await getDoc(studentRef);
-      let initialCount = 0;
-      if (studentSnap.exists()) {
-        const studentData = studentSnap.data();
-        initialCount = (studentData?.initialAttendanceCount as number) || 0;
-      }
+      // Attendance count is embedded in the student object (attendance_count +
+      // initial_attendance_count). There is no standalone /attendance/stats
+      // endpoint in the Go backend.
+      const student = await api.get<{
+        attendance_count: number;
+        initial_attendance_count?: number;
+      }>(`/v1/academies/${academyId}/students/${studentId}`);
 
-      // Count attendance records
-      const attendanceRef = collections.attendance(academyId);
-      const q = query(attendanceRef, where('studentId', '==', studentId));
-      const snapshot = await getDocs(q);
-      const count = snapshot.size;
+      const count = student.attendance_count ?? 0;
+      const initialCount = student.initial_attendance_count ?? 0;
 
       stats.push({
         academyId,
@@ -307,6 +322,13 @@ export async function getAttendanceStatsAcrossAcademies(
   }
 
   return stats;
+}
+
+// ============================================
+// Get Academies for User
+// ============================================
+export async function getAcademiesForUser(linkedUserId: string): Promise<UserAcademyMapping | null> {
+  return getUserAcademyMapping(linkedUserId);
 }
 
 // ============================================
@@ -330,16 +352,17 @@ export async function getStudentGlobalHistory(
 
     const academyName = await getAcademyName(academyId);
 
-    // Get student belt info
-    const studentRef = collections.student(academyId, academyDetail.studentId);
-    const studentSnap = await getDoc(studentRef);
     let currentBelt: BeltColor | KidsBeltColor = 'white';
     let currentStripes = 0;
 
-    if (studentSnap.exists()) {
-      const studentData = studentSnap.data();
-      currentBelt = (studentData?.currentBelt as BeltColor | KidsBeltColor) || 'white';
-      currentStripes = (studentData?.currentStripes as number) || 0;
+    try {
+      const student = await api.get<{ current_belt?: string; current_stripes?: number }>(
+        `/v1/academies/${academyId}/students/${academyDetail.studentId}`
+      );
+      currentBelt = (student.current_belt as BeltColor | KidsBeltColor) || 'white';
+      currentStripes = student.current_stripes ?? 0;
+    } catch {
+      // keep defaults
     }
 
     academies.push({
@@ -351,22 +374,13 @@ export async function getStudentGlobalHistory(
     });
   }
 
-  // Get belt progressions from other academies (exclude current)
   const beltProgressions = await getBeltProgressionsAcrossAcademies(linkedUserId, currentAcademyId);
-
-  // Get competition results from other academies (exclude current)
   const competitionResults = await getCompetitionResultsAcrossAcademies(linkedUserId, currentAcademyId);
-
-  // Get attendance stats from all academies
   const attendanceStats = await getAttendanceStatsAcrossAcademies(linkedUserId);
 
-  // Calculate totals
   const totalAttendance = attendanceStats.reduce((sum, stat) => sum + stat.totalCount, 0);
 
-  // Calculate medal count from all academies
   const medalCount = { gold: 0, silver: 0, bronze: 0, total: 0 };
-
-  // Get all results (including current academy) for medal count
   const allResults = await getCompetitionResultsAcrossAcademies(linkedUserId);
   allResults.forEach((result) => {
     if (result.position === 'gold') medalCount.gold++;
@@ -393,6 +407,7 @@ export async function getStudentGlobalHistory(
 
 export const crossAcademyService = {
   getUserAcademyMapping,
+  getAcademiesForUser,
   isProfilePublic,
   getBeltProgressionsAcrossAcademies,
   getCompetitionResultsAcrossAcademies,

@@ -32,8 +32,8 @@ import {
   FileText,
 } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, collection } from 'firebase/firestore';
-import { auth, db } from '@/lib/firebase';
+import { auth } from '@/lib/firebase';
+import { api, ApiError } from '@/lib/api/client';
 import { useAcademy } from '@/contexts/AcademyContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LoadingButton } from '@/components/ui';
@@ -343,6 +343,19 @@ export default function CreateAcademyPage() {
   }, [activeStep, professorName, email, password, confirmPassword, academyName, documentType, documentNumber, acceptedTerms]);
 
   // ============================================
+  // Slug generation helper
+  // ============================================
+  function generateSlug(name: string): string {
+    return name
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 50);
+  }
+
+  // ============================================
   // Create Academy
   // ============================================
   const handleCreateAcademy = useCallback(async () => {
@@ -359,72 +372,28 @@ export default function CreateAcademyPage() {
         displayName: professorName.trim(),
       });
 
-      // Generate a random Firestore document ID (independent of academy name)
-      const academyRef = doc(collection(db, 'academies'));
-      const academyId = academyRef.id;
-      const docDigits = documentNumber.replace(/\D/g, '');
-
-      const now = serverTimestamp();
-
-      // Step 3: Create academy document (using auto-generated ID)
-      await setDoc(academyRef, {
+      // Step 3: Create academy via Go backend
+      const slug = generateSlug(academyName.trim());
+      const body: { name: string; slug: string; cnpj?: string } = {
         name: academyName.trim(),
-        ownerId: user.uid,
-        createdAt: now,
-        updatedAt: now,
-        settings: {
-          allowStudentRegistration: true,
-          requireApproval: false,
-        },
-        subscription: {
-          plan: 'free',
-          status: 'active',
-          trialEndsAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-        },
-        storeEnabled: false,
-        storePublished: false,
-        abacatePayEnabled: false,
-        autoGraduationEnabled: false,
-        studentCheckinEnabled: true,
-        ownerDocumentType: documentType,
-        ownerDocumentNumber: docDigits,
-      });
+        slug,
+      };
+      if (documentType === 'cnpj') {
+        body.cnpj = documentNumber.replace(/\D/g, '');
+      }
 
-      // Step 4: Create global user document with accountType: 'linked'
-      await setDoc(doc(db, 'users', user.uid), {
-        email: email.trim(),
-        displayName: professorName.trim(),
-        accountType: 'linked',
-        isProfilePublic: false,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      // Step 5: Create user document in academy-scoped users collection
-      await setDoc(doc(db, `academies/${academyId}/users`, user.uid), {
-        email: email.trim(),
-        displayName: professorName.trim(),
-        role: 'admin',
-        isActive: true,
-        status: 'active',
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      // Step 6: Create userAcademyMapping with academyDetails
-      await setDoc(doc(db, 'userAcademyMapping', user.uid), {
-        role: 'admin',
-        academyIds: [academyId],
-        primaryAcademyId: academyId,
-        academyDetails: {
-          [academyId]: {
-            role: 'admin',
-            joinedAt: now,
-            status: 'active',
-          },
-        },
-        updatedAt: now,
-      });
+      try {
+        await api.post('/v1/academies', body);
+      } catch (err) {
+        if (err instanceof ApiError && err.status === 409) {
+          // Slug conflict — retry once with a random 4-digit suffix
+          const suffix = Math.floor(1000 + Math.random() * 9000).toString();
+          const retrySlug = `${slug.slice(0, 45)}-${suffix}`;
+          await api.post('/v1/academies', { ...body, slug: retrySlug });
+        } else {
+          throw err;
+        }
+      }
 
       // Success
       setActiveStep(2);

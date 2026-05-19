@@ -74,6 +74,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
     queryKey: [QUERY_KEYS.pending, academyId],
     queryFn: () => financialService.getPending(),
     staleTime: 1000 * 60 * 2,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -83,6 +84,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
     queryKey: [QUERY_KEYS.overdue, academyId],
     queryFn: () => financialService.getOverdue(),
     staleTime: 1000 * 60 * 2,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -92,6 +94,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
     queryKey: [QUERY_KEYS.summary, filters.month || currentMonth, academyId],
     queryFn: () => financialService.getMonthlySummary(filters.month || currentMonth),
     staleTime: 1000 * 60 * 2,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -105,6 +108,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
       return financialService.getRevenueStats(startDate, endDate);
     },
     staleTime: 1000 * 60 * 5,
+    enabled: !!academyId,
   });
 
   // ============================================

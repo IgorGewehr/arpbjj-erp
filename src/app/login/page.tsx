@@ -52,7 +52,7 @@ export default function LoginPage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   const isDarkMode = theme.palette.mode === 'dark';
   const { signIn, resetPassword, isAuthenticated, loading, error, clearError, user } = useAuth();
-  const { academyUser, isLoading: academyLoading } = useAcademy();
+  const { academyUser, isLoading: academyLoading, error: academyError, userAcademies } = useAcademy();
 
   const [mounted, setMounted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -71,16 +71,24 @@ export default function LoginPage() {
 
   // Redirect based on academy-specific role (not global user role)
   useEffect(() => {
-    if (isAuthenticated && user && !academyLoading && academyUser) {
+    if (!isAuthenticated || !user || loading || academyLoading) return;
+
+    if (academyUser) {
+      // Has academy — redirect by role
       setRedirecting(true);
       const role = academyUser.role;
       const redirectTo = role === 'student' ? '/portal'
                        : role === 'guardian' ? '/responsavel'
                        : '/dashboard';
-      // Small delay for smooth transition
       setTimeout(() => router.push(redirectTo), 300);
+    } else if (!academyError && userAcademies.length === 0) {
+      // Loaded OK but genuinely zero academies — new user, create one
+      setRedirecting(true);
+      setTimeout(() => router.push('/criar-academia'), 300);
     }
-  }, [isAuthenticated, user, academyUser, academyLoading, router]);
+    // If there's an academyError or academyUser is null but loading finished,
+    // stay on login so the user can see the error or retry.
+  }, [isAuthenticated, user, loading, academyUser, academyLoading, academyError, userAcademies, router]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;

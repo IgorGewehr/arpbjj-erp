@@ -1,63 +1,108 @@
-import {
-  getDocs,
-  Timestamp,
-  DocumentSnapshot,
-  CollectionReference,
-} from 'firebase/firestore';
-import { collections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import { Financial, Plan, MonthlyReport, RevenueProjection, RevenueByPlan, FinancialRecommendation } from '@/types';
 import { subMonths, addMonths, format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 
 // ============================================
-// Helper: Convert Firestore document to Financial
+// API response shapes from the Go backend
 // ============================================
-const docToFinancial = (doc: DocumentSnapshot): Financial => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
 
-  return {
-    id: doc.id,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    type: data.type,
-    description: data.description,
-    amount: data.amount,
-    dueDate: data.dueDate instanceof Timestamp ? data.dueDate.toDate() : new Date(data.dueDate),
-    status: data.status,
-    paymentDate: data.paymentDate instanceof Timestamp ? data.paymentDate.toDate() : data.paymentDate ? new Date(data.paymentDate) : undefined,
-    method: data.method,
-    referenceMonth: data.referenceMonth,
-    planId: data.planId,
-    receiptUrl: data.receiptUrl,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
-    createdBy: data.createdBy,
-  };
-};
+interface ApiFinancial {
+  id: string;
+  student_id: string;
+  type: string;
+  description?: string;
+  amount: string;        // decimal string e.g. "150.00"
+  due_date: string;      // "YYYY-MM-DD"
+  status: string;
+  payment_date?: string; // ISO 8601 or null
+  method?: string;
+  reference_month?: string;
+  receipt_url?: string;
+  created_at: string;
+  updated_at: string;
+  created_by_uid?: string;
+}
+
+interface ApiPlan {
+  id: string;
+  name: string;
+  description?: string;
+  monthly_value: string; // decimal string
+  default_due_day: number;
+  classes_per_week: number;
+  student_ids?: string[];
+  custom_values?: Record<string, string>;
+  custom_due_days?: Record<string, number>;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
 
 // ============================================
-// Helper: Convert Firestore document to Plan
+// Mappers: Go API → local types
 // ============================================
-const docToPlan = (doc: DocumentSnapshot): Plan => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
 
-  return {
-    id: doc.id,
-    name: data.name,
-    description: data.description,
-    monthlyValue: data.monthlyValue,
-    defaultDueDay: data.defaultDueDay || 10,
-    classesPerWeek: data.classesPerWeek,
-    studentIds: data.studentIds || [],
-    customValues: data.customValues ?? {},
-    customDueDays: data.customDueDays ?? {},
-    isActive: data.isActive,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
-  };
-};
+const apiFinancialToLocal = (f: ApiFinancial): Financial => ({
+  id: f.id,
+  studentId: f.student_id,
+  studentName: undefined,
+  type: f.type as Financial['type'],
+  description: f.description,
+  amount: parseFloat(f.amount),
+  dueDate: new Date(f.due_date),
+  status: f.status as Financial['status'],
+  paymentDate: f.payment_date ? new Date(f.payment_date) : undefined,
+  method: f.method as Financial['method'],
+  referenceMonth: f.reference_month,
+  // plan_id is not included in the Go financial DTO — tracked via plan.student_ids
+  planId: undefined,
+  receiptUrl: f.receipt_url,
+  createdAt: new Date(f.created_at),
+  updatedAt: new Date(f.updated_at),
+  createdBy: f.created_by_uid ?? '',
+});
+
+const apiPlanToLocal = (p: ApiPlan): Plan => ({
+  id: p.id,
+  name: p.name,
+  description: p.description,
+  monthlyValue: parseFloat(p.monthly_value),
+  defaultDueDay: p.default_due_day,
+  classesPerWeek: p.classes_per_week,
+  studentIds: p.student_ids ?? [],
+  customValues: p.custom_values
+    ? Object.fromEntries(Object.entries(p.custom_values).map(([k, v]) => [k, parseFloat(v)]))
+    : {},
+  customDueDays: p.custom_due_days ?? {},
+  isActive: p.is_active,
+  createdAt: new Date(p.created_at),
+  updatedAt: new Date(p.updated_at),
+});
+
+// ============================================
+// Helper: Fetch all pages from a paginated Go endpoint
+// ============================================
+
+interface PagedResponse<T> {
+  items: T[];
+  has_more: boolean;
+  next_cursor?: string;
+}
+
+async function fetchAllPages<T>(
+  firstPagePath: string,
+  buildNextPath: (cursor: string) => string,
+): Promise<T[]> {
+  const all: T[] = [];
+  let path: string | null = firstPagePath;
+  while (path !== null) {
+    // eslint-disable-next-line no-await-in-loop
+    const page = (await api.get(path)) as PagedResponse<T>;
+    all.push(...page.items);
+    path = page.has_more && page.next_cursor ? buildNextPath(page.next_cursor) : null;
+  }
+  return all;
+}
 
 // ============================================
 // Helper: Derive effective month from a Financial
@@ -73,8 +118,6 @@ const getEffectiveMonth = (f: Financial): string => {
 // ============================================
 export class FinancialReportService {
   private academyId: string;
-  private financialsRef: CollectionReference;
-  private plansRef: CollectionReference;
 
   // Cached data (populated by loadAll, cleared after use)
   private cachedFinancials: Financial[] | null = null;
@@ -83,21 +126,27 @@ export class FinancialReportService {
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.financialsRef = collections.financials(academyId);
-    this.plansRef = collections.plans(academyId);
   }
 
   // ============================================
   // Load all data once (call before batch operations)
+  // Replaces Firestore getDocs with Go API calls.
   // ============================================
   async loadAll(): Promise<void> {
-    const [financialsSnap, plansSnap] = await Promise.all([
-      getDocs(this.financialsRef),
-      getDocs(this.plansRef),
+    const basePath = `/v1/academies/${this.academyId}`;
+
+    const [financialsRaw, plansRaw] = await Promise.all([
+      // Fetch all financial pages (max 100 per page from Go backend)
+      fetchAllPages<ApiFinancial>(
+        `${basePath}/financials?limit=100`,
+        (cursor) => `${basePath}/financials?limit=100&cursor=${encodeURIComponent(cursor)}`,
+      ),
+      // Plans list is typically small, no pagination expected
+      api.get<{ items: ApiPlan[] }>(`${basePath}/plans`).then((r) => r.items),
     ]);
 
-    this.cachedFinancials = financialsSnap.docs.map(docToFinancial);
-    this.cachedPlans = plansSnap.docs.map(docToPlan);
+    this.cachedFinancials = financialsRaw.map(apiFinancialToLocal);
+    this.cachedPlans = plansRaw.map(apiPlanToLocal);
 
     // Group financials by effective month (excluding cancelled)
     this.cachedFinancialsByMonth = new Map();
@@ -283,19 +332,30 @@ export class FinancialReportService {
 
   // ============================================
   // 4. Get Revenue By Plan
+  // Note: the Go backend does not include plan_id on financial records.
+  // Revenue is attributed to plans by matching plan.student_ids against
+  // financial.student_id for the given month.
   // ============================================
   getRevenueByPlan(month: string): RevenueByPlan[] {
     const financials = this.getFinancialsForMonth(month);
     const plans = this.getAllPlans();
 
+    // Build a studentId → planId lookup from plan.student_ids
+    const studentToPlan = new Map<string, string>();
+    for (const plan of plans) {
+      for (const sid of plan.studentIds) {
+        studentToPlan.set(sid, plan.id);
+      }
+    }
+
     const planMap = new Map<string, Plan>();
     plans.forEach((p) => planMap.set(p.id, p));
 
-    // Group by planId
+    // Group by resolved planId
     const groupedByPlan = new Map<string, { totalRevenue: number; studentIds: Set<string> }>();
 
     financials.forEach((f) => {
-      const key = f.planId || '__no_plan__';
+      const key = studentToPlan.get(f.studentId) ?? '__no_plan__';
       const existing = groupedByPlan.get(key) || { totalRevenue: 0, studentIds: new Set<string>() };
       existing.totalRevenue += f.amount;
       existing.studentIds.add(f.studentId);

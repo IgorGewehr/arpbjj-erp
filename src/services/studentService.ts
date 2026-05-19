@@ -1,141 +1,185 @@
-import {
-  collection,
-  doc,
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  limit,
-  startAfter,
-  DocumentSnapshot,
-  serverTimestamp,
-  Timestamp,
-  QueryConstraint,
-  writeBatch,
-} from 'firebase/firestore';
-import { db, collections } from '@/lib/firebase';
-import { removeUndefinedDeep } from '@/lib/firestoreUtils';
+import { api } from '@/lib/api/client';
 import { Student, StudentFilters, Pagination, PaginatedResponse } from '@/types';
 
 // ============================================
-// Helper: Convert Firestore document to Student
+// Go API response shapes (snake_case)
 // ============================================
-const docToStudent = (doc: DocumentSnapshot): Student => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
+interface GoStudent {
+  id: string;
+  academy_id: string;
+  full_name: string;
+  nickname?: string;
+  email?: string;
+  phone?: string;
+  photo_url?: string;
+  birth_date?: string;
+  category: string;
+  status: string;
+  status_note?: string;
+  current_belt: string;
+  current_stripes: number;
+  attendance_count: number;
+  initial_attendance_count?: number;
+  plan_id?: string;
+  tuition_value?: string;
+  tuition_day: number;
+  linked_user_uid?: string;
+  is_profile_public: boolean;
+  primary_sport?: string;
+  sports_list?: string[];
+  sport_data?: Record<string, unknown>;
+  weight_kg?: number;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    zip_code?: string;
+  };
+  guardian?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+    cpf?: string;
+    relationship?: string;
+  };
+  cpf?: string;
+  rg?: string;
+  start_date?: string;
+  jiujitsu_start_date?: string;
+  medical_certificate_url?: string;
+  health_notes?: string;
+  blood_type?: string;
+  allergies?: string;
+  emergency_contact?: string;
+  created_at: string;
+  updated_at: string;
+  created_by_uid?: string;
+}
 
-  // Convert beltHistory dates
-  const beltHistory = data.beltHistory?.map((entry: { belt: string; stripes: number; date: Timestamp | Date; notes?: string }) => ({
-    ...entry,
-    date: entry.date instanceof Timestamp ? entry.date.toDate() : new Date(entry.date),
-  }));
+interface GoStudentListResponse {
+  items: GoStudent[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
 
-  // Convert sportData dates (Timestamps → Date)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const sportData: Student['sportData'] = data.sportData
-    ? Object.fromEntries(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        Object.entries(data.sportData).map(([sport, sd]: [string, any]) => [
-          sport,
-          {
-            ...sd,
-            startDate: sd.startDate instanceof Timestamp ? sd.startDate.toDate() : sd.startDate ? new Date(sd.startDate) : undefined,
-            gradeHistory: sd.gradeHistory?.map((entry: { date: Timestamp | Date; [key: string]: unknown }) => ({
-              ...entry,
-              date: entry.date instanceof Timestamp ? entry.date.toDate() : new Date(entry.date),
-            })),
-          },
-        ])
-      )
-    : undefined;
-
+// ============================================
+// Helper: Convert Go response to Student
+// ============================================
+const goToStudent = (s: GoStudent): Student => {
   return {
-    id: doc.id,
-    fullName: data.fullName,
-    nickname: data.nickname,
-    birthDate: data.birthDate instanceof Timestamp ? data.birthDate.toDate() : data.birthDate ? new Date(data.birthDate) : undefined,
-    cpf: data.cpf,
-    rg: data.rg,
-    phone: data.phone,
-    email: data.email,
-    photoUrl: data.photoUrl,
-    address: data.address,
-    guardian: data.guardian,
-    startDate: data.startDate instanceof Timestamp ? data.startDate.toDate() : new Date(data.startDate),
-    jiujitsuStartDate: data.jiujitsuStartDate instanceof Timestamp
-      ? data.jiujitsuStartDate.toDate()
-      : data.jiujitsuStartDate
-        ? new Date(data.jiujitsuStartDate)
-        : undefined,
-    currentBelt: data.currentBelt,
-    currentStripes: data.currentStripes,
-    sports: data.sports,
-    sportData,
-    category: data.category,
-    teamId: data.teamId,
-    weight: data.weight,
-    beltHistory,
-    initialAttendanceCount: data.initialAttendanceCount,
-    attendanceCount: data.attendanceCount,
-    planId: data.planId,
-    status: data.status,
-    statusNote: data.statusNote,
-    tuitionValue: data.tuitionValue,
-    tuitionDay: data.tuitionDay,
-    medicalCertificateUrl: data.medicalCertificateUrl,
-    medicalCertificateExpiry: data.medicalCertificateExpiry instanceof Timestamp
-      ? data.medicalCertificateExpiry.toDate()
-      : data.medicalCertificateExpiry
-        ? new Date(data.medicalCertificateExpiry)
-        : undefined,
-    healthNotes: data.healthNotes,
-    bloodType: data.bloodType,
-    allergies: data.allergies,
-    emergencyContact: data.emergencyContact,
-    isProfilePublic: data.isProfilePublic ?? false,
-    linkedUserId: data.linkedUserId,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
-    createdBy: data.createdBy,
+    id: s.id,
+    fullName: s.full_name,
+    nickname: s.nickname,
+    birthDate: s.birth_date ? new Date(s.birth_date) : undefined,
+    cpf: s.cpf,
+    rg: s.rg,
+    phone: s.phone,
+    email: s.email,
+    photoUrl: s.photo_url,
+    address: s.address
+      ? {
+          street: s.address.street ?? '',
+          number: '',
+          neighborhood: '',
+          city: s.address.city ?? '',
+          state: s.address.state ?? '',
+          zipCode: s.address.zip_code ?? '',
+        }
+      : undefined,
+    guardian: s.guardian
+      ? {
+          name: s.guardian.name ?? '',
+          phone: s.guardian.phone ?? '',
+          email: s.guardian.email,
+          cpf: s.guardian.cpf,
+          relationship: s.guardian.relationship ?? '',
+        }
+      : undefined,
+    startDate: s.start_date ? new Date(s.start_date) : new Date(),
+    jiujitsuStartDate: s.jiujitsu_start_date ? new Date(s.jiujitsu_start_date) : undefined,
+    currentBelt: s.current_belt as Student['currentBelt'],
+    currentStripes: s.current_stripes as Student['currentStripes'],
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    sports: s.sports_list as any,
+    sportData: s.sport_data as Student['sportData'],
+    category: s.category as Student['category'],
+    weight: s.weight_kg ?? undefined,
+    initialAttendanceCount: s.initial_attendance_count ?? 0,
+    attendanceCount: s.attendance_count,
+    planId: s.plan_id,
+    status: s.status as Student['status'],
+    statusNote: s.status_note,
+    tuitionValue: s.tuition_value !== undefined ? parseFloat(s.tuition_value) : 0,
+    tuitionDay: s.tuition_day,
+    medicalCertificateUrl: s.medical_certificate_url,
+    healthNotes: s.health_notes,
+    bloodType: s.blood_type,
+    allergies: s.allergies ? [s.allergies] : undefined,
+    isProfilePublic: s.is_profile_public ?? false,
+    linkedUserId: s.linked_user_uid,
+    createdAt: new Date(s.created_at),
+    updatedAt: new Date(s.updated_at),
+    createdBy: s.created_by_uid,
   };
 };
 
 // ============================================
-// Helper: Convert Student to Firestore format
+// Helper: Convert Student to Go request body (camelCase → snake_case)
 // ============================================
-const studentToDoc = (student: Partial<Student>): Record<string, unknown> => {
-  const data: Record<string, unknown> = { ...student };
+const studentToGoBody = (student: Partial<Student>): Record<string, unknown> => {
+  const body: Record<string, unknown> = {};
 
-  // Convert dates to Timestamps
-  if (student.birthDate) {
-    data.birthDate = Timestamp.fromDate(new Date(student.birthDate));
-  }
-  if (student.startDate) {
-    data.startDate = Timestamp.fromDate(new Date(student.startDate));
-  }
-  if (student.jiujitsuStartDate) {
-    data.jiujitsuStartDate = Timestamp.fromDate(new Date(student.jiujitsuStartDate));
-  }
-  if (student.medicalCertificateExpiry) {
-    data.medicalCertificateExpiry = Timestamp.fromDate(new Date(student.medicalCertificateExpiry));
+  if (student.fullName !== undefined) body.full_name = student.fullName;
+  if (student.nickname !== undefined) body.nickname = student.nickname;
+  if (student.email !== undefined) body.email = student.email;
+  if (student.phone !== undefined) body.phone = student.phone;
+  if (student.photoUrl !== undefined) body.photo_url = student.photoUrl;
+  if (student.birthDate !== undefined) body.birth_date = new Date(student.birthDate).toISOString().split('T')[0];
+  if (student.category !== undefined) body.category = student.category;
+  if (student.status !== undefined) body.status = student.status;
+  if (student.statusNote !== undefined) body.status_note = student.statusNote;
+  if (student.currentBelt !== undefined) body.current_belt = student.currentBelt;
+  if (student.currentStripes !== undefined) body.current_stripes = student.currentStripes;
+  if (student.planId !== undefined) body.plan_id = student.planId;
+  if (student.tuitionValue !== undefined) body.tuition_value = String(student.tuitionValue);
+  if (student.tuitionDay !== undefined) body.tuition_day = student.tuitionDay;
+  if (student.weight !== undefined) body.weight_kg = student.weight;
+  if (student.isProfilePublic !== undefined) body.is_profile_public = student.isProfilePublic;
+  if (student.linkedUserId !== undefined) body.linked_user_uid = student.linkedUserId;
+  if (student.cpf !== undefined) body.cpf = student.cpf;
+  if (student.rg !== undefined) body.rg = student.rg;
+  if (student.startDate !== undefined) body.start_date = new Date(student.startDate).toISOString().split('T')[0];
+  if (student.jiujitsuStartDate !== undefined) body.jiujitsu_start_date = new Date(student.jiujitsuStartDate).toISOString().split('T')[0];
+  if (student.medicalCertificateUrl !== undefined) body.medical_certificate_url = student.medicalCertificateUrl;
+  if (student.healthNotes !== undefined) body.health_notes = student.healthNotes;
+  if (student.bloodType !== undefined) body.blood_type = student.bloodType;
+  if (student.allergies !== undefined) body.allergies = Array.isArray(student.allergies) ? student.allergies.join(', ') : student.allergies;
+  if (student.initialAttendanceCount !== undefined) body.initial_attendance_count = student.initialAttendanceCount;
+
+  if (student.address !== undefined) {
+    body.address = {
+      street: student.address.street,
+      city: student.address.city,
+      state: student.address.state,
+      zip_code: student.address.zipCode,
+    };
   }
 
-  // Convert beltHistory dates to Timestamps
-  if (student.beltHistory && student.beltHistory.length > 0) {
-    data.beltHistory = student.beltHistory.map(entry => ({
-      ...entry,
-      date: Timestamp.fromDate(new Date(entry.date)),
-    }));
+  if (student.guardian !== undefined) {
+    body.guardian = {
+      name: student.guardian.name,
+      phone: student.guardian.phone,
+      email: student.guardian.email,
+      cpf: student.guardian.cpf,
+      relationship: student.guardian.relationship,
+    };
   }
 
-  // Remove id from data (it's the document ID)
-  delete data.id;
+  if (student.sports !== undefined) body.sports_list = student.sports;
+  if (student.sportData !== undefined) body.sport_data = student.sportData;
+  if (student.primarySport !== undefined) body.primary_sport = student.primarySport;
 
-  // Remove undefined values deeply (Firebase doesn't accept undefined at any level)
-  return removeUndefinedDeep(data);
+  return body;
 };
 
 // ============================================
@@ -148,63 +192,42 @@ class StudentService {
     this.academyId = academyId;
   }
 
-  private get studentsRef() {
-    return collections.students(this.academyId);
-  }
-
-  private get attendanceRef() {
-    return collections.attendance(this.academyId);
+  private get baseUrl() {
+    return `/v1/academies/${this.academyId}/students`;
   }
 
   // ============================================
   // List Students with Infinite Scroll Support
-  // Sorted by total attendance (attendanceCount + initialAttendanceCount)
   // ============================================
   async listAll(
     filters: StudentFilters = {},
     pageSize = 30,
     lastStudentId?: string
   ): Promise<PaginatedResponse<Student> & { hasMore: boolean; lastId?: string }> {
-    // Build filter constraints
-    const filterConstraints: QueryConstraint[] = [];
+    const params = new URLSearchParams({ limit: '500' });
+    if (filters.status) params.set('status', filters.status);
+    if (filters.category) params.set('category', filters.category);
+    if (filters.belt) params.set('belt', filters.belt);
+    if (filters.search) params.set('q', filters.search);
 
-    if (filters.status) {
-      filterConstraints.push(where('status', '==', filters.status));
-    }
-    if (filters.category) {
-      filterConstraints.push(where('category', '==', filters.category));
-    }
-    if (filters.belt) {
-      filterConstraints.push(where('currentBelt', '==', filters.belt));
-    }
+    const res = await api.get<GoStudentListResponse>(`${this.baseUrl}?${params}`);
+    const students = res.items.map(goToStudent);
 
-    // Query with filters only (no limit) - we need all to sort by computed field
-    const q = query(this.studentsRef, ...filterConstraints);
-    const snapshot = await getDocs(q);
-
-    const students = snapshot.docs.map(docToStudent);
-
-    // Sort by total attendance count (descending) - most active first
     students.sort((a, b) => {
       const totalA = (a.attendanceCount || 0) + (a.initialAttendanceCount || 0);
       const totalB = (b.attendanceCount || 0) + (b.initialAttendanceCount || 0);
       if (totalB !== totalA) return totalB - totalA;
-      // Secondary sort by name for consistency
       return a.fullName.localeCompare(b.fullName);
     });
 
     const total = students.length;
 
-    // If we have a cursor, find the position and slice from there
     let startIndex = 0;
     if (lastStudentId) {
       const cursorIndex = students.findIndex(s => s.id === lastStudentId);
-      if (cursorIndex !== -1) {
-        startIndex = cursorIndex + 1;
-      }
+      if (cursorIndex !== -1) startIndex = cursorIndex + 1;
     }
 
-    // Get the page of students
     const pageStudents = students.slice(startIndex, startIndex + pageSize);
     const hasMore = startIndex + pageSize < total;
     const lastId = pageStudents.length > 0 ? pageStudents[pageStudents.length - 1].id : undefined;
@@ -216,47 +239,27 @@ class StudentService {
       totalPages: Math.ceil(total / pageSize),
     };
 
-    return {
-      data: pageStudents,
-      pagination,
-      success: true,
-      hasMore,
-      lastId,
-    };
+    return { data: pageStudents, pagination, success: true, hasMore, lastId };
   }
 
   // ============================================
-  // Search Students by Name (Direct database query)
+  // Search Students by Name
   // ============================================
   async searchByName(searchTerm: string, filters: StudentFilters = {}): Promise<Student[]> {
-    // Build filter constraints
-    const filterConstraints: QueryConstraint[] = [];
+    const params = new URLSearchParams({ limit: '500', q: searchTerm });
+    if (filters.status) params.set('status', filters.status);
+    if (filters.category) params.set('category', filters.category);
+    if (filters.belt) params.set('belt', filters.belt);
 
-    if (filters.status) {
-      filterConstraints.push(where('status', '==', filters.status));
-    }
-    if (filters.category) {
-      filterConstraints.push(where('category', '==', filters.category));
-    }
-    if (filters.belt) {
-      filterConstraints.push(where('currentBelt', '==', filters.belt));
-    }
+    const res = await api.get<GoStudentListResponse>(`${this.baseUrl}?${params}`);
+    const students = res.items.map(goToStudent);
 
-    // Fetch all filtered students and search in memory
-    // (Firestore doesn't support case-insensitive contains search)
-    const q = query(this.studentsRef, ...filterConstraints);
-    const snapshot = await getDocs(q);
-
-    const students = snapshot.docs.map(docToStudent);
     const term = searchTerm.toLowerCase().trim();
-
-    // Filter by name match
     const matches = students.filter(s =>
       s.fullName.toLowerCase().includes(term) ||
       s.nickname?.toLowerCase().includes(term)
     );
 
-    // Sort by total attendance
     matches.sort((a, b) => {
       const totalA = (a.attendanceCount || 0) + (a.initialAttendanceCount || 0);
       const totalB = (b.attendanceCount || 0) + (b.initialAttendanceCount || 0);
@@ -274,80 +277,48 @@ class StudentService {
     filters: StudentFilters = {},
     page = 1,
     perPage = 50,
-    lastDoc?: DocumentSnapshot
   ): Promise<PaginatedResponse<Student>> {
-    // Build filter constraints (without orderBy to avoid composite index)
-    const filterConstraints: QueryConstraint[] = [];
+    const params = new URLSearchParams({ limit: '500' });
+    if (filters.status) params.set('status', filters.status);
+    if (filters.category) params.set('category', filters.category);
+    if (filters.belt) params.set('belt', filters.belt);
 
-    if (filters.status) {
-      filterConstraints.push(where('status', '==', filters.status));
-    }
-    if (filters.category) {
-      filterConstraints.push(where('category', '==', filters.category));
-    }
-    if (filters.belt) {
-      filterConstraints.push(where('currentBelt', '==', filters.belt));
-    }
-
-    // Build pagination constraints
-    const paginationConstraints: QueryConstraint[] = [limit(perPage)];
-    if (lastDoc) {
-      paginationConstraints.push(startAfter(lastDoc));
-    }
-
-    // Query with filters + pagination
-    const q = query(this.studentsRef, ...filterConstraints, ...paginationConstraints);
-    const snapshot = await getDocs(q);
-
-    const students = snapshot.docs.map(docToStudent);
-    // Sort client-side to avoid Firestore composite index requirement
+    const res = await api.get<GoStudentListResponse>(`${this.baseUrl}?${params}`);
+    const students = res.items.map(goToStudent);
     students.sort((a, b) => a.fullName.localeCompare(b.fullName));
 
-    // Get total count (only filter constraints, no pagination)
-    const totalQuery = query(this.studentsRef, ...filterConstraints);
-    const totalSnapshot = await getDocs(totalQuery);
+    const total = students.length;
+    const startIndex = (page - 1) * perPage;
+    const pageStudents = students.slice(startIndex, startIndex + perPage);
 
     const pagination: Pagination = {
       page,
       perPage,
-      total: totalSnapshot.size,
-      totalPages: Math.ceil(totalSnapshot.size / perPage),
+      total,
+      totalPages: Math.ceil(total / perPage),
     };
 
-    return {
-      data: students,
-      pagination,
-      success: true,
-    };
+    return { data: pageStudents, pagination, success: true };
   }
 
   // ============================================
   // Get Student by ID
   // ============================================
   async getById(id: string): Promise<Student | null> {
-    const docRef = collections.student(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
+    try {
+      const s = await api.get<GoStudent>(`${this.baseUrl}/${id}`);
+      return goToStudent(s);
+    } catch {
       return null;
     }
-
-    return docToStudent(docSnap);
   }
 
   // ============================================
   // Get Students by Status
   // ============================================
   async getByStatus(status: Student['status']): Promise<Student[]> {
-    const q = query(
-      this.studentsRef,
-      where('status', '==', status)
-    );
-
-    const snapshot = await getDocs(q);
-    const students = snapshot.docs.map(docToStudent);
-    // Sort client-side to avoid Firestore composite index requirement
-    return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    const res = await api.get<GoStudentListResponse>(`${this.baseUrl}?status=${status}&limit=500`);
+    return res.items.map(goToStudent).sort((a, b) => a.fullName.localeCompare(b.fullName));
   }
 
   // ============================================
@@ -361,97 +332,69 @@ class StudentService {
   // Get Student by Linked User ID
   // ============================================
   async getByLinkedUserId(userId: string): Promise<Student | null> {
-    const q = query(
-      this.studentsRef,
-      where('linkedUserId', '==', userId),
-      limit(1)
-    );
-
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) {
-      return null;
-    }
-    return docToStudent(snapshot.docs[0]);
+    const res = await api.get<GoStudentListResponse>(`${this.baseUrl}?limit=500`);
+    const found = res.items.find(s => s.linked_user_uid === userId);
+    return found ? goToStudent(found) : null;
   }
 
   // ============================================
   // Get All Students (for reports)
   // ============================================
   async getAll(): Promise<Student[]> {
-    const q = query(this.studentsRef);
-    const snapshot = await getDocs(q);
-    const students = snapshot.docs.map(docToStudent);
-    return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    const res = await api.get<GoStudentListResponse>(`${this.baseUrl}?limit=500`);
+    return res.items.map(goToStudent).sort((a, b) => a.fullName.localeCompare(b.fullName));
   }
 
   // ============================================
   // Search Students by Name
   // ============================================
   async search(searchTerm: string): Promise<Student[]> {
-    const q = query(
-      this.studentsRef,
-      where('fullName', '>=', searchTerm),
-      where('fullName', '<=', searchTerm + '\uf8ff'),
-      limit(20)
-    );
-
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToStudent);
+    const params = new URLSearchParams({ q: searchTerm, limit: '20' });
+    const res = await api.get<GoStudentListResponse>(`${this.baseUrl}?${params}`);
+    return res.items.map(goToStudent);
   }
 
   // ============================================
   // Create Student
   // ============================================
-  async create(student: Omit<Student, 'id' | 'createdAt' | 'updatedAt'>, createdBy: string = 'system'): Promise<Student> {
-    const now = serverTimestamp();
-
-    const docData = {
-      ...studentToDoc(student),
-      createdBy,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    const docRef = await addDoc(this.studentsRef, docData);
-    const newDoc = await getDoc(docRef);
-
-    return docToStudent(newDoc);
+  async create(student: Omit<Student, 'id' | 'createdAt' | 'updatedAt'>, createdBy?: string): Promise<Student> {
+    const body = studentToGoBody(student);
+    if (createdBy) body.created_by_uid = createdBy;
+    const s = await api.post<GoStudent>(this.baseUrl, body, {
+      'Idempotency-Key': crypto.randomUUID(),
+    });
+    return goToStudent(s);
   }
 
   // ============================================
   // Update Student
   // ============================================
   async update(id: string, data: Partial<Student>): Promise<Student> {
-    const docRef = collections.student(this.academyId, id);
-
-    const updateData = {
-      ...studentToDoc(data),
-      updatedAt: serverTimestamp(),
-    };
-
-    await updateDoc(docRef, updateData);
-
-    const updatedDoc = await getDoc(docRef);
-    return docToStudent(updatedDoc);
+    const body = studentToGoBody(data);
+    // UpdateStudentRequest does not accept these create-only or dedicated-endpoint fields.
+    // Go handler uses DisallowUnknownFields → 400 if sent.
+    delete body.initial_attendance_count;
+    delete body.current_belt;
+    delete body.current_stripes;
+    delete body.linked_user_uid;
+    delete body.sports_list;
+    delete body.sport_data;
+    const s = await api.patch<GoStudent>(`${this.baseUrl}/${id}`, body);
+    return goToStudent(s);
   }
 
   // ============================================
-  // Delete Student (Soft delete - set status to inactive)
+  // Delete Student (soft delete via API)
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = collections.student(this.academyId, id);
-    await updateDoc(docRef, {
-      status: 'inactive',
-      updatedAt: serverTimestamp(),
-    });
+    await api.delete(`${this.baseUrl}/${id}`);
   }
 
   // ============================================
   // Hard Delete Student
   // ============================================
   async hardDelete(id: string): Promise<void> {
-    const docRef = collections.student(this.academyId, id);
-    await deleteDoc(docRef);
+    await api.delete(`${this.baseUrl}/${id}`);
   }
 
   // ============================================
@@ -462,67 +405,50 @@ class StudentService {
     phone: string,
     createdBy: string
   ): Promise<Student> {
-    const now = serverTimestamp();
-
-    const docData = {
-      fullName,
+    const body = {
+      full_name: fullName,
       phone,
       status: 'active',
-      currentBelt: 'white',
-      currentStripes: 0,
+      current_belt: 'white',
+      current_stripes: 0,
       category: 'adult',
-      tuitionValue: 0,
-      tuitionDay: 10,
-      startDate: Timestamp.now(),
-      isProfilePublic: false,
-      createdBy,
-      createdAt: now,
-      updatedAt: now,
+      tuition_value: '0',
+      tuition_day: 10,
+      is_profile_public: false,
+      created_by_uid: createdBy,
     };
 
-    const docRef = await addDoc(this.studentsRef, docData);
-    const newDoc = await getDoc(docRef);
-
-    return docToStudent(newDoc);
+    const s = await api.post<GoStudent>(this.baseUrl, body, {
+      'Idempotency-Key': crypto.randomUUID(),
+    });
+    return goToStudent(s);
   }
 
   // ============================================
   // Get Students by Belt
   // ============================================
   async getByBelt(belt: Student['currentBelt']): Promise<Student[]> {
-    const q = query(
-      this.studentsRef,
-      where('currentBelt', '==', belt),
-      where('status', '==', 'active')
+    const res = await api.get<GoStudentListResponse>(
+      `${this.baseUrl}?belt=${belt}&status=active&limit=500`
     );
-
-    const snapshot = await getDocs(q);
-    const students = snapshot.docs.map(docToStudent);
-    // Sort client-side to avoid Firestore composite index requirement
-    return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    return res.items.map(goToStudent).sort((a, b) => a.fullName.localeCompare(b.fullName));
   }
 
   // ============================================
   // Get Students by Category
   // ============================================
   async getByCategory(category: Student['category']): Promise<Student[]> {
-    const q = query(
-      this.studentsRef,
-      where('category', '==', category),
-      where('status', '==', 'active')
+    const res = await api.get<GoStudentListResponse>(
+      `${this.baseUrl}?category=${category}&status=active&limit=500`
     );
-
-    const snapshot = await getDocs(q);
-    const students = snapshot.docs.map(docToStudent);
-    // Sort client-side to avoid Firestore composite index requirement
-    return students.sort((a, b) => a.fullName.localeCompare(b.fullName));
+    return res.items.map(goToStudent).sort((a, b) => a.fullName.localeCompare(b.fullName));
   }
 
   // ============================================
   // Get Students Count by Status
   // ============================================
   async getCountByStatus(): Promise<Record<Student['status'], number>> {
-    const statuses: Student['status'][] = ['active', 'injured', 'inactive', 'suspended'];
+    const res = await api.get<GoStudentListResponse>(`${this.baseUrl}?limit=500`);
     const counts: Record<Student['status'], number> = {
       active: 0,
       injured: 0,
@@ -530,24 +456,23 @@ class StudentService {
       suspended: 0,
     };
 
-    for (const status of statuses) {
-      const q = query(this.studentsRef, where('status', '==', status));
-      const snapshot = await getDocs(q);
-      counts[status] = snapshot.size;
-    }
+    res.items.forEach(s => {
+      const status = s.status as Student['status'];
+      if (status in counts) counts[status]++;
+    });
 
     return counts;
   }
 
   // ============================================
-  // Get Dashboard Stats (Single query, optimized)
+  // Get Dashboard Stats
   // ============================================
   async getDashboardStats(): Promise<{
     total: number;
     byStatus: { active: number; injured: number; inactive: number; suspended: number };
     byCategory: { kids: number; adult: number };
   }> {
-    const snapshot = await getDocs(this.studentsRef);
+    const res = await api.get<GoStudentListResponse>(`${this.baseUrl}?limit=500`);
 
     const stats = {
       total: 0,
@@ -555,21 +480,10 @@ class StudentService {
       byCategory: { kids: 0, adult: 0 } as Record<string, number>,
     };
 
-    snapshot.docs.forEach((doc) => {
-      const data = doc.data();
+    res.items.forEach(s => {
       stats.total++;
-
-      // Count by status
-      const status = data.status as string;
-      if (status && stats.byStatus[status] !== undefined) {
-        stats.byStatus[status]++;
-      }
-
-      // Count by category
-      const category = data.category as string;
-      if (category && stats.byCategory[category] !== undefined) {
-        stats.byCategory[category]++;
-      }
+      if (s.status && s.status in stats.byStatus) stats.byStatus[s.status]++;
+      if (s.category && s.category in stats.byCategory) stats.byCategory[s.category]++;
     });
 
     return stats as {
@@ -612,20 +526,18 @@ class StudentService {
     const date = graduationDate || new Date();
 
     if (sportId === 'bjj') {
-      // Legacy support for BJJ
-      updateData.currentBelt = newGrade as any;
-      updateData.currentStripes = newStripes as any;
+      updateData.currentBelt = newGrade as Student['currentBelt'];
+      updateData.currentStripes = newStripes as Student['currentStripes'];
       updateData.beltHistory = [
         ...(student.beltHistory || []),
         {
-          belt: newGrade as any,
-          stripes: newStripes as any,
+          belt: newGrade as Student['currentBelt'],
+          stripes: newStripes as Student['currentStripes'],
           date,
           notes,
         },
       ];
     } else {
-      // New multi-sport support format
       const currentSportData = student.sportData?.[sportId] || {
         currentGrade: newGrade,
         currentStripes: newStripes,
@@ -652,9 +564,10 @@ class StudentService {
         },
       };
 
-      // Ensure sport is included in the sports array
       const currentSports = student.sports || [];
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       if (!currentSports.includes(sportId as any)) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         updateData.sports = [...currentSports, sportId as any];
       }
     }
@@ -663,47 +576,10 @@ class StudentService {
   }
 
   // ============================================
-  // Sync Attendance Counts for all students
-  // (Run once to populate attendanceCount field for existing students)
+  // Sync Attendance Counts (no-op — handled by backend)
   // ============================================
   async syncAttendanceCounts(): Promise<{ updated: number; errors: number }> {
-    const result = { updated: 0, errors: 0 };
-
-    // Get all students
-    const studentsSnapshot = await getDocs(this.studentsRef);
-
-    // Get all attendance records
-    const attendanceSnapshot = await getDocs(this.attendanceRef);
-
-    // Count attendance per student
-    const countByStudent: Record<string, number> = {};
-    attendanceSnapshot.docs.forEach(doc => {
-      const studentId = doc.data().studentId;
-      countByStudent[studentId] = (countByStudent[studentId] || 0) + 1;
-    });
-
-    // Update each student with their count
-    const BATCH_SIZE = 500;
-    const students = studentsSnapshot.docs;
-
-    for (let i = 0; i < students.length; i += BATCH_SIZE) {
-      const batch = writeBatch(db);
-      const batchStudents = students.slice(i, i + BATCH_SIZE);
-
-      batchStudents.forEach(studentDoc => {
-        const count = countByStudent[studentDoc.id] || 0;
-        batch.update(studentDoc.ref, { attendanceCount: count });
-      });
-
-      try {
-        await batch.commit();
-        result.updated += batchStudents.length;
-      } catch {
-        result.errors += batchStudents.length;
-      }
-    }
-
-    return result;
+    return { updated: 0, errors: 0 };
   }
 }
 
@@ -715,8 +591,7 @@ export function createStudentService(academyId: string): StudentService {
 }
 
 // ============================================
-// Legacy Export (for backwards compatibility during migration)
-// Uses a default academy ID that should be set via environment or context
+// Legacy Export (for backwards compatibility)
 // ============================================
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 

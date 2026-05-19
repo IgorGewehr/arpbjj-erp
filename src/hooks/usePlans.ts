@@ -38,6 +38,7 @@ export function usePlans() {
     queryKey: [QUERY_KEYS.plans, academyId],
     queryFn: () => planService.list(),
     staleTime: 1000 * 60 * 5,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -47,6 +48,7 @@ export function usePlans() {
     queryKey: [QUERY_KEYS.activePlans, academyId],
     queryFn: () => planService.getActive(),
     staleTime: 1000 * 60 * 5,
+    enabled: !!academyId,
   });
 
   // ============================================

@@ -1,25 +1,5 @@
-import {
-  collection,
-  doc,
-  addDoc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  orderBy,
-  limit,
-  serverTimestamp,
-  Timestamp,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { collections } from '@/lib/firebase/collections';
-import {
-  Notification,
-  NotificationType,
-  NotificationPriority,
-} from '@/types';
+import { api } from '@/lib/api/client';
+import { Notification, NotificationType, NotificationPriority } from '@/types';
 
 // ============================================
 // Types
@@ -41,392 +21,275 @@ interface CreateNotificationData {
 }
 
 // ============================================
-// Notification Service Factory
+// Mapper
+// ============================================
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapNotification = (raw: any): Notification => ({
+  id: raw.id,
+  academyId: raw.academy_id || '',
+  userId: raw.recipient_uid ?? raw.user_id ?? '',
+  type: (raw.type as NotificationType) || 'system',
+  priority: (raw.priority as NotificationPriority) || 'normal',
+  title: raw.title,
+  message: raw.body ?? raw.message ?? '',
+  imageUrl: raw.image_url,
+  actionUrl: raw.action_url,
+  actionLabel: raw.action_label,
+  studentId: raw.student_id,
+  financialId: raw.financial_id,
+  competitionId: raw.competition_id,
+  read: raw.read ?? false,
+  readAt: raw.read_at ? new Date(raw.read_at) : undefined,
+  channels: raw.channels || ['in_app'],
+  sentVia: raw.sent_via,
+  createdAt: new Date(raw.created_at),
+  expiresAt: raw.expires_at ? new Date(raw.expires_at) : undefined,
+});
+
+// ============================================
+// Notification Service
+// Notifications are scoped to the current user (/v1/me/notifications).
+// academyId is kept for class instantiation compatibility only.
 // ============================================
 class NotificationService {
-  private academyId: string;
+  // academyId kept for backward compat — notifications are now user-scoped
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private _academyId: string;
 
   constructor(academyId: string) {
-    this.academyId = academyId;
-  }
-
-  private get notificationsRef() {
-    return collections.notifications(this.academyId);
+    this._academyId = academyId;
   }
 
   // ============================================
   // Create Notification
+  // Server-side event dispatch only; this is a no-op.
+  // Use-case: callers that used to create notifications directly now
+  // let the Go backend fire them from outbox events.
   // ============================================
-  async create(data: CreateNotificationData): Promise<Notification> {
-    const expiresAt = data.expiresInDays
-      ? Timestamp.fromDate(
-          new Date(Date.now() + data.expiresInDays * 24 * 60 * 60 * 1000)
-        )
-      : null;
-
-    const notificationData: Record<string, unknown> = {
-      academyId: this.academyId,
-      userId: data.userId,
-      type: data.type,
-      priority: data.priority || 'normal',
-      title: data.title,
-      message: data.message,
-      read: false,
-      channels: data.channels || ['in_app'],
-      sentVia: ['in_app'],
-      createdAt: serverTimestamp(),
-      expiresAt,
-    };
-
-    // Only include optional fields if they have values (Firestore rejects undefined)
-    if (data.imageUrl) notificationData.imageUrl = data.imageUrl;
-    if (data.actionUrl) notificationData.actionUrl = data.actionUrl;
-    if (data.actionLabel) notificationData.actionLabel = data.actionLabel;
-    if (data.studentId) notificationData.studentId = data.studentId;
-    if (data.financialId) notificationData.financialId = data.financialId;
-    if (data.competitionId) notificationData.competitionId = data.competitionId;
-
-    const docRef = await addDoc(this.notificationsRef, notificationData);
-
+  async create(_data: CreateNotificationData): Promise<Notification> {
+    // No-op: backend fires notifications automatically via outbox.
+    // Return a stub so callers that await the return value don't break.
     return {
-      id: docRef.id,
-      ...notificationData,
+      id: '',
+      academyId: this._academyId,
+      userId: _data.userId,
+      type: _data.type,
+      priority: _data.priority || 'normal',
+      title: _data.title,
+      message: _data.message,
+      read: false,
+      channels: _data.channels || ['in_app'],
       createdAt: new Date(),
-      expiresAt: expiresAt ? expiresAt.toDate() : undefined,
     } as Notification;
   }
 
   // ============================================
   // Get User Notifications
   // ============================================
-  async getByUser(userId: string, limitCount = 50): Promise<Notification[]> {
-    const q = query(
-      this.notificationsRef,
-      where('userId', '==', userId),
-      orderBy('createdAt', 'desc'),
-      limit(limitCount)
+  async getByUser(_userId: string, _limitCount = 50): Promise<Notification[]> {
+    const raw = await api.get<{ items: unknown[]; has_more: boolean }>(
+      '/v1/me/notifications?unread_only=false'
     );
-
-    const snapshot = await getDocs(q);
     const now = new Date();
-
-    return snapshot.docs
-      .map((doc) => {
-        const data = doc.data();
-        const expiresAt = data.expiresAt?.toDate();
-
-        // Skip expired
-        if (expiresAt && expiresAt < now) {
-          return null;
-        }
-
-        return {
-          id: doc.id,
-          academyId: data.academyId,
-          userId: data.userId,
-          type: data.type as NotificationType,
-          priority: data.priority as NotificationPriority,
-          title: data.title,
-          message: data.message,
-          imageUrl: data.imageUrl,
-          actionUrl: data.actionUrl,
-          actionLabel: data.actionLabel,
-          studentId: data.studentId,
-          financialId: data.financialId,
-          competitionId: data.competitionId,
-          read: data.read || false,
-          readAt: data.readAt?.toDate(),
-          channels: data.channels || ['in_app'],
-          sentVia: data.sentVia,
-          createdAt: data.createdAt?.toDate() || new Date(),
-          expiresAt,
-        } as Notification;
-      })
-      .filter(Boolean) as Notification[];
+    return (raw.items || [])
+      .map(mapNotification)
+      .filter((n) => !n.expiresAt || n.expiresAt >= now)
+      .slice(0, _limitCount);
   }
 
   // ============================================
   // Get Unread Count
   // ============================================
-  async getUnreadCount(userId: string): Promise<number> {
-    const q = query(
-      this.notificationsRef,
-      where('userId', '==', userId),
-      where('read', '==', false)
-    );
-
-    const snapshot = await getDocs(q);
-    const now = new Date();
-
-    // Filter out expired
-    return snapshot.docs.filter((doc) => {
-      const expiresAt = doc.data().expiresAt?.toDate();
-      return !expiresAt || expiresAt >= now;
-    }).length;
+  async getUnreadCount(_userId: string): Promise<number> {
+    const raw = await api.get<{ count: number }>('/v1/me/notifications/unread-count');
+    return raw.count ?? 0;
   }
 
   // ============================================
   // Mark as Read
   // ============================================
   async markAsRead(notificationId: string): Promise<void> {
-    const docRef = collections.notification(this.academyId, notificationId);
-    await updateDoc(docRef, {
-      read: true,
-      readAt: serverTimestamp(),
-    });
+    await api.patch(`/v1/me/notifications/${notificationId}`, { read: true });
   }
 
   // ============================================
-  // Mark All as Read for User
+  // Mark All as Read
   // ============================================
-  async markAllAsRead(userId: string): Promise<void> {
-    const q = query(
-      this.notificationsRef,
-      where('userId', '==', userId),
-      where('read', '==', false)
-    );
-
-    const snapshot = await getDocs(q);
-
-    await Promise.all(
-      snapshot.docs.map((doc) =>
-        updateDoc(doc.ref, {
-          read: true,
-          readAt: serverTimestamp(),
-        })
-      )
-    );
+  async markAllAsRead(_userId: string): Promise<void> {
+    await api.post('/v1/me/notifications/mark-all-read');
   }
 
   // ============================================
   // Delete Notification
   // ============================================
   async delete(notificationId: string): Promise<void> {
-    const docRef = collections.notification(this.academyId, notificationId);
-    await deleteDoc(docRef);
+    await api.delete(`/v1/me/notifications/${notificationId}`);
   }
 
   // ============================================
-  // Delete Expired Notifications
+  // Delete Expired — no-op (backend handles cleanup)
   // ============================================
   async deleteExpired(): Promise<number> {
-    const now = Timestamp.now();
-    const q = query(
-      this.notificationsRef,
-      where('expiresAt', '<=', now)
-    );
-
-    const snapshot = await getDocs(q);
-
-    await Promise.all(snapshot.docs.map((doc) => deleteDoc(doc.ref)));
-
-    return snapshot.docs.length;
+    return 0;
   }
 
   // ============================================
-  // Notification Templates
+  // Notification Templates — all no-ops.
+  // These were Firebase write operations. In Go, the backend fires
+  // notifications automatically from outbox domain events.
+  // Signatures are preserved so callers don't need to change.
   // ============================================
 
   async notifyPaymentReceived(
-    adminUserId: string,
-    studentName: string,
-    amount: number,
-    studentId: string,
-    financialId: string
+    _adminUserId: string,
+    _studentName: string,
+    _amount: number,
+    _studentId: string,
+    _financialId: string
   ): Promise<Notification> {
     return this.create({
-      userId: adminUserId,
+      userId: _adminUserId,
       type: 'payment_received',
       priority: 'high',
       title: 'Pagamento Recebido',
-      message: `${studentName} pagou R$ ${amount.toFixed(2)} via plataforma.`,
-      studentId,
-      financialId,
-      actionUrl: `/financeiro?studentId=${studentId}`,
-      actionLabel: 'Ver detalhes',
-      expiresInDays: 30,
+      message: `${_studentName} pagou R$ ${_amount.toFixed(2)} via plataforma.`,
     });
   }
 
   async notifyPaymentPending(
-    userId: string,
-    amount: number,
-    dueDate: Date,
-    financialId: string
+    _userId: string,
+    _amount: number,
+    _dueDate: Date,
+    _financialId: string
   ): Promise<Notification> {
     return this.create({
-      userId,
+      userId: _userId,
       type: 'payment_pending',
       priority: 'normal',
       title: 'Mensalidade Pendente',
-      message: `Você tem uma mensalidade de R$ ${amount.toFixed(2)} com vencimento em ${dueDate.toLocaleDateString('pt-BR')}.`,
-      financialId,
-      actionUrl: `/portal/financeiro`,
-      actionLabel: 'Pagar agora',
-      expiresInDays: 7,
+      message: `Você tem uma mensalidade de R$ ${_amount.toFixed(2)} com vencimento em ${_dueDate.toLocaleDateString('pt-BR')}.`,
     });
   }
 
   async notifyPaymentOverdue(
-    userId: string,
-    amount: number,
-    daysOverdue: number,
-    financialId: string
+    _userId: string,
+    _amount: number,
+    _daysOverdue: number,
+    _financialId: string
   ): Promise<Notification> {
     return this.create({
-      userId,
+      userId: _userId,
       type: 'payment_overdue',
       priority: 'urgent',
       title: 'Pagamento Atrasado',
-      message: `Sua mensalidade de R$ ${amount.toFixed(2)} está atrasada há ${daysOverdue} dias.`,
-      financialId,
-      actionUrl: `/portal/financeiro`,
-      actionLabel: 'Regularizar',
-      expiresInDays: 30,
+      message: `Sua mensalidade de R$ ${_amount.toFixed(2)} está atrasada há ${_daysOverdue} dias.`,
     });
   }
 
   async notifyGraduationEligible(
-    adminUserId: string,
-    studentName: string,
-    attendanceCount: number,
-    studentId: string
+    _adminUserId: string,
+    _studentName: string,
+    _attendanceCount: number,
+    _studentId: string
   ): Promise<Notification> {
     return this.create({
-      userId: adminUserId,
+      userId: _adminUserId,
       type: 'graduation_eligible',
       priority: 'high',
       title: 'Aluno Elegível para Graduação',
-      message: `${studentName} atingiu ${attendanceCount} presenças e está elegível para graduação automática.`,
-      studentId,
-      actionUrl: `/graduacao?studentId=${studentId}`,
-      actionLabel: 'Ver aluno',
-      expiresInDays: 30,
+      message: `${_studentName} atingiu ${_attendanceCount} presenças e está elegível para graduação automática.`,
     });
   }
 
   async notifyGraduationNear(
-    userId: string,
-    studentName: string,
-    currentCount: number,
-    targetCount: number,
-    studentId: string
+    _userId: string,
+    _studentName: string,
+    _currentCount: number,
+    _targetCount: number,
+    _studentId: string
   ): Promise<Notification> {
-    const remaining = targetCount - currentCount;
+    const remaining = _targetCount - _currentCount;
     return this.create({
-      userId,
+      userId: _userId,
       type: 'graduation_near',
       priority: 'normal',
       title: 'Próximo da Graduação!',
-      message: `${studentName} está a ${remaining} presenças da próxima graduação.`,
-      studentId,
-      actionUrl: `/portal/presenca`,
-      actionLabel: 'Ver presenças',
-      expiresInDays: 14,
+      message: `${_studentName} está a ${remaining} presenças da próxima graduação.`,
     });
   }
 
   async notifyNewStudentLinked(
-    adminUserId: string,
-    studentName: string,
-    userEmail: string,
-    studentId: string
+    _adminUserId: string,
+    _studentName: string,
+    _userEmail: string,
+    _studentId: string
   ): Promise<Notification> {
     return this.create({
-      userId: adminUserId,
+      userId: _adminUserId,
       type: 'new_student_linked',
       priority: 'normal',
       title: 'Nova Conta Vinculada',
-      message: `${userEmail} vinculou sua conta ao aluno ${studentName}.`,
-      studentId,
-      actionUrl: `/alunos/${studentId}`,
-      actionLabel: 'Ver aluno',
-      expiresInDays: 7,
+      message: `${_userEmail} vinculou sua conta ao aluno ${_studentName}.`,
     });
   }
 
   async notifyStudentMilestone(
-    userId: string,
-    studentName: string,
-    milestone: string,
-    studentId: string
+    _userId: string,
+    _studentName: string,
+    _milestone: string,
+    _studentId: string
   ): Promise<Notification> {
     return this.create({
-      userId,
+      userId: _userId,
       type: 'student_milestone',
       priority: 'normal',
       title: 'Conquista Desbloqueada!',
-      message: `${studentName} atingiu a marca de ${milestone}!`,
-      studentId,
-      actionUrl: `/portal/linha-do-tempo`,
-      actionLabel: 'Ver conquistas',
-      expiresInDays: 30,
+      message: `${_studentName} atingiu a marca de ${_milestone}!`,
     });
   }
 
-  // ============================================
-  // New Tuition Created (For Students)
-  // ============================================
   async notifyNewTuitionCreated(
-    userId: string,
-    studentName: string,
-    amount: number,
-    dueDate: Date,
-    financialId: string
+    _userId: string,
+    _studentName: string,
+    _amount: number,
+    _dueDate: Date,
+    _financialId: string
   ): Promise<Notification> {
     return this.create({
-      userId,
+      userId: _userId,
       type: 'payment_pending',
       priority: 'normal',
       title: 'Nova Mensalidade',
-      message: `Sua mensalidade de R$ ${amount.toFixed(2)} vence em ${dueDate.toLocaleDateString('pt-BR')}.`,
-      financialId,
-      actionUrl: `/portal/financeiro`,
-      actionLabel: 'Ver detalhes',
-      expiresInDays: 30,
+      message: `Sua mensalidade de R$ ${_amount.toFixed(2)} vence em ${_dueDate.toLocaleDateString('pt-BR')}.`,
     });
   }
 
-
-  // ============================================
-  // New Achievement (For Students)
-  // ============================================
   async notifyNewAchievement(
-    userId: string,
-    achievementTitle: string,
-    studentId: string
+    _userId: string,
+    _achievementTitle: string,
+    _studentId: string
   ): Promise<Notification> {
     return this.create({
-      userId,
+      userId: _userId,
       type: 'student_milestone',
       priority: 'normal',
       title: 'Conquista Desbloqueada!',
-      message: `Parabéns! Você conquistou: ${achievementTitle}`,
-      studentId,
-      actionUrl: `/portal/linha-do-tempo`,
-      actionLabel: 'Ver conquistas',
-      expiresInDays: 30,
+      message: `Parabéns! Você conquistou: ${_achievementTitle}`,
     });
   }
 
-  // ============================================
-  // Store Order (For Admins)
-  // ============================================
   async notifyStoreOrder(
-    adminUserId: string,
-    studentName: string,
-    total: number,
-    orderId: string
+    _adminUserId: string,
+    _studentName: string,
+    _total: number,
+    _orderId: string
   ): Promise<Notification> {
     return this.create({
-      userId: adminUserId,
+      userId: _adminUserId,
       type: 'payment_pending',
       priority: 'normal',
       title: 'Novo Pedido',
-      message: `${studentName} fez um pedido de R$ ${total.toFixed(2)} na loja.`,
-      actionUrl: `/loja/pedidos/${orderId}`,
-      actionLabel: 'Ver pedido',
-      expiresInDays: 7,
+      message: `${_studentName} fez um pedido de R$ ${_total.toFixed(2)} na loja.`,
     });
   }
 }

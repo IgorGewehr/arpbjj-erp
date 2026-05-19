@@ -1,48 +1,83 @@
-import {
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  serverTimestamp,
-  Timestamp,
-  DocumentSnapshot,
-  CollectionReference,
-  arrayUnion,
-} from 'firebase/firestore';
-import { collections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import { Class, StudentCategory } from '@/types';
 
 // Default academy for backwards compatibility
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
-// Helper: Convert Firestore document to Class
+// Go API response shapes (snake_case)
 // ============================================
-const docToClass = (doc: DocumentSnapshot): Class => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
+interface GoScheduleEntry {
+  day_of_week: number;
+  start_time: string;
+  end_time: string;
+}
 
+interface GoClass {
+  id: string;
+  academy_id: string;
+  name: string;
+  description?: string;
+  instructor_uid?: string;
+  instructor_name?: string;
+  instructor_uids?: string[];
+  primary_instructor_uid?: string;
+  schedule: GoScheduleEntry[];
+  category: string;
+  sport?: string;
+  min_belt?: string;
+  max_belt?: string;
+  max_students?: number;
+  weight?: string;
+  is_active: boolean;
+  student_ids?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+interface GoClassListResponse {
+  items: GoClass[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+// ============================================
+// Helper: Convert Go response to Class
+// ============================================
+const goToClass = (c: GoClass): Class => {
   return {
-    id: doc.id,
-    name: data.name,
-    description: data.description,
-    instructorId: data.instructorId,
-    instructorName: data.instructorName,
-    studentIds: data.studentIds || [],
-    schedule: data.schedule || [],
-    category: data.category,
-    sport: data.sport,  // optional — undefined = BJJ (backward compat)
-    minBelt: data.minBelt,
-    maxBelt: data.maxBelt,
-    maxStudents: data.maxStudents,
-    isActive: data.isActive ?? true,
-    weight: typeof data.weight === 'number' ? data.weight : undefined,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
+    id: c.id,
+    name: c.name,
+    description: c.description,
+    instructorId: c.instructor_uid ?? c.primary_instructor_uid ?? '',
+    instructorName: c.instructor_name,
+    studentIds: (c.student_ids ?? []).map(String),
+    schedule: (c.schedule ?? []).map(s => ({
+      dayOfWeek: s.day_of_week,
+      startTime: s.start_time,
+      endTime: s.end_time,
+    })),
+    category: c.category as Class['category'],
+    sport: c.sport as Class['sport'],
+    minBelt: c.min_belt as Class['minBelt'],
+    maxBelt: c.max_belt as Class['maxBelt'],
+    maxStudents: c.max_students,
+    isActive: c.is_active ?? true,
+    weight: c.weight !== undefined ? parseFloat(c.weight) : undefined,
+    createdAt: new Date(c.created_at),
+    updatedAt: new Date(c.updated_at),
   };
+};
+
+// ============================================
+// Helper: Convert Class schedule to Go request format
+// ============================================
+const scheduleToGo = (schedule: Class['schedule']): GoScheduleEntry[] => {
+  return schedule.map(s => ({
+    day_of_week: s.dayOfWeek,
+    start_time: s.startTime,
+    end_time: s.endTime,
+  }));
 };
 
 // ============================================
@@ -50,25 +85,21 @@ const docToClass = (doc: DocumentSnapshot): Class => {
 // ============================================
 export class ClassService {
   private academyId: string;
-  private classesRef: CollectionReference;
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.classesRef = collections.classes(academyId);
+  }
+
+  private get baseUrl() {
+    return `/v1/academies/${this.academyId}/classes`;
   }
 
   // ============================================
   // List All Classes
   // ============================================
   async list(): Promise<Class[]> {
-    const q = query(
-      this.classesRef,
-      where('isActive', '==', true)
-    );
-
-    const snapshot = await getDocs(q);
-    const classes = snapshot.docs.map(docToClass);
-    // Sort client-side to avoid Firestore composite index requirement
+    const res = await api.get<GoClassListResponse>(`${this.baseUrl}?limit=500`);
+    const classes = res.items.map(goToClass).filter(c => c.isActive);
     return classes.sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -76,27 +107,22 @@ export class ClassService {
   // Get Class by ID
   // ============================================
   async getById(id: string): Promise<Class | null> {
-    const docRef = collections.class(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
+    try {
+      const c = await api.get<GoClass>(`${this.baseUrl}/${id}`);
+      return goToClass(c);
+    } catch {
       return null;
     }
-
-    return docToClass(docSnap);
   }
 
   // ============================================
   // Get Classes by Student ID
   // ============================================
   async getByStudent(studentId: string): Promise<Class[]> {
-    const q = query(
-      this.classesRef,
-      where('studentIds', 'array-contains', studentId),
-      where('isActive', '==', true)
-    );
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(docToClass);
+    const res = await api.get<GoClassListResponse>(`${this.baseUrl}?limit=500`);
+    return res.items
+      .map(goToClass)
+      .filter(c => c.isActive && c.studentIds.includes(studentId));
   }
 
   // ============================================
@@ -104,9 +130,8 @@ export class ClassService {
   // ============================================
   async getByDayOfWeek(dayOfWeek: number): Promise<Class[]> {
     const allClasses = await this.list();
-
-    return allClasses.filter((cls) =>
-      cls.schedule.some((s) => s.dayOfWeek === dayOfWeek)
+    return allClasses.filter(cls =>
+      cls.schedule.some(s => s.dayOfWeek === dayOfWeek)
     );
   }
 
@@ -116,11 +141,10 @@ export class ClassService {
   async getCurrentClass(): Promise<Class | null> {
     const now = new Date();
     const dayOfWeek = now.getDay();
-    const currentTime = now.getHours() * 60 + now.getMinutes(); // Minutes since midnight
+    const currentTime = now.getHours() * 60 + now.getMinutes();
 
     const classesForToday = await this.getByDayOfWeek(dayOfWeek);
 
-    // Find class that is currently happening or about to start (within 30 min)
     for (const cls of classesForToday) {
       for (const schedule of cls.schedule) {
         if (schedule.dayOfWeek !== dayOfWeek) continue;
@@ -131,7 +155,6 @@ export class ClassService {
         const startMinutes = startHour * 60 + startMin;
         const endMinutes = endHour * 60 + endMin;
 
-        // Check if within 30 min before start or during class
         if (currentTime >= startMinutes - 30 && currentTime <= endMinutes) {
           return cls;
         }
@@ -161,15 +184,10 @@ export class ClassService {
   // Get Classes by Category
   // ============================================
   async getByCategory(category: StudentCategory): Promise<Class[]> {
-    const q = query(
-      this.classesRef,
-      where('category', '==', category),
-      where('isActive', '==', true)
-    );
-
-    const snapshot = await getDocs(q);
-    const classes = snapshot.docs.map(docToClass);
-    // Sort client-side to avoid Firestore composite index requirement
+    const res = await api.get<GoClassListResponse>(`${this.baseUrl}?limit=500`);
+    const classes = res.items
+      .map(goToClass)
+      .filter(c => c.isActive && c.category === category);
     return classes.sort((a, b) => a.name.localeCompare(b.name));
   }
 
@@ -177,55 +195,65 @@ export class ClassService {
   // Create Class
   // ============================================
   async create(classData: Omit<Class, 'id' | 'createdAt' | 'updatedAt'>): Promise<Class> {
-    const now = serverTimestamp();
-
-    const docData = {
-      ...classData,
-      isActive: true,
-      createdAt: now,
-      updatedAt: now,
+    const body: Record<string, unknown> = {
+      name: classData.name,
+      category: classData.category,
+      schedule: scheduleToGo(classData.schedule),
+      is_active: true,
+      student_ids: classData.studentIds ?? [],
     };
 
-    const docRef = await addDoc(this.classesRef, docData);
-    const newDoc = await getDoc(docRef);
+    if (classData.description) body.description = classData.description;
+    if (classData.instructorId) body.instructor_uid = classData.instructorId;
+    if (classData.instructorName) body.instructor_name = classData.instructorName;
+    if (classData.sport) body.sport = classData.sport;
+    if (classData.minBelt) body.min_belt = classData.minBelt;
+    if (classData.maxBelt) body.max_belt = classData.maxBelt;
+    if (classData.maxStudents) body.max_students = classData.maxStudents;
+    if (classData.weight !== undefined) body.weight = String(classData.weight);
 
-    return docToClass(newDoc);
+    const c = await api.post<GoClass>(this.baseUrl, body);
+    return goToClass(c);
   }
 
   // ============================================
   // Update Class
   // ============================================
   async update(id: string, data: Partial<Class>): Promise<Class> {
-    const docRef = collections.class(this.academyId, id);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { id: _id, createdAt: _ca, ...rest } = data as Class & { id?: string };
+    const body: Record<string, unknown> = {};
 
-    const { id: _, createdAt, ...updateData } = data as Class & { id?: string };
+    if (rest.name !== undefined) body.name = rest.name;
+    if (rest.description !== undefined) body.description = rest.description;
+    if (rest.instructorId !== undefined) body.instructor_uid = rest.instructorId;
+    if (rest.instructorName !== undefined) body.instructor_name = rest.instructorName;
+    if (rest.category !== undefined) body.category = rest.category;
+    if (rest.sport !== undefined) body.sport = rest.sport;
+    if (rest.minBelt !== undefined) body.min_belt = rest.minBelt;
+    if (rest.maxBelt !== undefined) body.max_belt = rest.maxBelt;
+    if (rest.maxStudents !== undefined) body.max_students = rest.maxStudents;
+    if (rest.isActive !== undefined) body.is_active = rest.isActive;
+    if (rest.weight !== undefined) body.weight = String(rest.weight);
+    if (rest.schedule !== undefined) body.schedule = scheduleToGo(rest.schedule);
+    if (rest.studentIds !== undefined) body.student_ids = rest.studentIds;
 
-    await updateDoc(docRef, {
-      ...updateData,
-      updatedAt: serverTimestamp(),
-    });
-
-    const updatedDoc = await getDoc(docRef);
-    return docToClass(updatedDoc);
+    const c = await api.patch<GoClass>(`${this.baseUrl}/${id}`, body);
+    return goToClass(c);
   }
 
   // ============================================
-  // Delete Class (Soft delete)
+  // Delete Class (soft delete via API)
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = collections.class(this.academyId, id);
-    await updateDoc(docRef, {
-      isActive: false,
-      updatedAt: serverTimestamp(),
-    });
+    await api.delete(`${this.baseUrl}/${id}`);
   }
 
   // ============================================
   // Hard Delete Class
   // ============================================
   async hardDelete(id: string): Promise<void> {
-    const docRef = collections.class(this.academyId, id);
-    await deleteDoc(docRef);
+    await api.delete(`${this.baseUrl}/${id}`);
   }
 
   // ============================================
@@ -234,42 +262,26 @@ export class ClassService {
   async getWeeklySchedule(): Promise<Record<number, Class[]>> {
     const allClasses = await this.list();
     const schedule: Record<number, Class[]> = {
-      0: [], // Sunday
-      1: [], // Monday
-      2: [], // Tuesday
-      3: [], // Wednesday
-      4: [], // Thursday
-      5: [], // Friday
-      6: [], // Saturday
+      0: [], 1: [], 2: [], 3: [], 4: [], 5: [], 6: [],
     };
 
     for (const cls of allClasses) {
       for (const s of cls.schedule) {
-        if (!schedule[s.dayOfWeek].find((c) => c.id === cls.id)) {
+        if (!schedule[s.dayOfWeek].find(c => c.id === cls.id)) {
           schedule[s.dayOfWeek].push(cls);
         }
       }
     }
 
-    // Sort each day by start time
     for (const day of Object.keys(schedule)) {
       schedule[Number(day)].sort((a, b) => {
-        const aTime = a.schedule.find((s) => s.dayOfWeek === Number(day))?.startTime || '00:00';
-        const bTime = b.schedule.find((s) => s.dayOfWeek === Number(day))?.startTime || '00:00';
+        const aTime = a.schedule.find(s => s.dayOfWeek === Number(day))?.startTime || '00:00';
+        const bTime = b.schedule.find(s => s.dayOfWeek === Number(day))?.startTime || '00:00';
         return aTime.localeCompare(bTime);
       });
     }
 
     return schedule;
-  }
-
-  // ============================================
-  // Sync sport to student's sports array
-  // ============================================
-  private async syncStudentSport(studentId: string, sport: string | undefined): Promise<void> {
-    const sportId = sport || 'bjj';
-    const studentRef = collections.student(this.academyId, studentId);
-    await updateDoc(studentRef, { sports: arrayUnion(sportId) });
   }
 
   // ============================================
@@ -281,10 +293,8 @@ export class ClassService {
 
     const studentIds = cls.studentIds || [];
     if (!studentIds.includes(studentId)) {
-      studentIds.push(studentId);
-      const updated = await this.update(classId, { studentIds });
-      await this.syncStudentSport(studentId, cls.sport);
-      return updated;
+      await api.post(`${this.baseUrl}/${classId}/students`, { student_id: studentId });
+      return (await this.getById(classId))!;
     }
 
     return cls;
@@ -294,11 +304,8 @@ export class ClassService {
   // Remove Student from Class
   // ============================================
   async removeStudent(classId: string, studentId: string): Promise<Class> {
-    const cls = await this.getById(classId);
-    if (!cls) throw new Error('Class not found');
-
-    const studentIds = (cls.studentIds || []).filter((id) => id !== studentId);
-    return this.update(classId, { studentIds });
+    await api.delete(`${this.baseUrl}/${classId}/students/${studentId}`);
+    return (await this.getById(classId))!;
   }
 
   // ============================================
@@ -310,11 +317,9 @@ export class ClassService {
 
     const studentIds = cls.studentIds || [];
     if (studentIds.includes(studentId)) {
-      return this.update(classId, { studentIds: studentIds.filter((id) => id !== studentId) });
+      return this.removeStudent(classId, studentId);
     } else {
-      const updated = await this.update(classId, { studentIds: [...studentIds, studentId] });
-      await this.syncStudentSport(studentId, cls.sport);
-      return updated;
+      return this.addStudent(classId, studentId);
     }
   }
 }

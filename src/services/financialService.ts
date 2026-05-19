@@ -1,18 +1,4 @@
-import {
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  Timestamp,
-  DocumentSnapshot,
-  writeBatch,
-  CollectionReference,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { collections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import { Financial, FinancialFilters, PaymentMethod } from '@/types';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 
@@ -20,29 +6,54 @@ import { startOfMonth, endOfMonth, format } from 'date-fns';
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
-// Helper: Convert Firestore document to Financial
+// Go API response shapes (snake_case)
 // ============================================
-const docToFinancial = (doc: DocumentSnapshot): Financial => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
+interface GoFinancial {
+  id: string;
+  academy_id: string;
+  student_id: string;
+  type: string;
+  amount: string;
+  due_date: string;
+  status: string;
+  method?: string;
+  reference_month?: string;
+  receipt_url?: string;
+  payment_date?: string;
+  description?: string;
+  created_by_uid?: string;
+  created_at: string;
+  updated_at: string;
+}
 
+interface GoFinancialListResponse {
+  items: GoFinancial[];
+  has_more: boolean;
+  next_cursor: string | null;
+}
+
+// ============================================
+// Helper: Convert Go response to Financial
+// ============================================
+const goToFinancial = (f: GoFinancial): Financial => {
   return {
-    id: doc.id,
-    studentId: data.studentId,
-    studentName: data.studentName,
-    type: data.type,
-    description: data.description,
-    amount: data.amount,
-    dueDate: data.dueDate instanceof Timestamp ? data.dueDate.toDate() : new Date(data.dueDate),
-    status: data.status,
-    paymentDate: data.paymentDate instanceof Timestamp ? data.paymentDate.toDate() : data.paymentDate ? new Date(data.paymentDate) : undefined,
-    method: data.method,
-    referenceMonth: data.referenceMonth,
-    planId: data.planId,
-    receiptUrl: data.receiptUrl,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
-    createdBy: data.createdBy,
+    id: f.id,
+    studentId: f.student_id,
+    // student_name is not in Go response — keep as undefined
+    studentName: undefined,
+    type: f.type as Financial['type'],
+    description: f.description,
+    amount: parseFloat(f.amount),
+    dueDate: new Date(f.due_date),
+    status: f.status as Financial['status'],
+    paymentDate: f.payment_date ? new Date(f.payment_date) : undefined,
+    method: f.method as Financial['method'],
+    referenceMonth: f.reference_month,
+    planId: undefined,
+    receiptUrl: f.receipt_url,
+    createdAt: new Date(f.created_at),
+    updatedAt: new Date(f.updated_at),
+    createdBy: f.created_by_uid ?? '',
   };
 };
 
@@ -51,36 +62,35 @@ const docToFinancial = (doc: DocumentSnapshot): Financial => {
 // ============================================
 export class FinancialService {
   private academyId: string;
-  private financialsRef: CollectionReference;
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.financialsRef = collections.financials(academyId);
+  }
+
+  private get baseUrl() {
+    return `/v1/academies/${this.academyId}/financials`;
   }
 
   // ============================================
   // Get All Financials with Filters
   // ============================================
   async list(filters: FinancialFilters = {}): Promise<Financial[]> {
-    // Fetch all and filter/sort client-side to avoid index issues
-    const snapshot = await getDocs(this.financialsRef);
-    let results = snapshot.docs.map(docToFinancial);
-
-    // Apply filters in memory
-    if (filters.studentId) {
-      results = results.filter((f) => f.studentId === filters.studentId);
-    }
-    if (filters.status) {
-      results = results.filter((f) => f.status === filters.status);
-    }
-    if (filters.type) {
-      results = results.filter((f) => f.type === filters.type);
-    }
+    const params = new URLSearchParams({ limit: '500' });
+    if (filters.studentId) params.set('student_id', filters.studentId);
+    if (filters.status) params.set('status', filters.status);
+    if (filters.type) params.set('type', filters.type);
     if (filters.month) {
-      results = results.filter((f) => f.referenceMonth === filters.month);
+      params.set('due_from', `${filters.month}-01`);
+      // Compute last day of that month for due_to
+      const [year, month] = filters.month.split('-').map(Number);
+      const lastDay = new Date(year, month, 0).getDate();
+      params.set('due_to', `${filters.month}-${String(lastDay).padStart(2, '0')}`);
     }
 
-    // Sort by dueDate desc client-side
+    const res = await api.get<GoFinancialListResponse>(`${this.baseUrl}?${params}`);
+    const results = res.items.map(goToFinancial);
+
+    // Sort by dueDate desc
     return results.sort((a, b) => b.dueDate.getTime() - a.dueDate.getTime());
   }
 
@@ -88,28 +98,22 @@ export class FinancialService {
   // Get Financial by ID
   // ============================================
   async getById(id: string): Promise<Financial | null> {
-    const docRef = collections.financial(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-
-    if (!docSnap.exists()) {
+    try {
+      const f = await api.get<GoFinancial>(`${this.baseUrl}/${id}`);
+      return goToFinancial(f);
+    } catch {
       return null;
     }
-
-    return docToFinancial(docSnap);
   }
 
   // ============================================
   // Get Financials by Student
   // ============================================
   async getByStudent(studentId: string): Promise<Financial[]> {
-    const q = query(
-      this.financialsRef,
-      where('studentId', '==', studentId)
+    const res = await api.get<GoFinancialListResponse>(
+      `${this.baseUrl}?student_id=${studentId}&limit=500`
     );
-
-    const snapshot = await getDocs(q);
-    const financials = snapshot.docs.map(docToFinancial);
-    // Sort by dueDate desc client-side
+    const financials = res.items.map(goToFinancial);
     return financials.sort((a, b) => b.dueDate.getTime() - a.dueDate.getTime());
   }
 
@@ -117,24 +121,18 @@ export class FinancialService {
   // Get Pending Payments
   // ============================================
   async getPending(): Promise<Financial[]> {
-    // Fetch all and filter/sort client-side to avoid composite index
-    const snapshot = await getDocs(this.financialsRef);
-    const financials = snapshot.docs.map(docToFinancial);
-    return financials
-      .filter((f) => f.status === 'pending')
-      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+    const res = await api.get<GoFinancialListResponse>(`${this.baseUrl}?status=pending&limit=500`);
+    const financials = res.items.map(goToFinancial);
+    return financials.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
   }
 
   // ============================================
   // Get Overdue Payments
   // ============================================
   async getOverdue(): Promise<Financial[]> {
-    // Fetch all and filter/sort client-side to avoid composite index
-    const snapshot = await getDocs(this.financialsRef);
-    const financials = snapshot.docs.map(docToFinancial);
-    return financials
-      .filter((f) => f.status === 'overdue')
-      .sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
+    const res = await api.get<GoFinancialListResponse>(`${this.baseUrl}?status=overdue&limit=500`);
+    const financials = res.items.map(goToFinancial);
+    return financials.sort((a, b) => a.dueDate.getTime() - b.dueDate.getTime());
   }
 
   // ============================================
@@ -145,11 +143,17 @@ export class FinancialService {
     const start = startOfMonth(now);
     const end = endOfMonth(now);
 
-    // Fetch all and filter client-side to avoid composite index
-    const snapshot = await getDocs(this.financialsRef);
-    const financials = snapshot.docs.map(docToFinancial);
+    const params = new URLSearchParams({
+      status: 'paid',
+      due_from: format(start, 'yyyy-MM-dd'),
+      due_to: format(end, 'yyyy-MM-dd'),
+      limit: '500',
+    });
 
-    return financials.filter((f) =>
+    const res = await api.get<GoFinancialListResponse>(`${this.baseUrl}?${params}`);
+    const financials = res.items.map(goToFinancial);
+
+    return financials.filter(f =>
       f.status === 'paid' &&
       f.paymentDate &&
       f.paymentDate.getTime() >= start.getTime() &&
@@ -181,7 +185,7 @@ export class FinancialService {
       overdueAmount: 0,
     };
 
-    financials.forEach((f) => {
+    financials.forEach(f => {
       switch (f.status) {
         case 'paid':
           summary.paid++;
@@ -208,53 +212,25 @@ export class FinancialService {
     data: Omit<Financial, 'id' | 'createdAt' | 'updatedAt'>,
     createdBy: string
   ): Promise<Financial> {
-    const now = new Date();
-
-    // Build docData carefully to avoid undefined values
-    const docData: Record<string, unknown> = {
-      academyId: this.academyId,
-      studentId: data.studentId,
-      studentName: data.studentName,
+    const body: Record<string, unknown> = {
+      student_id: data.studentId,
       type: data.type,
-      description: data.description,
-      amount: data.amount,
-      dueDate: Timestamp.fromDate(new Date(data.dueDate)),
+      amount: String(data.amount),
+      due_date: format(new Date(data.dueDate), 'yyyy-MM-dd'),
       status: data.status,
-      createdBy,
-      createdAt: Timestamp.fromDate(now),
-      updatedAt: Timestamp.fromDate(now),
     };
 
-    // Only add optional fields if they have values
-    if (data.paymentDate) docData.paymentDate = Timestamp.fromDate(new Date(data.paymentDate));
-    if (data.method) docData.method = data.method;
-    if (data.referenceMonth) docData.referenceMonth = data.referenceMonth;
-    if (data.planId) docData.planId = data.planId;
-    if (data.receiptUrl) docData.receiptUrl = data.receiptUrl;
+    if (data.description) body.description = data.description;
+    if (data.referenceMonth) body.reference_month = data.referenceMonth;
+    if (data.method) body.method = data.method;
+    if (data.receiptUrl) body.receipt_url = data.receiptUrl;
+    if (data.paymentDate) body.payment_date = format(new Date(data.paymentDate), 'yyyy-MM-dd');
 
-    const docRef = await addDoc(this.financialsRef, docData);
+    const f = await api.post<GoFinancial>(this.baseUrl, body, {
+      'Idempotency-Key': crypto.randomUUID(),
+    });
 
-    // Return financial directly without re-fetching
-    const financial: Financial = {
-      id: docRef.id,
-      studentId: data.studentId,
-      studentName: data.studentName,
-      type: data.type,
-      description: data.description,
-      amount: data.amount,
-      dueDate: new Date(data.dueDate),
-      status: data.status,
-      paymentDate: data.paymentDate ? new Date(data.paymentDate) : undefined,
-      method: data.method,
-      referenceMonth: data.referenceMonth,
-      planId: data.planId,
-      receiptUrl: data.receiptUrl,
-      createdAt: now,
-      updatedAt: now,
-      createdBy,
-    };
-
-    return financial;
+    return goToFinancial(f);
   }
 
   // ============================================
@@ -269,27 +245,20 @@ export class FinancialService {
     const results: Financial[] = [];
 
     for (const student of students) {
-      // Check if tuition already exists for this student+plan+month
-      // IMPORTANT: Filter out cancelled payments - they don't count as "existing"
       const existing = await this.list({
         studentId: student.id,
         month,
         type: 'monthly_tuition',
       });
 
-      // Exclude cancelled payments from the check
-      const activeExisting = existing.filter((p) => p.status !== 'cancelled');
+      const activeExisting = existing.filter(p => p.status !== 'cancelled');
 
       if (student.planId) {
-        // Skip if an ACTIVE payment with this planId already exists
-        if (activeExisting.some((p) => p.planId === student.planId)) continue;
+        if (activeExisting.some(p => p.planId === student.planId)) continue;
       } else {
-        // Fallback for legacy entries without planId: skip if any ACTIVE payment without planId exists
-        if (activeExisting.some((p) => !p.planId)) continue;
+        if (activeExisting.some(p => !p.planId)) continue;
       }
 
-      // Calculate due date based on student's tuition day
-      // Clamp to last day of month (e.g., day 31 in February → Feb 28/29)
       const lastDayOfMonth = new Date(year, monthNum, 0).getDate();
       const clampedDay = Math.min(student.tuitionDay, lastDayOfMonth);
       const dueDate = new Date(year, monthNum - 1, clampedDay);
@@ -324,80 +293,58 @@ export class FinancialService {
     method: PaymentMethod,
     paymentDate: Date = new Date()
   ): Promise<Financial> {
-    const docRef = collections.financial(this.academyId, id);
-
-    await updateDoc(docRef, {
+    const f = await api.patch<GoFinancial>(`${this.baseUrl}/${id}/status`, {
       status: 'paid',
       method,
-      paymentDate: Timestamp.fromDate(paymentDate),
-      updatedAt: Timestamp.fromDate(new Date()),
+      payment_date: format(paymentDate, 'yyyy-MM-dd'),
     });
-
-    const updatedDoc = await getDoc(docRef);
-    return docToFinancial(updatedDoc);
+    return goToFinancial(f);
   }
 
   // ============================================
-  // Mark as Overdue (Batch update for cron job)
+  // Mark as Overdue (client-side batch — Go backend handles this server-side)
   // ============================================
   async markOverduePayments(): Promise<number> {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // Fetch all and filter client-side to avoid composite index
-    const snapshot = await getDocs(this.financialsRef);
-    const financials = snapshot.docs.map(docToFinancial);
+    const res = await api.get<GoFinancialListResponse>(`${this.baseUrl}?status=pending&limit=500`);
+    const financials = res.items.map(goToFinancial);
 
     const overdueFinancials = financials.filter(
-      (f) => f.status === 'pending' && f.dueDate.getTime() < today.getTime()
+      f => f.status === 'pending' && f.dueDate.getTime() < today.getTime()
     );
 
-    if (overdueFinancials.length === 0) return 0;
+    let updated = 0;
+    for (const f of overdueFinancials) {
+      try {
+        await api.patch(`${this.baseUrl}/${f.id}/status`, { status: 'overdue' });
+        updated++;
+      } catch {
+        // continue
+      }
+    }
 
-    const batch = writeBatch(db);
-    const now = Timestamp.fromDate(new Date());
-
-    overdueFinancials.forEach((f) => {
-      const docRef = collections.financial(this.academyId, f.id);
-      batch.update(docRef, {
-        status: 'overdue',
-        updatedAt: now,
-      });
-    });
-
-    await batch.commit();
-    return overdueFinancials.length;
+    return updated;
   }
 
   // ============================================
   // Cancel Payment
   // ============================================
   async cancel(id: string): Promise<Financial> {
-    const docRef = collections.financial(this.academyId, id);
-
-    await updateDoc(docRef, {
+    const f = await api.patch<GoFinancial>(`${this.baseUrl}/${id}/status`, {
       status: 'cancelled',
-      updatedAt: Timestamp.fromDate(new Date()),
     });
-
-    const updatedDoc = await getDoc(docRef);
-    return docToFinancial(updatedDoc);
+    return goToFinancial(f);
   }
 
   // ============================================
   // Reactivate Cancelled Payment
   // ============================================
   async reactivate(id: string): Promise<Financial> {
-    const docRef = collections.financial(this.academyId, id);
-    const docSnap = await getDoc(docRef);
+    const financial = await this.getById(id);
+    if (!financial) throw new Error('Payment not found');
 
-    if (!docSnap.exists()) {
-      throw new Error('Payment not found');
-    }
-
-    const financial = docToFinancial(docSnap);
-
-    // Determine new status based on due date
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const dueDate = new Date(financial.dueDate);
@@ -405,53 +352,48 @@ export class FinancialService {
 
     const newStatus = dueDate.getTime() < today.getTime() ? 'overdue' : 'pending';
 
-    await updateDoc(docRef, {
+    const f = await api.patch<GoFinancial>(`${this.baseUrl}/${id}/status`, {
       status: newStatus,
-      updatedAt: Timestamp.fromDate(new Date()),
     });
-
-    const updatedDoc = await getDoc(docRef);
-    return docToFinancial(updatedDoc);
+    return goToFinancial(f);
   }
 
   // ============================================
   // Update Financial Record
   // ============================================
   async update(id: string, data: Partial<Financial>): Promise<Financial> {
-    const docRef = collections.financial(this.academyId, id);
+    const body: Record<string, unknown> = {};
 
-    const updateData: Record<string, unknown> = {
-      updatedAt: Timestamp.fromDate(new Date()),
-    };
+    if (data.type !== undefined) body.type = data.type;
+    if (data.description !== undefined) body.description = data.description;
+    if (data.amount !== undefined) body.amount = String(data.amount);
+    if (data.status !== undefined) body.status = data.status;
+    if (data.method !== undefined) body.method = data.method;
+    if (data.referenceMonth !== undefined) body.reference_month = data.referenceMonth;
+    if (data.receiptUrl !== undefined) body.receipt_url = data.receiptUrl;
+    if (data.dueDate) body.due_date = format(new Date(data.dueDate), 'yyyy-MM-dd');
+    if (data.paymentDate) body.payment_date = format(new Date(data.paymentDate), 'yyyy-MM-dd');
 
-    // Only add fields that are being updated
-    if (data.studentName !== undefined) updateData.studentName = data.studentName;
-    if (data.type !== undefined) updateData.type = data.type;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.amount !== undefined) updateData.amount = data.amount;
-    if (data.status !== undefined) updateData.status = data.status;
-    if (data.method !== undefined) updateData.method = data.method;
-    if (data.referenceMonth !== undefined) updateData.referenceMonth = data.referenceMonth;
-    if (data.receiptUrl !== undefined) updateData.receiptUrl = data.receiptUrl;
-    if (data.dueDate) {
-      updateData.dueDate = Timestamp.fromDate(new Date(data.dueDate));
+    // If only status is being updated, use the status endpoint
+    const keys = Object.keys(body);
+    if (keys.length === 1 && keys[0] === 'status') {
+      const f = await api.patch<GoFinancial>(`${this.baseUrl}/${id}/status`, {
+        status: data.status,
+        ...(data.method ? { method: data.method } : {}),
+        ...(data.paymentDate ? { payment_date: format(new Date(data.paymentDate), 'yyyy-MM-dd') } : {}),
+      });
+      return goToFinancial(f);
     }
-    if (data.paymentDate) {
-      updateData.paymentDate = Timestamp.fromDate(new Date(data.paymentDate));
-    }
 
-    await updateDoc(docRef, updateData);
-
-    const updatedDoc = await getDoc(docRef);
-    return docToFinancial(updatedDoc);
+    const f = await api.patch<GoFinancial>(`${this.baseUrl}/${id}`, body);
+    return goToFinancial(f);
   }
 
   // ============================================
   // Delete Financial Record
   // ============================================
   async delete(id: string): Promise<void> {
-    const docRef = collections.financial(this.academyId, id);
-    await deleteDoc(docRef);
+    await api.delete(`${this.baseUrl}/${id}`);
   }
 
   // ============================================
@@ -463,30 +405,25 @@ export class FinancialService {
     collectionRate: number;
     byMonth: Array<{ month: string; paid: number; expected: number }>;
   }> {
-    const q = query(
-      this.financialsRef,
-      where('dueDate', '>=', Timestamp.fromDate(startDate)),
-      where('dueDate', '<=', Timestamp.fromDate(endDate))
-    );
+    const params = new URLSearchParams({
+      due_from: format(startDate, 'yyyy-MM-dd'),
+      due_to: format(endDate, 'yyyy-MM-dd'),
+      limit: '500',
+    });
 
-    const snapshot = await getDocs(q);
-    const financials = snapshot.docs.map(docToFinancial);
+    const res = await api.get<GoFinancialListResponse>(`${this.baseUrl}?${params}`);
+    const financials = res.items.map(goToFinancial);
 
     let totalRevenue = 0;
     let expectedRevenue = 0;
     const monthlyData: Record<string, { paid: number; expected: number }> = {};
 
-    financials.forEach((f) => {
-      // Skip cancelled payments - they don't count for collection rate
+    financials.forEach(f => {
       if (f.status === 'cancelled') return;
 
       const monthKey = format(f.dueDate, 'yyyy-MM');
+      if (!monthlyData[monthKey]) monthlyData[monthKey] = { paid: 0, expected: 0 };
 
-      if (!monthlyData[monthKey]) {
-        monthlyData[monthKey] = { paid: 0, expected: 0 };
-      }
-
-      // Only count active payments (pending, overdue, paid) in expected
       monthlyData[monthKey].expected += f.amount;
       expectedRevenue += f.amount;
 

@@ -58,6 +58,7 @@ export function useBillingReminders() {
     queryKey: [QUERY_KEYS.overdueStages, academyId],
     queryFn: () => billingService.getOverdueWithStages(),
     staleTime: 1000 * 60 * 2,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -71,6 +72,7 @@ export function useBillingReminders() {
     queryKey: [QUERY_KEYS.collectionStats, academyId],
     queryFn: () => billingService.getCollectionStats(),
     staleTime: 1000 * 60 * 2,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -83,6 +85,7 @@ export function useBillingReminders() {
     queryKey: [QUERY_KEYS.studentContacts, academyId],
     queryFn: () => billingService.getStudentContacts(),
     staleTime: 1000 * 60 * 5,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -107,6 +110,7 @@ export function useBillingReminders() {
     queryKey: [QUERY_KEYS.reminderSettings, academyId],
     queryFn: () => billingService.getBillingReminderSettings(),
     staleTime: 1000 * 60 * 5,
+    enabled: !!academyId,
   });
 
   // Sync custom templates to notification service when settings load

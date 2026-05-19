@@ -23,29 +23,25 @@ import {
   Info,
   Building2,
 } from 'lucide-react';
-import {
-  doc,
-  getDoc,
-  getDocs,
-  collection,
-  query,
-  where,
-  updateDoc,
-  setDoc,
-  Timestamp,
-  arrayUnion,
-} from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { api, ApiError } from '@/lib/api/client';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
+
+interface LinkCodePreview {
+  academy_id: string;
+  academy_name: string;
+  academy_logo_url: string;
+  role: string;
+  student_id?: string;
+  expires_at: string;
+}
 
 interface ValidatedAcademy {
   academyId: string;
   academyName: string;
   academyLogoUrl?: string;
   studentId: string;
-  studentName?: string;
   code: string;
 }
 
@@ -54,7 +50,7 @@ export default function AddAcademyPage() {
   const theme = useTheme();
   const { firebaseUser } = useAuth();
   const { success, error: showError } = useFeedback();
-  const { userAcademies, refreshAcademiesInfo, setAcademy } = useAcademy();
+  const { userAcademies, refreshAcademiesInfo, setAcademy, reloadUserMapping } = useAcademy();
 
   const [code, setCode] = useState('');
   const [isValidating, setIsValidating] = useState(false);
@@ -78,83 +74,40 @@ export default function AddAcademyPage() {
   }, []);
 
   const validateCode = async (codeToValidate: string) => {
-    if (!firebaseUser) return;
-
     setIsValidating(true);
     setError(null);
     setValidatedAcademy(null);
 
     try {
-      // Search for the code in all academies' linkCodes subcollection
-      const academiesSnapshot = await getDocs(collection(db, 'academies'));
-
-      let foundAcademyId: string | null = null;
-      let foundStudentId: string | null = null;
-      let codeData: any = null;
-      let codeDocRef: any = null;
-
-      for (const academyDoc of academiesSnapshot.docs) {
-        const codesQuery = query(
-          collection(db, `academies/${academyDoc.id}/linkCodes`),
-          where('code', '==', codeToValidate.toUpperCase()),
-          where('usedAt', '==', null)
-        );
-        const codesSnapshot = await getDocs(codesQuery);
-
-        if (!codesSnapshot.empty) {
-          foundAcademyId = academyDoc.id;
-          codeData = codesSnapshot.docs[0].data();
-          codeDocRef = codesSnapshot.docs[0].ref;
-          foundStudentId = codeData.studentId;
-          break;
-        }
-      }
-
-      if (!foundAcademyId || !codeData) {
-        setError('Codigo invalido ou ja utilizado');
-        setIsValidating(false);
-        return;
-      }
-
-      // Check if code is expired
-      const expiresAt = codeData.expiresAt?.toDate();
-      if (expiresAt && new Date() > expiresAt) {
-        setError('Codigo expirado');
-        setIsValidating(false);
-        return;
-      }
+      const preview = await api.get<LinkCodePreview>('/v1/link-codes/' + codeToValidate);
 
       // Check if already linked to this academy
-      if (userAcademies.includes(foundAcademyId)) {
+      if (userAcademies.includes(preview.academy_id)) {
         setError('Voce ja esta vinculado a esta academia');
         setIsValidating(false);
         return;
       }
 
-      // Get academy info
-      const academyDoc = await getDoc(doc(db, 'academies', foundAcademyId));
-      const academyData = academyDoc.data();
-
-      // Get student info
-      let studentName: string | undefined;
-      if (foundStudentId) {
-        const studentDoc = await getDoc(doc(db, `academies/${foundAcademyId}/students`, foundStudentId));
-        if (studentDoc.exists()) {
-          studentName = studentDoc.data()?.fullName;
-        }
-      }
-
       setValidatedAcademy({
-        academyId: foundAcademyId,
-        academyName: academyData?.name || 'Academia',
-        academyLogoUrl: academyData?.logoUrl,
-        studentId: foundStudentId!,
-        studentName,
+        academyId: preview.academy_id,
+        academyName: preview.academy_name,
+        academyLogoUrl: preview.academy_logo_url || undefined,
+        studentId: preview.student_id || '',
         code: codeToValidate,
       });
     } catch (err) {
-      console.error('Error validating code:', err);
-      setError('Erro ao validar codigo. Tente novamente.');
+      if (err instanceof ApiError) {
+        if (err.status === 404) {
+          setError('Codigo invalido ou ja utilizado');
+        } else if (err.status === 409) {
+          setError('Codigo expirado ou ja utilizado');
+        } else {
+          setError('Erro ao validar codigo. Tente novamente.');
+        }
+      } else {
+        console.error('Error validating code:', err);
+        setError('Erro ao validar codigo. Tente novamente.');
+      }
     } finally {
       setIsValidating(false);
     }
@@ -173,84 +126,10 @@ export default function AddAcademyPage() {
 
     setIsLinking(true);
     try {
-      const { academyId, studentId, code: linkCode } = validatedAcademy;
-      const userId = firebaseUser.uid;
+      await api.post(`/v1/link-codes/${validatedAcademy.code}/redeem`);
 
-      // 1. Update userAcademyMapping
-      const mappingRef = doc(db, 'userAcademyMapping', userId);
-      const mappingSnap = await getDoc(mappingRef);
-
-      const academyDetail = {
-        studentId,
-        role: 'student',
-        joinedAt: Timestamp.now(),
-        status: 'active',
-      };
-
-      if (mappingSnap.exists()) {
-        // Update existing mapping
-        const currentMapping = mappingSnap.data();
-        await updateDoc(mappingRef, {
-          academyIds: arrayUnion(academyId),
-          primaryAcademyId: currentMapping.primaryAcademyId || academyId,
-          [`academyDetails.${academyId}`]: academyDetail,
-          updatedAt: Timestamp.now(),
-        });
-      } else {
-        // Create new mapping
-        await setDoc(mappingRef, {
-          academyIds: [academyId],
-          primaryAcademyId: academyId,
-          academyDetails: {
-            [academyId]: academyDetail,
-          },
-          updatedAt: Timestamp.now(),
-        });
-      }
-
-      // 2. Update global user to 'linked'
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        accountType: 'linked',
-        updatedAt: Timestamp.now(),
-      });
-
-      // 3. Create academy user document
-      const academyUserRef = doc(db, `academies/${academyId}/users`, userId);
-      await setDoc(academyUserRef, {
-        studentId,
-        role: 'student',
-        email: firebaseUser.email,
-        displayName: firebaseUser.displayName,
-        approvedAt: Timestamp.now(),
-        status: 'active',
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      }, { merge: true });
-
-      // 4. Link student to user
-      const studentRef = doc(db, `academies/${academyId}/students`, studentId);
-      await updateDoc(studentRef, {
-        linkedUserId: userId,
-        updatedAt: Timestamp.now(),
-      });
-
-      // 5. Mark code as used
-      const codesQuery = query(
-        collection(db, `academies/${academyId}/linkCodes`),
-        where('code', '==', linkCode.toUpperCase()),
-        where('usedAt', '==', null)
-      );
-      const codesSnapshot = await getDocs(codesQuery);
-      if (!codesSnapshot.empty) {
-        await updateDoc(codesSnapshot.docs[0].ref, {
-          usedAt: Timestamp.now(),
-          usedBy: userId,
-        });
-      }
-
-      // Refresh data
-      await refreshAcademiesInfo();
+      // Refresh user membership data
+      await reloadUserMapping();
 
       success(`Vinculado a ${validatedAcademy.academyName} com sucesso!`);
       router.push('/portal/academias');
@@ -260,7 +139,7 @@ export default function AddAcademyPage() {
     } finally {
       setIsLinking(false);
     }
-  }, [validatedAcademy, firebaseUser, refreshAcademiesInfo, success, showError, router]);
+  }, [validatedAcademy, firebaseUser, reloadUserMapping, success, showError, router]);
 
   const handleReset = useCallback(() => {
     setCode('');
@@ -396,11 +275,6 @@ export default function AddAcademyPage() {
                   <Typography variant="subtitle1" fontWeight={600}>
                     {validatedAcademy.academyName}
                   </Typography>
-                  {validatedAcademy.studentName && (
-                    <Typography variant="body2" color="text.secondary">
-                      Aluno: {validatedAcademy.studentName}
-                    </Typography>
-                  )}
                 </Box>
               </Box>
             </CardContent>

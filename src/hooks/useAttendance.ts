@@ -67,6 +67,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     staleTime: 1000 * 60 * 2, // 2 minutes - shorter to catch class updates
     refetchOnWindowFocus: true, // Refetch when user returns from editing
     refetchOnMount: true, // Always check for updates when component mounts
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -112,7 +113,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
   } = useQuery({
     queryKey: [QUERY_KEYS.currentClass, academyId],
     queryFn: () => classService.getCurrentClass(),
-    enabled: autoDetectClass && !initialClassId && isToday(selectedDate),
+    enabled: !!academyId && autoDetectClass && !initialClassId && isToday(selectedDate),
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
@@ -152,6 +153,7 @@ export function useAttendance(options: UseAttendanceOptions = {}) {
     staleTime: 1000 * 60 * 2, // 2 minutes - shorter to catch student updates
     refetchOnWindowFocus: true,
     refetchOnMount: true,
+    enabled: !!academyId,
   });
 
   // ============================================

@@ -40,6 +40,7 @@ export function useClasses() {
     queryKey: [QUERY_KEYS.classes, academyId],
     queryFn: () => classService.list(),
     staleTime: 1000 * 60 * 10,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -49,6 +50,7 @@ export function useClasses() {
     queryKey: [QUERY_KEYS.todayClasses, academyId],
     queryFn: () => classService.getTodayClasses(),
     staleTime: 1000 * 60 * 5,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -58,6 +60,7 @@ export function useClasses() {
     queryKey: [QUERY_KEYS.weeklySchedule, academyId],
     queryFn: () => classService.getWeeklySchedule(),
     staleTime: 1000 * 60 * 10,
+    enabled: !!academyId,
   });
 
   // ============================================
@@ -68,6 +71,7 @@ export function useClasses() {
     queryFn: () => classService.getCurrentClass(),
     staleTime: 1000 * 60 * 1,
     refetchInterval: 1000 * 60 * 1, // Refetch every minute
+    enabled: !!academyId,
   });
 
   // ============================================

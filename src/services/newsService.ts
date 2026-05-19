@@ -1,49 +1,65 @@
-import {
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  limit as fsLimit,
-  Timestamp,
-  DocumentSnapshot,
-  CollectionReference,
-} from 'firebase/firestore';
-import { collections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import { News } from '@/types';
 
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
-// Helper: Convert Firestore document to News
+// Tatami API DTO (Go backend — snake_case)
 // ============================================
-const docToNews = (doc: DocumentSnapshot, academyId: string): News => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
+interface NewsDTO {
+  id: string;
+  academy_id: string;
+  title: string;
+  body: string;
+  image_url?: string;
+  link_url?: string;
+  is_pinned: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
 
-  return {
-    id: doc.id,
-    academyId,
-    title: data.title,
-    slug: data.slug,
-    excerpt: data.excerpt,
-    content: data.content,
-    coverUrl: data.coverUrl,
-    coverStoragePath: data.coverStoragePath,
-    tags: data.tags,
-    isPublished: data.isPublished ?? false,
-    publishedAt: data.publishedAt instanceof Timestamp
-      ? data.publishedAt.toDate()
-      : data.publishedAt
-        ? new Date(data.publishedAt)
-        : undefined,
-    authorUid: data.authorUid,
-    authorName: data.authorName,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
-  };
+interface NewsListDTO {
+  items: NewsDTO[];
+}
+
+// ============================================
+// Mapper: Tatami DTO → News
+// Fields not present in the tatami DTO (slug, excerpt, content, coverStoragePath,
+// tags, authorName, publishedAt) receive safe defaults so existing callers
+// continue to compile and run without changes.
+// ============================================
+const dtoToNews = (dto: NewsDTO): News => ({
+  id: dto.id,
+  academyId: dto.academy_id,
+  title: dto.title,
+  slug: dto.id,             // tatami has no slug — use id as stable fallback
+  excerpt: '',              // not stored in tatami; callers that render excerpt will show empty
+  content: dto.body,        // tatami uses "body" for the full content
+  coverUrl: dto.image_url,
+  coverStoragePath: undefined,
+  tags: undefined,
+  isPublished: dto.is_pinned,
+  publishedAt: dto.is_pinned ? new Date(dto.updated_at) : undefined,
+  authorUid: dto.created_by,
+  authorName: undefined,
+  createdAt: new Date(dto.created_at),
+  updatedAt: new Date(dto.updated_at),
+});
+
+// ============================================
+// Mapper: News create/update payload → tatami body
+// ============================================
+const newsToBody = (
+  data: Partial<Omit<News, 'id' | 'academyId' | 'createdAt' | 'updatedAt'>>,
+): Record<string, unknown> => {
+  const body: Record<string, unknown> = {};
+  if (data.title !== undefined) body.title = data.title;
+  // Prefer "content" field; fall back to empty string
+  if (data.content !== undefined) body.body = data.content;
+  if (data.coverUrl !== undefined) body.image_url = data.coverUrl ?? null;
+  if (data.isPublished !== undefined) body.is_pinned = data.isPublished;
+  return body;
 };
 
 // ============================================
@@ -51,19 +67,21 @@ const docToNews = (doc: DocumentSnapshot, academyId: string): News => {
 // ============================================
 export class NewsService {
   private academyId: string;
-  private newsRef: CollectionReference;
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.newsRef = collections.news(academyId);
+  }
+
+  private base(): string {
+    return `/v1/academies/${this.academyId}/news`;
   }
 
   // ============================================
   // List news
   // ============================================
   async list(opts: { onlyPublished?: boolean } = {}): Promise<News[]> {
-    const snapshot = await getDocs(this.newsRef);
-    let items = snapshot.docs.map((d) => docToNews(d, this.academyId));
+    const res = await api.get<NewsListDTO>(`${this.base()}?limit=200&offset=0`);
+    let items = (res.items ?? []).map(dtoToNews);
 
     if (opts.onlyPublished) {
       items = items.filter((n) => n.isPublished === true);
@@ -79,127 +97,55 @@ export class NewsService {
 
   // ============================================
   // Get by slug
+  // TODO(tatami): no GET-by-slug endpoint — falls back to scanning list
   // ============================================
   async getBySlug(slug: string): Promise<News | null> {
-    const q = query(this.newsRef, where('slug', '==', slug), fsLimit(1));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) return null;
-    return docToNews(snapshot.docs[0], this.academyId);
+    const all = await this.list();
+    return all.find((n) => n.slug === slug || n.id === slug) ?? null;
   }
 
   // ============================================
   // Get by id
   // ============================================
   async getById(id: string): Promise<News | null> {
-    const docRef = collections.news_doc(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) return null;
-    return docToNews(docSnap, this.academyId);
+    try {
+      const dto = await api.get<NewsDTO>(`${this.base()}/${id}`);
+      return dtoToNews(dto);
+    } catch {
+      return null;
+    }
   }
 
   // ============================================
   // Create
   // ============================================
   async create(
-    data: Omit<News, 'id' | 'academyId' | 'createdAt' | 'updatedAt'>
+    data: Omit<News, 'id' | 'academyId' | 'createdAt' | 'updatedAt'>,
   ): Promise<News> {
-    const now = new Date();
-
-    const docData: Record<string, unknown> = {
-      academyId: this.academyId,
-      title: data.title,
-      slug: data.slug,
-      excerpt: data.excerpt,
-      content: data.content,
-      isPublished: data.isPublished ?? false,
-      authorUid: data.authorUid,
-      createdAt: Timestamp.fromDate(now),
-      updatedAt: Timestamp.fromDate(now),
-    };
-
-    if (data.coverUrl) docData.coverUrl = data.coverUrl;
-    if (data.coverStoragePath) docData.coverStoragePath = data.coverStoragePath;
-    if (data.tags && data.tags.length > 0) docData.tags = data.tags;
-    if (data.authorName) docData.authorName = data.authorName;
-    if (data.publishedAt) {
-      docData.publishedAt = Timestamp.fromDate(new Date(data.publishedAt));
-    } else if (data.isPublished) {
-      // If publishing without explicit publishedAt, stamp now
-      docData.publishedAt = Timestamp.fromDate(now);
-    }
-
-    const docRef = await addDoc(this.newsRef, docData);
-
-    return {
-      id: docRef.id,
-      academyId: this.academyId,
-      title: data.title,
-      slug: data.slug,
-      excerpt: data.excerpt,
-      content: data.content,
-      coverUrl: data.coverUrl,
-      coverStoragePath: data.coverStoragePath,
-      tags: data.tags,
-      isPublished: data.isPublished ?? false,
-      publishedAt: data.publishedAt
-        ? new Date(data.publishedAt)
-        : data.isPublished
-          ? now
-          : undefined,
-      authorUid: data.authorUid,
-      authorName: data.authorName,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const dto = await api.post<NewsDTO>(this.base(), newsToBody(data));
+    return dtoToNews(dto);
   }
 
   // ============================================
   // Update
   // ============================================
   async update(id: string, data: Partial<News>): Promise<News> {
-    const docRef = collections.news_doc(this.academyId, id);
-
-    const updateData: Record<string, unknown> = {
-      updatedAt: Timestamp.fromDate(new Date()),
-    };
-
-    if (data.title !== undefined) updateData.title = data.title;
-    if (data.slug !== undefined) updateData.slug = data.slug;
-    if (data.excerpt !== undefined) updateData.excerpt = data.excerpt;
-    if (data.content !== undefined) updateData.content = data.content;
-    if (data.coverUrl !== undefined) updateData.coverUrl = data.coverUrl;
-    if (data.coverStoragePath !== undefined) updateData.coverStoragePath = data.coverStoragePath;
-    if (data.tags !== undefined) updateData.tags = data.tags;
-    if (data.isPublished !== undefined) updateData.isPublished = data.isPublished;
-    if (data.publishedAt !== undefined) {
-      updateData.publishedAt = data.publishedAt
-        ? Timestamp.fromDate(new Date(data.publishedAt))
-        : null;
-    }
-    if (data.authorName !== undefined) updateData.authorName = data.authorName;
-
-    await updateDoc(docRef, updateData);
-
-    const updated = await getDoc(docRef);
-    return docToNews(updated, this.academyId);
+    const dto = await api.patch<NewsDTO>(`${this.base()}/${id}`, newsToBody(data));
+    return dtoToNews(dto);
   }
 
   // ============================================
   // Remove
   // ============================================
   async remove(id: string): Promise<void> {
-    const docRef = collections.news_doc(this.academyId, id);
-    await deleteDoc(docRef);
+    await api.delete(`${this.base()}/${id}`);
   }
 
   // ============================================
-  // Publish / Unpublish
+  // Publish / Unpublish  (maps to is_pinned on the tatami side)
   // ============================================
   async publish(id: string): Promise<News> {
-    return this.update(id, {
-      isPublished: true,
-      publishedAt: new Date(),
-    });
+    return this.update(id, { isPublished: true });
   }
 
   async unpublish(id: string): Promise<News> {

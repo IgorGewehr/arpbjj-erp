@@ -1,51 +1,68 @@
-import {
-  getDocs,
-  getDoc,
-  addDoc,
-  updateDoc,
-  deleteDoc,
-  query,
-  where,
-  limit as fsLimit,
-  Timestamp,
-  DocumentSnapshot,
-  CollectionReference,
-} from 'firebase/firestore';
-import { collections } from '@/lib/firebase/collections';
+import { api } from '@/lib/api/client';
 import { AcademyEvent } from '@/types';
 
 const DEFAULT_ACADEMY_ID = process.env.NEXT_PUBLIC_DEFAULT_ACADEMY_ID || 'default';
 
 // ============================================
-// Helper: Convert Firestore document to AcademyEvent
+// Tatami API DTO (Go backend — snake_case)
 // ============================================
-const docToEvent = (doc: DocumentSnapshot, academyId: string): AcademyEvent => {
-  const data = doc.data();
-  if (!data) throw new Error('Document data is undefined');
+interface AcademyEventDTO {
+  id: string;
+  academy_id: string;
+  title: string;
+  description: string;
+  event_date: string;  // ISO8601
+  is_pinned: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
 
-  return {
-    id: doc.id,
-    academyId,
-    title: data.title,
-    slug: data.slug,
-    description: data.description,
-    coverUrl: data.coverUrl,
-    coverStoragePath: data.coverStoragePath,
-    startDate: data.startDate instanceof Timestamp
-      ? data.startDate.toDate()
-      : new Date(data.startDate),
-    endDate: data.endDate instanceof Timestamp
-      ? data.endDate.toDate()
-      : data.endDate
-        ? new Date(data.endDate)
-        : undefined,
-    location: data.location,
-    ctaUrl: data.ctaUrl,
-    ctaLabel: data.ctaLabel,
-    isPublished: data.isPublished ?? false,
-    createdAt: data.createdAt instanceof Timestamp ? data.createdAt.toDate() : new Date(data.createdAt),
-    updatedAt: data.updatedAt instanceof Timestamp ? data.updatedAt.toDate() : new Date(data.updatedAt),
-  };
+interface AcademyEventListDTO {
+  items: AcademyEventDTO[];
+}
+
+// ============================================
+// Mapper: Tatami DTO → AcademyEvent
+// Fields not present in the tatami DTO (slug, coverUrl, coverStoragePath,
+// endDate, location, ctaUrl, ctaLabel, isPublished) are given safe defaults
+// so existing callers continue to compile and run without changes.
+// ============================================
+const dtoToEvent = (dto: AcademyEventDTO): AcademyEvent => ({
+  id: dto.id,
+  academyId: dto.academy_id,
+  title: dto.title,
+  slug: dto.id,               // tatami has no slug — use id as stable fallback
+  description: dto.description,
+  coverUrl: undefined,
+  coverStoragePath: undefined,
+  startDate: new Date(dto.event_date),
+  endDate: undefined,
+  location: undefined,
+  ctaUrl: undefined,
+  ctaLabel: undefined,
+  isPublished: dto.is_pinned, // closest semantic match available in the DTO
+  createdAt: new Date(dto.created_at),
+  updatedAt: new Date(dto.updated_at),
+});
+
+// ============================================
+// Mapper: AcademyEvent create/update payload → tatami body
+// ============================================
+const eventToBody = (
+  data: Partial<Omit<AcademyEvent, 'id' | 'academyId' | 'createdAt' | 'updatedAt'>>,
+): Record<string, unknown> => {
+  const body: Record<string, unknown> = {};
+  if (data.title !== undefined) body.title = data.title;
+  if (data.description !== undefined) body.description = data.description;
+  if (data.startDate !== undefined) {
+    body.event_date =
+      data.startDate instanceof Date
+        ? data.startDate.toISOString()
+        : new Date(data.startDate).toISOString();
+  }
+  if (data.isPublished !== undefined) body.is_pinned = data.isPublished;
+  return body;
 };
 
 // ============================================
@@ -53,139 +70,78 @@ const docToEvent = (doc: DocumentSnapshot, academyId: string): AcademyEvent => {
 // ============================================
 export class AcademyEventService {
   private academyId: string;
-  private eventsRef: CollectionReference;
 
   constructor(academyId: string) {
     this.academyId = academyId;
-    this.eventsRef = collections.events(academyId);
+  }
+
+  private base(): string {
+    return `/v1/academies/${this.academyId}/events`;
   }
 
   // ============================================
   // List events
   // ============================================
   async list(opts: { onlyPublished?: boolean } = {}): Promise<AcademyEvent[]> {
-    const snapshot = await getDocs(this.eventsRef);
-    let items = snapshot.docs.map((d) => docToEvent(d, this.academyId));
+    const res = await api.get<AcademyEventListDTO>(`${this.base()}?limit=200&offset=0`);
+    let items = (res.items ?? []).map(dtoToEvent);
 
     if (opts.onlyPublished) {
       items = items.filter((e) => e.isPublished === true);
     }
 
-    // Sort by startDate ascending (upcoming first); stable order for past
+    // Sort by startDate ascending (upcoming first)
     return items.sort((a, b) => a.startDate.getTime() - b.startDate.getTime());
   }
 
   // ============================================
   // Get by slug
+  // TODO(tatami): no GET-by-slug endpoint — falls back to scanning list
   // ============================================
   async getBySlug(slug: string): Promise<AcademyEvent | null> {
-    const q = query(this.eventsRef, where('slug', '==', slug), fsLimit(1));
-    const snapshot = await getDocs(q);
-    if (snapshot.empty) return null;
-    return docToEvent(snapshot.docs[0], this.academyId);
+    const all = await this.list();
+    return all.find((e) => e.slug === slug || e.id === slug) ?? null;
   }
 
   // ============================================
   // Get by id
   // ============================================
   async getById(id: string): Promise<AcademyEvent | null> {
-    const docRef = collections.event_doc(this.academyId, id);
-    const docSnap = await getDoc(docRef);
-    if (!docSnap.exists()) return null;
-    return docToEvent(docSnap, this.academyId);
+    try {
+      const dto = await api.get<AcademyEventDTO>(`${this.base()}/${id}`);
+      return dtoToEvent(dto);
+    } catch {
+      return null;
+    }
   }
 
   // ============================================
   // Create
   // ============================================
   async create(
-    data: Omit<AcademyEvent, 'id' | 'academyId' | 'createdAt' | 'updatedAt'>
+    data: Omit<AcademyEvent, 'id' | 'academyId' | 'createdAt' | 'updatedAt'>,
   ): Promise<AcademyEvent> {
-    const now = new Date();
-
-    const docData: Record<string, unknown> = {
-      academyId: this.academyId,
-      title: data.title,
-      slug: data.slug,
-      description: data.description,
-      startDate: Timestamp.fromDate(new Date(data.startDate)),
-      isPublished: data.isPublished ?? false,
-      createdAt: Timestamp.fromDate(now),
-      updatedAt: Timestamp.fromDate(now),
-    };
-
-    if (data.endDate) docData.endDate = Timestamp.fromDate(new Date(data.endDate));
-    if (data.location) docData.location = data.location;
-    if (data.coverUrl) docData.coverUrl = data.coverUrl;
-    if (data.coverStoragePath) docData.coverStoragePath = data.coverStoragePath;
-    if (data.ctaUrl) docData.ctaUrl = data.ctaUrl;
-    if (data.ctaLabel) docData.ctaLabel = data.ctaLabel;
-
-    const docRef = await addDoc(this.eventsRef, docData);
-
-    return {
-      id: docRef.id,
-      academyId: this.academyId,
-      title: data.title,
-      slug: data.slug,
-      description: data.description,
-      coverUrl: data.coverUrl,
-      coverStoragePath: data.coverStoragePath,
-      startDate: new Date(data.startDate),
-      endDate: data.endDate ? new Date(data.endDate) : undefined,
-      location: data.location,
-      ctaUrl: data.ctaUrl,
-      ctaLabel: data.ctaLabel,
-      isPublished: data.isPublished ?? false,
-      createdAt: now,
-      updatedAt: now,
-    };
+    const dto = await api.post<AcademyEventDTO>(this.base(), eventToBody(data));
+    return dtoToEvent(dto);
   }
 
   // ============================================
   // Update
   // ============================================
   async update(id: string, data: Partial<AcademyEvent>): Promise<AcademyEvent> {
-    const docRef = collections.event_doc(this.academyId, id);
-
-    const updateData: Record<string, unknown> = {
-      updatedAt: Timestamp.fromDate(new Date()),
-    };
-
-    if (data.title !== undefined) updateData.title = data.title;
-    if (data.slug !== undefined) updateData.slug = data.slug;
-    if (data.description !== undefined) updateData.description = data.description;
-    if (data.startDate !== undefined) {
-      updateData.startDate = Timestamp.fromDate(new Date(data.startDate));
-    }
-    if (data.endDate !== undefined) {
-      updateData.endDate = data.endDate
-        ? Timestamp.fromDate(new Date(data.endDate))
-        : null;
-    }
-    if (data.location !== undefined) updateData.location = data.location;
-    if (data.coverUrl !== undefined) updateData.coverUrl = data.coverUrl;
-    if (data.coverStoragePath !== undefined) updateData.coverStoragePath = data.coverStoragePath;
-    if (data.ctaUrl !== undefined) updateData.ctaUrl = data.ctaUrl;
-    if (data.ctaLabel !== undefined) updateData.ctaLabel = data.ctaLabel;
-    if (data.isPublished !== undefined) updateData.isPublished = data.isPublished;
-
-    await updateDoc(docRef, updateData);
-
-    const updated = await getDoc(docRef);
-    return docToEvent(updated, this.academyId);
+    const dto = await api.patch<AcademyEventDTO>(`${this.base()}/${id}`, eventToBody(data));
+    return dtoToEvent(dto);
   }
 
   // ============================================
   // Remove
   // ============================================
   async remove(id: string): Promise<void> {
-    const docRef = collections.event_doc(this.academyId, id);
-    await deleteDoc(docRef);
+    await api.delete(`${this.base()}/${id}`);
   }
 
   // ============================================
-  // Publish / Unpublish
+  // Publish / Unpublish  (maps to is_pinned on the tatami side)
   // ============================================
   async publish(id: string): Promise<AcademyEvent> {
     return this.update(id, { isPublished: true });

@@ -82,6 +82,7 @@ interface AcademyContextType {
   hasMultipleAcademies: boolean;
   userAcademyMapping: UserAcademyMapping | null;
   isLoading: boolean;
+  meLoaded: boolean;
   isSwitching: boolean;
   error: string | null;
   setAcademy: (academyId: string) => Promise<void>;
@@ -227,6 +228,8 @@ export function AcademyProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
   const [isSwitching, setIsSwitching] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // true = API chamada com sucesso, false = ainda não sabe (erro ou carregando)
+  const [meLoaded, setMeLoaded] = useState(false);
 
   // Cache /v1/me data so academy switches don't need another round-trip
   const meUserRef = useRef<GoMeUser | null>(null);
@@ -270,10 +273,12 @@ export function AcademyProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       if (err instanceof ApiError && err.status === 404) {
         setUserAcademies([]);
+        setMeLoaded(true); // 404 = usuário real sem academia, pode redirecionar
         return null;
       }
-      throw err;
+      throw err; // rede, CORS, 5xx → não marca meLoaded → não redireciona
     }
+    setMeLoaded(true);
     meUserRef.current = me.user;
     membershipsRef.current = me.memberships;
 
@@ -484,6 +489,7 @@ export function AcademyProvider({ children }: { children: ReactNode }) {
     isLoading,
     isSwitching,
     error,
+    meLoaded,
     setAcademy: setAcademyAction,
     setPrimaryAcademy: setPrimaryAcademyAction,
     refreshAcademy,
@@ -501,6 +507,7 @@ export function AcademyProvider({ children }: { children: ReactNode }) {
     isLoading,
     isSwitching,
     error,
+    meLoaded,
     setAcademyAction,
     setPrimaryAcademyAction,
     refreshAcademy,

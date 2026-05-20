@@ -52,7 +52,7 @@ export default function LoginPage() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'), { noSsr: true });
   const isDarkMode = theme.palette.mode === 'dark';
   const { signIn, resetPassword, isAuthenticated, loading, error, clearError, user } = useAuth();
-  const { academyUser, isLoading: academyLoading, error: academyError, userAcademies } = useAcademy();
+  const { academyUser, isLoading: academyLoading, error: academyError, userAcademies, meLoaded } = useAcademy();
 
   const [mounted, setMounted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -74,18 +74,19 @@ export default function LoginPage() {
     if (!isAuthenticated || !user || loading || academyLoading) return;
 
     if (academyUser) {
-      // Has academy — redirect by role
+      // Tem academia — redireciona por role
       setRedirecting(true);
       const role = academyUser.role;
       const redirectTo = role === 'student' ? '/portal'
                        : role === 'guardian' ? '/responsavel'
                        : '/dashboard';
       setTimeout(() => router.push(redirectTo), 300);
-    } else if (userAcademies.length === 0) {
-      // Zero academies — either new user or not yet in tatami
+    } else if (meLoaded && userAcademies.length === 0) {
+      // API retornou com sucesso mas sem academias — usuário genuinamente novo
       setRedirecting(true);
       setTimeout(() => router.push('/criar-academia'), 300);
     }
+    // Se meLoaded=false (erro de rede, CORS, etc.) → fica na tela de login sem redirecionar
   }, [isAuthenticated, user, loading, academyUser, academyLoading, academyError, userAcademies, router]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

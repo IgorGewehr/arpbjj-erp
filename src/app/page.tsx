@@ -13,7 +13,7 @@ const CONNECTION_TIMEOUT_MS = 8000;
 export default function Home() {
   const router = useRouter();
   const { isAuthenticated, loading, user } = useAuth();
-  const { academyUser, isLoading: academyLoading } = useAcademy();
+  const { academyUser, isLoading: academyLoading, meLoaded } = useAcademy();
   const [showTimeoutError, setShowTimeoutError] = useState(false);
 
   const isLoading = loading || (isAuthenticated && academyLoading);
@@ -23,11 +23,14 @@ export default function Home() {
     if (isLoading) return;
     if (isAuthenticated && user && academyUser) {
       router.replace(getDefaultRoute(academyUser.role));
-    } else if (!isAuthenticated || (isAuthenticated && user && !academyUser)) {
-      // Not logged in OR logged in but not linked to any academy
+    } else if (!isAuthenticated) {
+      router.replace('/login');
+    } else if (meLoaded && !academyUser) {
+      // API respondeu mas sem academia → login para criar
       router.replace('/login');
     }
-  }, [isAuthenticated, loading, user, academyUser, academyLoading, router, isLoading]);
+    // meLoaded=false (erro de rede) → mostra skeleton + timeout de 8s
+  }, [isAuthenticated, loading, user, academyUser, academyLoading, router, isLoading, meLoaded]);
 
   // Connection timeout — show error screen if loading exceeds 8s
   useEffect(() => {

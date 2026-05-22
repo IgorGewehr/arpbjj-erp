@@ -10,14 +10,22 @@ import {
   CollectionReference,
 } from 'firebase/firestore';
 import { collections } from '@/lib/firebase/collections';
-import { Plan } from '@/types';
+import { Plan, BillingPeriod, BILLING_PERIOD_MONTHS } from '@/types';
 import { ClassService } from './classService';
 
 // ============================================
 // Helper: Get the value a student pays in a plan
 // ============================================
+export function getEffectivePeriodValue(plan: Plan): number {
+  return plan.periodValue ?? plan.monthlyValue;
+}
+
 export function getStudentValue(plan: Plan, studentId: string): number {
-  return plan.customValues?.[studentId] ?? plan.monthlyValue;
+  return plan.customValues?.[studentId] ?? getEffectivePeriodValue(plan);
+}
+
+export function getPlanBillingPeriod(plan: Plan): BillingPeriod {
+  return plan.billingPeriod ?? 'monthly';
 }
 
 export function getStudentDueDay(plan: Plan, studentId: string): number {
@@ -39,6 +47,8 @@ const docToPlan = (doc: DocumentSnapshot): Plan => {
     name: data.name,
     description: data.description,
     monthlyValue: data.monthlyValue,
+    periodValue: data.periodValue ?? undefined,
+    billingPeriod: (data.billingPeriod as BillingPeriod | undefined) ?? 'monthly',
     defaultDueDay: data.defaultDueDay || 10,
     classesPerWeek: data.classesPerWeek,
     studentIds: data.studentIds || [],
@@ -105,6 +115,7 @@ export class PlanService {
     const docData: Record<string, unknown> = {
       name: data.name,
       monthlyValue: data.monthlyValue,
+      billingPeriod: data.billingPeriod ?? 'monthly',
       defaultDueDay: data.defaultDueDay || 10,
       classesPerWeek: data.classesPerWeek,
       isActive: data.isActive,
@@ -113,17 +124,18 @@ export class PlanService {
       updatedAt: Timestamp.fromDate(now),
     };
 
-    // Only add description if it has a value
     if (data.description) docData.description = data.description;
+    if (data.periodValue !== undefined) docData.periodValue = data.periodValue;
 
     const docRef = await addDoc(this.plansRef, docData);
 
-    // Return plan directly without re-fetching
     const plan: Plan = {
       id: docRef.id,
       name: data.name,
       description: data.description,
       monthlyValue: data.monthlyValue,
+      periodValue: data.periodValue,
+      billingPeriod: data.billingPeriod ?? 'monthly',
       defaultDueDay: data.defaultDueDay || 10,
       classesPerWeek: data.classesPerWeek,
       studentIds: [],
@@ -146,10 +158,11 @@ export class PlanService {
       updatedAt: Timestamp.fromDate(new Date()),
     };
 
-    // Only add fields that are being updated
     if (data.name !== undefined) updateData.name = data.name;
     if (data.description !== undefined) updateData.description = data.description;
     if (data.monthlyValue !== undefined) updateData.monthlyValue = data.monthlyValue;
+    if (data.billingPeriod !== undefined) updateData.billingPeriod = data.billingPeriod;
+    if (data.periodValue !== undefined) updateData.periodValue = data.periodValue;
     if (data.defaultDueDay !== undefined) updateData.defaultDueDay = data.defaultDueDay;
     if (data.classesPerWeek !== undefined) updateData.classesPerWeek = data.classesPerWeek;
     if (data.isActive !== undefined) updateData.isActive = data.isActive;

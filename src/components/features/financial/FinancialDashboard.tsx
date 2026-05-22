@@ -68,8 +68,8 @@ import { CreateChargeDialog } from './CreateChargeDialog';
 import type { CreateChargeData } from './CreateChargeDialog';
 import { BeltDisplay } from '@/components/shared/BeltDisplay';
 import { getBeltChipColor } from '@/lib/theme';
-import { Financial, PaymentStatus, Plan, Student } from '@/types';
-import { getStudentDueDay } from '@/services/planService';
+import { Financial, PaymentStatus, Plan, Student, BillingPeriod, BILLING_PERIOD_MONTHS, BILLING_PERIOD_LABEL, BILLING_PERIOD_UNIT } from '@/types';
+import { getStudentDueDay, getEffectivePeriodValue, getPlanBillingPeriod } from '@/services/planService';
 
 // ============================================
 // Status Filter Options
@@ -290,9 +290,10 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
     return students.filter((s) => plan.studentIds?.includes(s.id));
   }, [students, plan.studentIds]);
 
+  const period = getPlanBillingPeriod(plan);
   const customValuesCount = enrolledStudents.filter(s => plan.customValues?.[s.id] !== undefined).length;
-  const expectedMonthlyRevenue = enrolledStudents.reduce(
-    (sum, s) => sum + (plan.customValues?.[s.id] ?? plan.monthlyValue), 0
+  const expectedPeriodRevenue = enrolledStudents.reduce(
+    (sum, s) => sum + (plan.customValues?.[s.id] ?? getEffectivePeriodValue(plan)), 0
   );
 
   return (
@@ -338,8 +339,12 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: '#f5f5f5', px: 1.5, py: 0.75, borderRadius: 1 }}>
             <DollarSign size={16} color="#1a1a1a" />
             <Typography variant="body2" fontWeight={600} color="primary.main">
-              R$ {plan.monthlyValue.toLocaleString('pt-BR')}
+              R$ {getEffectivePeriodValue(plan).toLocaleString('pt-BR')}/{BILLING_PERIOD_UNIT[period]}
             </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'action.hover', px: 1.5, py: 0.75, borderRadius: 1 }}>
+            <Clock size={16} />
+            <Typography variant="body2">{BILLING_PERIOD_LABEL[period]}</Typography>
           </Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, bgcolor: 'action.hover', px: 1.5, py: 0.75, borderRadius: 1 }}>
             <CreditCard size={16} />
@@ -366,10 +371,10 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
         {/* Expected Revenue */}
         <Box sx={{ bgcolor: 'success.50', p: 1.5, borderRadius: 2, mb: 2 }}>
           <Typography variant="caption" color="success.dark">
-            Receita Esperada/Mes
+            Receita Esperada/{BILLING_PERIOD_UNIT[period].charAt(0).toUpperCase() + BILLING_PERIOD_UNIT[period].slice(1)}
           </Typography>
           <Typography variant="h6" fontWeight={700} color="success.dark">
-            R$ {expectedMonthlyRevenue.toLocaleString('pt-BR')}
+            R$ {expectedPeriodRevenue.toLocaleString('pt-BR')}
           </Typography>
         </Box>
 
@@ -405,7 +410,7 @@ function PlanCard({ plan, students, onEdit, onDelete, onManageStudents, isDeleti
                 {enrolledStudents.map((student) => {
                   const beltColor = getBeltChipColor(student.currentBelt);
                   const hasCustom = plan.customValues?.[student.id] !== undefined;
-                  const value = plan.customValues?.[student.id] ?? plan.monthlyValue;
+                  const value = plan.customValues?.[student.id] ?? getEffectivePeriodValue(plan);
                   return (
                     <Chip
                       key={student.id}
@@ -677,11 +682,11 @@ function ManagePlanStudentsDialog({
               {plan.name}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              R$ {plan.monthlyValue.toLocaleString('pt-BR')}/mes - {enrolledCount} aluno{enrolledCount !== 1 ? 's' : ''} inscrito{enrolledCount !== 1 ? 's' : ''}
+              R$ {getEffectivePeriodValue(plan).toLocaleString('pt-BR')}/{BILLING_PERIOD_UNIT[getPlanBillingPeriod(plan)]} - {enrolledCount} aluno{enrolledCount !== 1 ? 's' : ''} inscrito{enrolledCount !== 1 ? 's' : ''}
             </Typography>
           </Box>
           <Chip
-            label={`R$ ${(plan.monthlyValue * enrolledCount).toLocaleString('pt-BR')}/mes`}
+            label={`R$ ${(getEffectivePeriodValue(plan) * enrolledCount).toLocaleString('pt-BR')}/${BILLING_PERIOD_UNIT[getPlanBillingPeriod(plan)]}`}
             sx={{ bgcolor: '#1a1a1a', color: '#fff' }}
           />
         </Box>
@@ -758,7 +763,8 @@ interface PlanFormDialogProps {
 function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialogProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [monthlyValue, setMonthlyValue] = useState('');
+  const [periodValue, setPeriodValue] = useState('');
+  const [billingPeriod, setBillingPeriod] = useState<BillingPeriod>('monthly');
   const [defaultDueDay, setDefaultDueDay] = useState('10');
   const [classesPerWeek, setClassesPerWeek] = useState('0');
   const [isActive, setIsActive] = useState(true);
@@ -769,14 +775,16 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
       if (plan) {
         setName(plan.name);
         setDescription(plan.description || '');
-        setMonthlyValue(plan.monthlyValue.toString());
+        setPeriodValue(getEffectivePeriodValue(plan).toString());
+        setBillingPeriod(getPlanBillingPeriod(plan));
         setDefaultDueDay((plan.defaultDueDay || 10).toString());
         setClassesPerWeek(plan.classesPerWeek.toString());
         setIsActive(plan.isActive);
       } else {
         setName('');
         setDescription('');
-        setMonthlyValue('');
+        setPeriodValue('');
+        setBillingPeriod('monthly');
         setDefaultDueDay('10');
         setClassesPerWeek('0');
         setIsActive(true);
@@ -789,14 +797,16 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
     if (plan) {
       setName(plan.name);
       setDescription(plan.description || '');
-      setMonthlyValue(plan.monthlyValue.toString());
+      setPeriodValue(getEffectivePeriodValue(plan).toString());
+      setBillingPeriod(getPlanBillingPeriod(plan));
       setDefaultDueDay((plan.defaultDueDay || 10).toString());
       setClassesPerWeek(plan.classesPerWeek.toString());
       setIsActive(plan.isActive);
     } else {
       setName('');
       setDescription('');
-      setMonthlyValue('');
+      setPeriodValue('');
+      setBillingPeriod('monthly');
       setDefaultDueDay('10');
       setClassesPerWeek('0');
       setIsActive(true);
@@ -804,17 +814,26 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
   }, [plan]);
 
   const handleSubmit = async () => {
-    if (!name.trim() || !monthlyValue) return;
+    if (!name.trim() || !periodValue) return;
+
+    const enteredValue = parseFloat(periodValue);
+    const months = BILLING_PERIOD_MONTHS[billingPeriod];
 
     await onSave({
       name: name.trim(),
       description: description.trim() || undefined,
-      monthlyValue: parseFloat(monthlyValue),
+      monthlyValue: billingPeriod === 'monthly' ? enteredValue : enteredValue / months,
+      periodValue: billingPeriod === 'monthly' ? undefined : enteredValue,
+      billingPeriod,
       defaultDueDay: parseInt(defaultDueDay) || 10,
       classesPerWeek: parseInt(classesPerWeek),
       isActive,
     });
   };
+
+  const valueLabel = billingPeriod === 'monthly'
+    ? 'Valor'
+    : `Valor por ${BILLING_PERIOD_UNIT[billingPeriod].charAt(0).toUpperCase() + BILLING_PERIOD_UNIT[billingPeriod].slice(1)}`;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
@@ -836,11 +855,25 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
             multiline
             rows={2}
           />
+          <FormControl fullWidth>
+            <InputLabel>Periodicidade</InputLabel>
+            <Select
+              value={billingPeriod}
+              onChange={(e) => setBillingPeriod(e.target.value as BillingPeriod)}
+              label="Periodicidade"
+            >
+              {(Object.keys(BILLING_PERIOD_LABEL) as BillingPeriod[]).map((p) => (
+                <MenuItem key={p} value={p}>
+                  {BILLING_PERIOD_LABEL[p]}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
           <TextField
-            label="Valor Mensal"
+            label={valueLabel}
             type="number"
-            value={monthlyValue}
-            onChange={(e) => setMonthlyValue(e.target.value)}
+            value={periodValue}
+            onChange={(e) => setPeriodValue(e.target.value)}
             fullWidth
             required
             slotProps={{
@@ -896,7 +929,7 @@ function PlanFormDialog({ open, plan, onClose, onSave, isSaving }: PlanFormDialo
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={isSaving || !name.trim() || !monthlyValue}
+          disabled={isSaving || !name.trim() || !periodValue}
           startIcon={isSaving ? <CircularProgress size={16} color="inherit" /> : undefined}
         >
           {isSaving ? 'Salvando...' : 'Salvar'}
@@ -1125,7 +1158,7 @@ export function FinancialDashboard() {
   const handleGenerateTuitions = useCallback(async (planIdFilter: string | null) => {
     // Build student data ONLY from students enrolled in active plans.
     // A student can appear multiple times — once per plan they're enrolled in.
-    const entries: Array<{ studentId: string; planId: string; value: number; day: number }> = [];
+    const entries: Array<{ studentId: string; planId: string; value: number; day: number; billingPeriod: BillingPeriod }> = [];
 
     // Filter plans if a specific plan is selected
     const plansToProcess = planIdFilter
@@ -1139,8 +1172,9 @@ export function FinancialDashboard() {
           entries.push({
             studentId,
             planId: plan.id,
-            value: plan.customValues?.[studentId] ?? plan.monthlyValue,
+            value: plan.customValues?.[studentId] ?? getEffectivePeriodValue(plan),
             day: getStudentDueDay(plan, studentId) ?? student.tuitionDay ?? 10,
+            billingPeriod: getPlanBillingPeriod(plan),
           });
         }
       }
@@ -1156,6 +1190,7 @@ export function FinancialDashboard() {
         tuitionValue: entry.value,
         tuitionDay: entry.day,
         planId: entry.planId,
+        billingPeriod: entry.billingPeriod,
       };
     });
 
@@ -1255,10 +1290,12 @@ export function FinancialDashboard() {
   // ============================================
   const expectedRevenue = useMemo(() => {
     return plans.reduce((total, plan) => {
-      if (plan.isActive) {
-        return total + plan.studentIds.reduce((sum, sid) => sum + (plan.customValues?.[sid] ?? plan.monthlyValue), 0);
-      }
-      return total;
+      if (!plan.isActive) return total;
+      const months = BILLING_PERIOD_MONTHS[getPlanBillingPeriod(plan)];
+      const periodRevenue = plan.studentIds.reduce(
+        (sum, sid) => sum + (plan.customValues?.[sid] ?? getEffectivePeriodValue(plan)), 0
+      );
+      return total + periodRevenue / months;
     }, 0);
   }, [plans]);
 

@@ -338,6 +338,32 @@ export interface Attendance {
 }
 
 // ============================================
+// Billing Period
+// ============================================
+export type BillingPeriod = 'monthly' | 'quarterly' | 'semiannual' | 'annual';
+
+export const BILLING_PERIOD_MONTHS: Record<BillingPeriod, number> = {
+  monthly: 1,
+  quarterly: 3,
+  semiannual: 6,
+  annual: 12,
+};
+
+export const BILLING_PERIOD_LABEL: Record<BillingPeriod, string> = {
+  monthly: 'Mensal',
+  quarterly: 'Trimestral',
+  semiannual: 'Semestral',
+  annual: 'Anual',
+};
+
+export const BILLING_PERIOD_UNIT: Record<BillingPeriod, string> = {
+  monthly: 'mês',
+  quarterly: 'trimestre',
+  semiannual: 'semestre',
+  annual: 'ano',
+};
+
+// ============================================
 // Plan Interface (Subscription Plans)
 // ============================================
 export interface Plan {
@@ -345,8 +371,12 @@ export interface Plan {
   name: string;
   description?: string;
 
-  // Pricing
+  // Pricing — monthlyValue is always set (monthly equivalent for display/comparison).
+  // periodValue is the actual amount charged per cycle for non-monthly plans.
+  // Legacy plans without billingPeriod/periodValue are treated as monthly.
   monthlyValue: number;
+  periodValue?: number;
+  billingPeriod?: BillingPeriod;
 
   // Default due day for tuition (1-31)
   defaultDueDay: number;

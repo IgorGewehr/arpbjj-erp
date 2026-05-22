@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { collections } from '@/lib/firebase/collections';
-import { Financial, FinancialFilters, PaymentMethod } from '@/types';
+import { Financial, FinancialFilters, PaymentMethod, BillingPeriod, BILLING_PERIOD_MONTHS } from '@/types';
 import { startOfMonth, endOfMonth, format } from 'date-fns';
 
 // Default academy for backwards compatibility
@@ -258,10 +258,37 @@ export class FinancialService {
   }
 
   // ============================================
-  // Generate Monthly Tuitions for All Active Students
+  // Check if non-monthly plan student is due for a new charge
+  // ============================================
+  private async isDueForPeriod(
+    studentId: string,
+    planId: string,
+    billingPeriod: BillingPeriod,
+    refYear: number,
+    refMonth: number
+  ): Promise<boolean> {
+    const allForPlan = await this.list({ studentId, type: 'monthly_tuition' });
+    const active = allForPlan.filter((p) => p.planId === planId && p.status !== 'cancelled');
+
+    if (active.length === 0) return true;
+
+    active.sort((a, b) => b.dueDate.getTime() - a.dueDate.getTime());
+    const lastDue = active[0].dueDate;
+
+    const periodMonths = BILLING_PERIOD_MONTHS[billingPeriod];
+    const nextBilling = new Date(lastDue.getFullYear(), lastDue.getMonth() + periodMonths, lastDue.getDate());
+
+    return (
+      nextBilling.getFullYear() < refYear ||
+      (nextBilling.getFullYear() === refYear && nextBilling.getMonth() + 1 <= refMonth)
+    );
+  }
+
+  // ============================================
+  // Generate Tuitions for All Active Students
   // ============================================
   async generateMonthlyTuitions(
-    students: Array<{ id: string; fullName: string; tuitionValue: number; tuitionDay: number; planId?: string }>,
+    students: Array<{ id: string; fullName: string; tuitionValue: number; tuitionDay: number; planId?: string; billingPeriod?: BillingPeriod }>,
     month: string, // YYYY-MM
     createdBy: string
   ): Promise<Financial[]> {
@@ -269,37 +296,40 @@ export class FinancialService {
     const results: Financial[] = [];
 
     for (const student of students) {
-      // Check if tuition already exists for this student+plan+month
-      // IMPORTANT: Filter out cancelled payments - they don't count as "existing"
-      const existing = await this.list({
-        studentId: student.id,
-        month,
-        type: 'monthly_tuition',
-      });
+      const period: BillingPeriod = student.billingPeriod ?? 'monthly';
+      let shouldGenerate: boolean;
 
-      // Exclude cancelled payments from the check
-      const activeExisting = existing.filter((p) => p.status !== 'cancelled');
-
-      if (student.planId) {
-        // Skip if an ACTIVE payment with this planId already exists
-        if (activeExisting.some((p) => p.planId === student.planId)) continue;
+      if (period === 'monthly') {
+        const existing = await this.list({ studentId: student.id, month, type: 'monthly_tuition' });
+        const activeExisting = existing.filter((p) => p.status !== 'cancelled');
+        if (student.planId) {
+          shouldGenerate = !activeExisting.some((p) => p.planId === student.planId);
+        } else {
+          shouldGenerate = !activeExisting.some((p) => !p.planId);
+        }
       } else {
-        // Fallback for legacy entries without planId: skip if any ACTIVE payment without planId exists
-        if (activeExisting.some((p) => !p.planId)) continue;
+        shouldGenerate = await this.isDueForPeriod(student.id, student.planId!, period, year, monthNum);
       }
 
-      // Calculate due date based on student's tuition day
-      // Clamp to last day of month (e.g., day 31 in February → Feb 28/29)
+      if (!shouldGenerate) continue;
+
       const lastDayOfMonth = new Date(year, monthNum, 0).getDate();
       const clampedDay = Math.min(student.tuitionDay, lastDayOfMonth);
       const dueDate = new Date(year, monthNum - 1, clampedDay);
+
+      const PERIOD_LABEL: Record<BillingPeriod, string> = {
+        monthly: `Mensalidade ${format(dueDate, 'MM/yyyy')}`,
+        quarterly: 'Trimestral',
+        semiannual: 'Semestral',
+        annual: 'Anual',
+      };
 
       const financial = await this.create(
         {
           studentId: student.id,
           studentName: student.fullName,
           type: 'monthly_tuition',
-          description: `Mensalidade ${format(dueDate, 'MM/yyyy')}`,
+          description: PERIOD_LABEL[period],
           amount: student.tuitionValue,
           dueDate,
           status: 'pending',

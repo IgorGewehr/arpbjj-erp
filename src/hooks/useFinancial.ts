@@ -229,7 +229,7 @@ export function useFinancial(options: UseFinancialOptions = {}) {
       students,
       month,
     }: {
-      students: Array<{ id: string; fullName: string; tuitionValue: number; tuitionDay: number; planId?: string }>;
+      students: Array<{ id: string; fullName: string; tuitionValue: number; tuitionDay: number; planId?: string; billingPeriod?: import('@/types').BillingPeriod }>;
       month: string;
     }) => {
       if (!user) throw new Error('User not authenticated');

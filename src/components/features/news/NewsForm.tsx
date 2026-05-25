@@ -263,7 +263,7 @@ export function NewsForm({ mode, initial }: NewsFormProps) {
 
               <Grid size={{ xs: 12 }}>
                 <CoverImageUploader
-                  basePath={`news/${academyId}`}
+                  basePath={`academies/${academyId}/news`}
                   coverUrl={form.coverUrl}
                   coverStoragePath={form.coverStoragePath}
                   onChange={(data) =>

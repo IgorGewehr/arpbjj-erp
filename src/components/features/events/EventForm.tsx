@@ -290,7 +290,7 @@ export function EventForm({ mode, initial }: EventFormProps) {
 
               <Grid size={{ xs: 12 }}>
                 <CoverImageUploader
-                  basePath={`events/${academyId}`}
+                  basePath={`academies/${academyId}/events`}
                   coverUrl={form.coverUrl}
                   coverStoragePath={form.coverStoragePath}
                   onChange={(data) =>

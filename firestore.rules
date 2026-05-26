@@ -105,6 +105,16 @@ service cloud.firestore {
       );
     }
 
+    // Check if the caller's studentId (from the mapping) is in a list of ids.
+    // Used by workout plans assigned to specific students.
+    function isAssignedStudent(academyId, ids) {
+      let mapping = getUserAcademyMapping();
+      return belongsToAcademy(academyId)
+        && mapping.keys().hasAll(['academyDetails'])
+        && mapping.academyDetails.keys().hasAll([academyId])
+        && mapping.academyDetails[academyId].studentId in ids;
+    }
+
     // Check if user is the owner of the academy
     function isAcademyOwner(academyId) {
       let academy = get(/databases/$(database)/documents/academies/$(academyId)).data;
@@ -135,6 +145,15 @@ service cloud.firestore {
     // Check if user is staff OR monitor of the academy
     function isStaffOrMonitor(academyId) {
       return isAcademyStaff(academyId) || isMonitor(academyId);
+    }
+
+    // Check if instructor has a specific extra permission granted by the admin
+    function hasExtraPermission(academyId, permission) {
+      let mapping = getUserAcademyMapping();
+      return mapping.keys().hasAll(['academyDetails'])
+          && mapping.academyDetails.keys().hasAll([academyId])
+          && mapping.academyDetails[academyId].keys().hasAll(['extraPermissions'])
+          && permission in mapping.academyDetails[academyId].extraPermissions;
     }
 
     // Helper: get current user's studentId for this academy (for inline use)
@@ -175,6 +194,9 @@ service cloud.firestore {
                     && !request.resource.data.diff(resource.data).affectedKeys()
                         .hasAny(['role', 'academyId']);
 
+      // Users can delete their own document during account deletion
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
+
       // FCM Tokens subcollection
       match /fcmTokens/{tokenId} {
         // User can manage their own tokens
@@ -189,40 +211,70 @@ service cloud.firestore {
       // Users can read their own mapping
       allow read: if isAuthenticated() && request.auth.uid == userId;
 
-      // Users can create their own mapping:
-      // 1. During normal signup (empty mapping with no academies)
-      // 2. During academy creation (mapping with admin role in root)
-      // 3. During student registration via link code (role in academyDetails)
+      // SECURITY: Three create patterns, role elevation requires verifiable ownership.
+      // 1. Empty mapping during normal signup (no academies)
+      // 2. Admin during own-academy creation - verified via academies/{id}.ownerId == self
+      // 3. Student joining via link code - role MUST be 'student' in academyDetails
       allow create: if isAuthenticated()
                     && request.auth.uid == userId
                     && (
-                      // Empty mapping during normal signup
+                      // Pattern 1: Empty mapping
                       (request.resource.data.academyIds.size() == 0)
                       ||
-                      // Admin mapping during academy creation (legacy format with root-level role)
-                      (request.resource.data.role == 'admin'
-                       && request.resource.data.academyIds.size() == 1
-                       && request.resource.data.primaryAcademyId == request.resource.data.academyIds[0])
+                      // Pattern 2: Owner of single academy claiming admin
+                      (request.resource.data.academyIds.size() == 1
+                       && request.resource.data.primaryAcademyId == request.resource.data.academyIds[0]
+                       && exists(/databases/$(database)/documents/academies/$(request.resource.data.academyIds[0]))
+                       && get(/databases/$(database)/documents/academies/$(request.resource.data.academyIds[0])).data.ownerId == request.auth.uid)
                       ||
-                      // Student/any role mapping during registration (role in academyDetails)
-                      (request.resource.data.academyIds.size() >= 1
-                       && request.resource.data.primaryAcademyId in request.resource.data.academyIds
-                       && request.resource.data.keys().hasAll(['academyDetails']))
+                      // Pattern 3: Single-academy student via link code
+                      (request.resource.data.academyIds.size() == 1
+                       && request.resource.data.primaryAcademyId == request.resource.data.academyIds[0]
+                       && request.resource.data.keys().hasAll(['academyDetails'])
+                       && request.resource.data.academyDetails[request.resource.data.academyIds[0]].role == 'student')
                     );
 
-      // Users can update their own mapping to add/remove academies
+      // SECURITY: Role elevation cannot happen via client write. Update patterns:
+      // A. Update non-role metadata only (primaryAcademyId, updatedAt, sync fields)
+      // B. Shrink academyDetails (leaving an academy)
+      // C. First-time student join: mapping was empty, adding exactly one academy as student.
+      //    This covers the createAccountWithLinkCode flow which creates an empty mapping
+      //    via createGlobalUser() and then calls linkUserToAcademy() client-side.
+      // D. Academy creation by the owner: mapping was empty, adding exactly one academy
+      //    as admin, AND that academy's ownerId == self. createGlobalUser() pre-creates
+      //    an empty mapping, so the academy-creation flow reaches linkUserToAcademy() as
+      //    an UPDATE — create Pattern 2 never fires. Ownership is verified the same way
+      //    Pattern 2 does, so role elevation is gated on a verifiable fact (academy
+      //    ownership), not a client-asserted role.
+      // Adding a 2nd+ academy and instructor elevation must still go through a Cloud Function.
       allow update: if isAuthenticated()
-                    && request.auth.uid == userId;
+                    && request.auth.uid == userId
+                    && (
+                      // Path A: no academyDetails change
+                      !request.resource.data.diff(resource.data).affectedKeys().hasAny(['academyDetails'])
+                      ||
+                      // Path B: shrinking - removing an academy entry
+                      (request.resource.data.academyDetails.size() < resource.data.academyDetails.size()
+                       && resource.data.academyDetails.keys().hasAll(request.resource.data.academyDetails.keys()))
+                      ||
+                      // Path C: first student join from an empty mapping (role must be 'student')
+                      (resource.data.academyDetails.size() == 0
+                       && request.resource.data.academyIds.size() == 1
+                       && request.resource.data.academyDetails.size() == 1
+                       && request.resource.data.academyDetails[request.resource.data.academyIds[0]].role == 'student')
+                      ||
+                      // Path D: owner promoting their own freshly-created academy to admin
+                      (resource.data.academyDetails.size() == 0
+                       && request.resource.data.academyIds.size() == 1
+                       && request.resource.data.academyDetails.size() == 1
+                       && request.resource.data.primaryAcademyId == request.resource.data.academyIds[0]
+                       && request.resource.data.academyDetails[request.resource.data.academyIds[0]].role == 'admin'
+                       && exists(/databases/$(database)/documents/academies/$(request.resource.data.academyIds[0]))
+                       && get(/databases/$(database)/documents/academies/$(request.resource.data.academyIds[0])).data.ownerId == request.auth.uid)
+                    );
 
-      // Academy staff can update another user's mapping (e.g., promote to instructor).
-      // Gate: requester must be staff (admin or instructor) of the target user's primary academy.
-      allow update: if isAuthenticated()
-                    && request.auth.uid != userId
-                    && resource.data.keys().hasAll(['primaryAcademyId'])
-                    && isAcademyStaff(resource.data.primaryAcademyId);
-
-      // Never allow delete
-      allow delete: if false;
+      // Users can delete their own mapping during account deletion
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
     }
 
     // ============================================
@@ -258,27 +310,17 @@ service cloud.firestore {
         // Allow user to create their own document:
         // - Admin during academy creation (role == 'admin')
         // - Student during account linking (must already belong to academy via mapping)
-        // - Instructor during invite-code redeem (mapping was updated first by
-        //   the redeem flow, so belongsToAcademy returns true here)
         allow create: if isAuthenticated()
                       && request.auth.uid == userId
                       && (
                         request.resource.data.role == 'admin' ||
-                        (belongsToAcademy(academyId) && request.resource.data.role == 'student') ||
-                        (belongsToAcademy(academyId) && request.resource.data.role == 'instructor')
+                        (belongsToAcademy(academyId) && request.resource.data.role == 'student')
                       );
 
         // Staff can update users (except sensitive fields)
         allow update: if isAcademyStaff(academyId)
                       && !request.resource.data.diff(resource.data).affectedKeys()
                           .hasAny(['createdAt']);
-
-        // Instructor doing their own redeem can write their own academy user
-        // doc when the mapping already places them in the academy.
-        allow update: if isAuthenticated()
-                      && request.auth.uid == userId
-                      && belongsToAcademy(academyId)
-                      && request.resource.data.role == 'instructor';
 
         // Never allow delete from client
         allow delete: if false;
@@ -288,10 +330,6 @@ service cloud.firestore {
       // Students Subcollection
       // ============================================
       match /students/{studentId} {
-        // Public read of opted-in profiles (for sibling public site)
-        // Gated explicitly by the per-student isProfilePublic flag (default false)
-        allow read: if resource.data.isProfilePublic == true;
-
         // Staff can read all students
         allow read: if isAcademyStaff(academyId);
 
@@ -300,6 +338,10 @@ service cloud.firestore {
 
         // Students can read their own record
         allow read: if isOwnStudent(academyId, studentId);
+
+        // Public read of opted-in profiles (public fighter profile / public site).
+        // Gated by the per-student isProfilePublic flag (default false).
+        allow read: if resource.data.isProfilePublic == true;
 
         // Staff can create/delete students
         allow create, delete: if isAcademyStaff(academyId);
@@ -318,19 +360,30 @@ service cloud.firestore {
                                    'currentBelt', 'currentStripes', 'status',
                                    'beltHistory', 'createdAt', 'createdBy']);
 
-        // Students can update only personal info (including photoUrl and registration linking fields)
+        // Students can update only personal info (including photoUrl and registration linking fields) or soft-delete their own record
         allow update: if isOwnStudent(academyId, studentId)
-                      && request.resource.data.diff(resource.data).affectedKeys()
+                      && (
+                        // Normal update of personal info
+                        request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['photoUrl', 'updatedAt', 'linkedUserId', 'email', 'cpf', 'phone',
                                     'nickname', 'birthDate', 'rg', 'weight',
                                     'address', 'bloodType', 'allergies', 'healthNotes',
-                                    'emergencyContact', 'isProfilePublic']);
+                                    'emergencyContact', 'isProfilePublic'])
+                        ||
+                        // Soft delete during account deletion
+                        (request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['status', 'deletedAt', 'deletedByUser'])
+                         && request.resource.data.status == 'deleted'
+                         && request.resource.data.deletedByUser == true)
+                      );
 
-        // QR self-check-in counter sync: students can bump their own
-        // attendanceCount by exactly +1 after creating an attendance doc. We
-        // intentionally allow only the +1 step (not arbitrary writes) so a
-        // user can't inflate their counter without producing the matching
-        // attendance record validated by /attendance rules above.
+        // QR self-check-in counter sync: a student bumps their own
+        // attendanceCount by exactly +1, paired with the matching attendance
+        // doc created under the attendance `create` rule below. +1-only so the
+        // counter (which feeds attendance-based graduation) cannot be inflated
+        // in a single write. NOTE: client-side QR check-in cannot cryptographically
+        // prove the student scanned a live QR; this matches both apps' current
+        // design. A server-validated QR Cloud Function would harden it further.
         allow update: if isOwnStudent(academyId, studentId)
                       && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['attendanceCount', 'updatedAt'])
@@ -366,19 +419,23 @@ service cloud.firestore {
         // Staff and monitors can create/update/delete attendance
         allow write: if isStaffOrMonitor(academyId);
 
-        // QR self-check-in: an authenticated student can create their own
-        // attendance doc, but only when:
-        //   - studentId matches the user's student record in this academy
-        //   - verifiedBy matches the auth uid (record traceable to the scanner)
-        //   - the student is enrolled in the target class (studentIds array)
-        //   - weight, if present, is a positive number (no graduation gaming)
-        // Update/delete remain staff-only — students can mark themselves
-        // present but cannot rewrite or remove past attendance.
+        // QR self-check-in: an authenticated student creates their OWN
+        // attendance doc (paired with the +1 attendanceCount bump on their
+        // student doc). Guards:
+        //   - studentId is the caller's own student record in this academy
+        //   - verifiedBy == auth uid (record traceable to who wrote it)
+        //   - enrolled in the target class, OR the class is "open" (no roster)
+        //   - weight, if present, is a positive number
+        // Update/delete stay staff-only — a student can mark present but cannot
+        // rewrite or remove attendance history.
         allow create: if isAuthenticated()
           && request.resource.data.studentId == getUserStudentIdFromMapping(academyId)
           && request.resource.data.verifiedBy == request.auth.uid
-          && request.resource.data.studentId in
-               get(/databases/$(database)/documents/academies/$(academyId)/classes/$(request.resource.data.classId)).data.studentIds
+          && (
+               !get(/databases/$(database)/documents/academies/$(academyId)/classes/$(request.resource.data.classId)).data.keys().hasAny(['studentIds'])
+               || get(/databases/$(database)/documents/academies/$(academyId)/classes/$(request.resource.data.classId)).data.studentIds.size() == 0
+               || request.resource.data.studentId in get(/databases/$(database)/documents/academies/$(academyId)/classes/$(request.resource.data.classId)).data.studentIds
+             )
           && (
                !request.resource.data.keys().hasAny(['weight'])
                || (request.resource.data.weight is number && request.resource.data.weight > 0)
@@ -391,6 +448,26 @@ service cloud.firestore {
       match /plans/{planId} {
         allow read: if belongsToAcademy(academyId);
         allow write: if isAcademyAdmin(academyId);
+      }
+
+      // ============================================
+      // Instructor Link Codes Subcollection
+      // ============================================
+      match /instructorLinkCodes/{codeId} {
+        // Staff can read all codes (managing invites)
+        allow read: if isAcademyStaff(academyId);
+
+        // Anyone authenticated can read UNUSED codes (collectionGroup validation)
+        allow read: if resource.data.usedAt == null;
+
+        // Staff can create/delete codes
+        allow create, delete: if isAcademyStaff(academyId);
+
+        // Allow marking as used during redemption (authenticated users only)
+        allow update: if isAuthenticated()
+                      && request.resource.data.diff(resource.data).affectedKeys()
+                          .hasOnly(['usedAt', 'usedBy', 'usedByName'])
+                      && request.resource.data.usedBy == request.auth.uid;
       }
 
       // ============================================
@@ -408,39 +485,13 @@ service cloud.firestore {
         // Users can query via collectionGroup to find their code across all academies
         allow read: if resource.data.usedAt == null;
 
-        // Staff can create/delete codes
-        allow write: if isAcademyStaff(academyId);
+        // Staff and monitors can create/delete codes
+        allow write: if isStaffOrMonitor(academyId);
 
         // Allow marking as used during account linking (authenticated users only)
         allow update: if isAuthenticated()
                       && request.resource.data.diff(resource.data).affectedKeys()
                           .hasOnly(['usedAt', 'usedBy'])
-                      && request.resource.data.usedBy == request.auth.uid;
-      }
-
-      // ============================================
-      // Instructor Link Codes Subcollection
-      // ============================================
-      // One-shot codes (8 chars, 30min TTL) that an academy admin generates so a
-      // user can claim the `instructor` role. Mirrors /linkCodes for students.
-      match /instructorLinkCodes/{codeId} {
-        // Staff can read all codes for this academy (UI lists active invites)
-        allow read: if isAcademyStaff(academyId);
-
-        // CRITICAL: unauthenticated/cross-academy read of UNUSED codes so a
-        // user logged into a different academy (or just signed up) can resolve
-        // the code via collectionGroup during the redeem flow.
-        allow read: if resource.data.usedAt == null;
-
-        // Only the academy admin generates and deletes invites
-        allow create, delete: if isAcademyAdmin(academyId);
-
-        // Allow any authenticated user to mark the code as used (one-shot
-        // redeem). They must stamp their own uid into usedBy. Other fields
-        // are immutable.
-        allow update: if isAuthenticated()
-                      && request.resource.data.diff(resource.data).affectedKeys()
-                          .hasOnly(['usedAt', 'usedBy', 'usedByName'])
                       && request.resource.data.usedBy == request.auth.uid;
       }
 
@@ -459,10 +510,17 @@ service cloud.firestore {
                       && request.resource.data.academyId == academyId
                       && isPositiveAmount(request.resource.data.amount);
 
-        // Staff can update financials (except payment confirmation fields)
+        // Staff can update financials, but:
+        //  - Cannot touch payment-gateway audit fields
+        //  - Cannot mutate financial fields of an already-paid record (audit integrity)
         allow update: if isAcademyStaff(academyId)
                       && !request.resource.data.diff(resource.data).affectedKeys()
-                          .hasAny(['paidViaAbacatePay', 'abacatePayTransactionId']);
+                          .hasAny(['paidViaAbacatePay', 'abacatePayTransactionId'])
+                      && !(
+                        resource.data.status == 'paid'
+                        && request.resource.data.diff(resource.data).affectedKeys()
+                            .hasAny(['status', 'amount', 'paymentDate', 'paidAt', 'method'])
+                      );
 
         // Staff can delete unpaid financials only
         allow delete: if isAcademyStaff(academyId)
@@ -535,12 +593,43 @@ service cloud.firestore {
       }
 
       // ============================================
+      // Events (academy members + public-facing site)
+      // ============================================
+      match /events/{eventId} {
+        // Published items are world-readable for the public site (marcusjj);
+        // academy members read everything; staff manage.
+        allow read: if (resource.data.isPublished == true) || belongsToAcademy(academyId);
+        allow write: if isAcademyStaff(academyId);
+      }
+
+      // ============================================
+      // News (public-facing site content — marcusjj)
+      // ============================================
+      match /news/{newsId} {
+        // Published items are public; staff can always read drafts
+        allow read: if resource.data.isPublished == true;
+        allow read: if isAcademyStaff(academyId);
+        allow create, update, delete: if isAcademyStaff(academyId);
+      }
+
+      // ============================================
+      // Public-facing institutional info (sibling site read target — marcusjj)
+      // Staff mirror non-sensitive academy fields here so the main
+      // /academies/{id} doc (Asaas keys, KYC, subscription) stays closed to
+      // anonymous reads.
+      // ============================================
+      match /public/{docId} {
+        allow read: if true;
+        allow create, update, delete: if isAcademyStaff(academyId);
+      }
+
+      // ============================================
       // Competitions Subcollection
       // ============================================
       match /competitions/{competitionId} {
-        // Public read: institutional team info (results, schedule)
-        allow read: if true;
         allow read: if belongsToAcademy(academyId);
+        // Public read: team competition schedule (public site)
+        allow read: if true;
         allow create, delete: if isAcademyStaff(academyId);
         allow update: if isAcademyStaff(academyId);
 
@@ -554,9 +643,9 @@ service cloud.firestore {
       // Competition Enrollments
       // ============================================
       match /competitionEnrollments/{enrollmentId} {
-        // Public read: who is competing (team roster transparency)
-        allow read: if true;
         allow read: if belongsToAcademy(academyId);
+        // Public read: team roster transparency (public site)
+        allow read: if true;
         allow write: if isAcademyStaff(academyId);
 
         // Students can enroll themselves (via mapping or academy user doc)
@@ -576,9 +665,9 @@ service cloud.firestore {
       // Competition Results
       // ============================================
       match /competitionResults/{resultId} {
-        // Public read: medals/results are public team info
-        allow read: if true;
         allow read: if belongsToAcademy(academyId);
+        // Public read: medals/results are public team info (public site)
+        allow read: if true;
         // Admin can manage all results; students can create/update their own
         allow create: if isAcademyStaff(academyId) ||
           (belongsToAcademy(academyId) && isOwnStudentRecord(academyId, request.resource.data.studentId));
@@ -591,10 +680,10 @@ service cloud.firestore {
       // Competition Photos
       // ============================================
       match /competitionPhotos/{photoId} {
-        // Public read: gallery is public
-        allow read: if true;
         // Anyone in the academy can read photos
         allow read: if belongsToAcademy(academyId);
+        // Public read: competition gallery is public (public site)
+        allow read: if true;
 
         // Admins can create unlimited, students can create own photos
         // Enrollment check is enforced at the application level
@@ -649,7 +738,9 @@ service cloud.firestore {
       match /beltProgressions/{progressionId} {
         allow read: if isAcademyStaff(academyId);
         allow read: if isOwnStudentRecord(academyId, resource.data.studentId);
-        allow write: if isAcademyStaff(academyId);
+        // Admins always can graduate; instructors need graduation:manage permission
+        allow write: if isAcademyAdmin(academyId)
+                     || (isAcademyInstructor(academyId) && hasExtraPermission(academyId, 'graduation:manage'));
       }
 
       // ============================================
@@ -697,42 +788,63 @@ service cloud.firestore {
       }
 
       // ============================================
-      // News (public-facing site content)
-      // ============================================
-      match /news/{newsId} {
-        // Published items are public; staff can always read drafts
-        allow read: if resource.data.isPublished == true;
-        allow read: if isAcademyStaff(academyId);
-        allow create, update, delete: if isAcademyStaff(academyId);
-      }
-
-      // ============================================
-      // Events (public-facing site content)
-      // ============================================
-      match /events/{eventId} {
-        // Published items are public; staff can always read drafts
-        allow read: if resource.data.isPublished == true;
-        allow read: if isAcademyStaff(academyId);
-        allow create, update, delete: if isAcademyStaff(academyId);
-      }
-
-      // ============================================
-      // Public-facing institutional info (sibling site read target)
-      // Staff populates non-sensitive academy fields here so the main
-      // /academies/{id} doc (which holds Asaas keys, KYC, subscription, etc.)
-      // can stay closed to anonymous reads.
-      // ============================================
-      match /public/{docId} {
-        allow read: if true;
-        allow create, update, delete: if isAcademyStaff(academyId);
-      }
-
-      // ============================================
       // Settings
       // ============================================
       match /settings/{settingId} {
         allow read: if belongsToAcademy(academyId);
         allow write: if isAcademyAdmin(academyId);
+      }
+
+      // ============================================
+      // Workout Plans (structured training — all modalities)
+      // ============================================
+      match /workoutPlans/{planId} {
+        // Staff manage everything.
+        allow read, write: if isAcademyStaff(academyId);
+
+        // Students read academy-wide and sport-library plans, plus personal
+        // plans assigned to them. assignedStudentIds is always present (empty
+        // for non-personal plans) so the `in` check is safe. These branches
+        // mirror the two queries in WorkoutPlanService.getForStudent so a
+        // student's queries only return docs they're allowed to read.
+        allow read: if belongsToAcademy(academyId)
+                    && (
+                      resource.data.audience == 'academy'
+                      || resource.data.audience == 'sport'
+                      || isAssignedStudent(academyId, resource.data.assignedStudentIds)
+                    );
+      }
+
+      // ============================================
+      // Content — training videos & documents (all modalities)
+      // Same targeting model as workoutPlans.
+      // ============================================
+      match /content/{contentId} {
+        // Staff manage everything.
+        allow read, write: if isAcademyStaff(academyId);
+
+        // Students read academy-wide / sport-library content, plus items
+        // personally assigned to them. Mirrors TrainingVideoService queries.
+        allow read: if belongsToAcademy(academyId)
+                    && (
+                      resource.data.audience == 'academy'
+                      || resource.data.audience == 'sport'
+                      || isAssignedStudent(academyId, resource.data.assignedStudentIds)
+                    );
+      }
+
+      // ============================================
+      // Workout Logs (student per-day exercise completion)
+      // ============================================
+      match /workoutLogs/{logId} {
+        // Staff can read for progress; students read their own.
+        allow read: if isAcademyStaff(academyId)
+                    || isOwnStudentRecord(academyId, resource.data.studentId);
+        // A student writes only their own log (studentId field must be theirs).
+        allow create: if belongsToAcademy(academyId)
+                      && isOwnStudentRecord(academyId, request.resource.data.studentId);
+        allow update: if belongsToAcademy(academyId)
+                      && isOwnStudentRecord(academyId, resource.data.studentId);
       }
     }
 
@@ -747,6 +859,11 @@ service cloud.firestore {
       // Allow reading unused codes for registration flow
       // Once a code is used (usedAt != null), it becomes invisible to prevent enumeration
       allow read: if resource.data.usedAt == null;
+    }
+
+    // Collection group access to instructor codes (auth required, unused only)
+    match /{path=**}/instructorLinkCodes/{codeId} {
+      allow read: if isAuthenticated() && resource.data.usedAt == null;
     }
 
     // ============================================

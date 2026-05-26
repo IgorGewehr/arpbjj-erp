@@ -8,6 +8,7 @@ import {
   Firestore,
 } from 'firebase/firestore';
 import { getStorage, FirebaseStorage } from 'firebase/storage';
+import { getFunctions, Functions } from 'firebase/functions';
 import { Messaging } from 'firebase/messaging';
 
 export const firebaseConfig = {
@@ -52,6 +53,13 @@ function buildDb(): Firestore {
 
 export const db: Firestore = buildDb();
 export const storage: FirebaseStorage = getStorage(app);
+
+// Callable Cloud Functions. The membership/role functions (joinAcademy,
+// redeemInstructorCode, promoteToInstructor, ...) are deployed from the
+// graduabjj repo into this SAME Firebase project. Both apps share them so the
+// privileged writes happen server-side under the hardened Firestore rules.
+// Default region us-central1 matches the deployed v2 onCall functions.
+export const functions: Functions = getFunctions(app);
 
 // Firebase Cloud Messaging (lazy, browser-only)
 let messagingInstance: Messaging | null = null;

@@ -8,6 +8,7 @@ import {
   getDoc,
   setDoc,
   updateDoc,
+  runTransaction,
   serverTimestamp,
   Timestamp,
   arrayUnion,
@@ -109,6 +110,7 @@ export async function createGlobalUser(
   }
 ): Promise<GlobalUser> {
   const userRef = rootCollections.user(userId);
+  const mappingRef = rootCollections.userAcademyMappingDoc(userId);
 
   const userData = {
     email: data.email,
@@ -121,15 +123,29 @@ export async function createGlobalUser(
     updatedAt: serverTimestamp(),
   };
 
-  await setDoc(userRef, userData);
-
-  // Also create empty userAcademyMapping
-  const mappingRef = rootCollections.userAcademyMappingDoc(userId);
-  await setDoc(mappingRef, {
-    academyIds: [],
-    primaryAcademyId: null,
-    academyDetails: {},
-    updatedAt: serverTimestamp(),
+  // Race-safe create. onAuthStateChanged fires this auto-create the instant
+  // createUserWithEmailAndPassword resolves, which runs CONCURRENTLY with the
+  // account/academy creation pages (criar-conta, criar-academia) writing the
+  // populated user + mapping docs. A plain setDoc here would clobber those
+  // richer docs — emptying the mapping causes the post-signup "infinite
+  // loading" (AcademyContext finds no academy). The transaction only writes
+  // each doc when it does not already exist, and Firestore aborts+retries if a
+  // concurrent write lands between the read and commit, so a populated mapping
+  // is never overwritten with an empty one.
+  await runTransaction(db, async (tx) => {
+    const userSnap = await tx.get(userRef);
+    const mappingSnap = await tx.get(mappingRef);
+    if (!userSnap.exists()) {
+      tx.set(userRef, userData);
+    }
+    if (!mappingSnap.exists()) {
+      tx.set(mappingRef, {
+        academyIds: [],
+        primaryAcademyId: null,
+        academyDetails: {},
+        updatedAt: serverTimestamp(),
+      });
+    }
   });
 
   return {

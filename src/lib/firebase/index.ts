@@ -1,4 +1,4 @@
-export { auth, db, storage, firebaseConfig, getMessagingInstance } from './config';
+export { auth, db, storage, functions, firebaseConfig, getMessagingInstance } from './config';
 export { default as app } from './config';
 
 // Multi-tenant collection helpers

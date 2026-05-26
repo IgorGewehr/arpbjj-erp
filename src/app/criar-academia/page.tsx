@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Box,
@@ -254,26 +254,6 @@ export default function CreateAcademyPage() {
 
     pollUntilReady();
   }, [activeStep, reloadUserMapping, router]);
-
-  // Validation for step 1
-  const isStep1Valid = useMemo(() => {
-    return (
-      professorName.trim().length >= 3 &&
-      email.trim().includes('@') &&
-      password.length >= 6 &&
-      password === confirmPassword
-    );
-  }, [professorName, email, password, confirmPassword]);
-
-  // Validation for step 2
-  const isStep2Valid = useMemo(() => {
-    const docDigits = documentNumber.replace(/\D/g, '');
-    const isDocValid = documentType === 'cpf'
-      ? docDigits.length === 11 && validateCpf(documentNumber)
-      : docDigits.length === 14 && validateCnpj(documentNumber);
-
-    return academyName.trim().length >= 3 && isDocValid && acceptedTerms;
-  }, [academyName, documentType, documentNumber, acceptedTerms]);
 
   // ============================================
   // Handle Next Step
@@ -873,7 +853,6 @@ export default function CreateAcademyPage() {
                 }}
                 isLoading={loading}
                 loadingText="Criando..."
-                disabled={(activeStep === 0 && !isStep1Valid) || (activeStep === 1 && !isStep2Valid)}
                 endIcon={<ArrowRight size={18} />}
                 sx={{ flex: 1 }}
               >

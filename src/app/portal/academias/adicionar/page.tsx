@@ -31,11 +31,10 @@ import {
   query,
   where,
   updateDoc,
-  setDoc,
   Timestamp,
-  arrayUnion,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '@/lib/firebase';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useFeedback } from '@/components/providers';
 import { useAcademy } from '@/contexts/AcademyContext';
@@ -176,77 +175,29 @@ export default function AddAcademyPage() {
       const { academyId, studentId, code: linkCode } = validatedAcademy;
       const userId = firebaseUser.uid;
 
-      // 1. Update userAcademyMapping
-      const mappingRef = doc(db, 'userAcademyMapping', userId);
-      const mappingSnap = await getDoc(mappingRef);
-
-      const academyDetail = {
-        studentId,
-        role: 'student',
-        joinedAt: Timestamp.now(),
-        status: 'active',
-      };
-
-      if (mappingSnap.exists()) {
-        // Update existing mapping
-        const currentMapping = mappingSnap.data();
-        await updateDoc(mappingRef, {
-          academyIds: arrayUnion(academyId),
-          primaryAcademyId: currentMapping.primaryAcademyId || academyId,
-          [`academyDetails.${academyId}`]: academyDetail,
-          updatedAt: Timestamp.now(),
-        });
-      } else {
-        // Create new mapping
-        await setDoc(mappingRef, {
-          academyIds: [academyId],
-          primaryAcademyId: academyId,
-          academyDetails: {
-            [academyId]: academyDetail,
-          },
-          updatedAt: Timestamp.now(),
-        });
-      }
-
-      // 2. Update global user to 'linked'
-      const userRef = doc(db, 'users', userId);
-      await updateDoc(userRef, {
-        accountType: 'linked',
-        updatedAt: Timestamp.now(),
-      });
-
-      // 3. Create academy user document
-      const academyUserRef = doc(db, `academies/${academyId}/users`, userId);
-      await setDoc(academyUserRef, {
-        studentId,
-        role: 'student',
-        email: firebaseUser.email,
-        displayName: firebaseUser.displayName,
-        approvedAt: Timestamp.now(),
-        status: 'active',
-        createdAt: Timestamp.now(),
-        updatedAt: Timestamp.now(),
-      }, { merge: true });
-
-      // 4. Link student to user
-      const studentRef = doc(db, `academies/${academyId}/students`, studentId);
-      await updateDoc(studentRef, {
-        linkedUserId: userId,
-        updatedAt: Timestamp.now(),
-      });
-
-      // 5. Mark code as used
-      const codesQuery = query(
-        collection(db, `academies/${academyId}/linkCodes`),
-        where('code', '==', linkCode.toUpperCase()),
-        where('usedAt', '==', null)
+      // Server-side join (atomic) via the shared joinAcademy Cloud Function.
+      // Hardened Firestore rules forbid a client from adding a 2nd academy to
+      // its own userAcademyMapping, so the mapping update + academy user doc +
+      // code-used mark + accountType bump all happen server-side. The function
+      // resolves the academy from the code itself.
+      const callJoin = httpsCallable<{ code: string }, { success: boolean; academyId: string; studentId: string | null }>(
+        functions,
+        'joinAcademy',
       );
-      const codesSnapshot = await getDocs(codesQuery);
-      if (!codesSnapshot.empty) {
-        await updateDoc(codesSnapshot.docs[0].ref, {
-          usedAt: Timestamp.now(),
-          usedBy: userId,
+      await callJoin({ code: linkCode });
+
+      // Best-effort: link the student record to this user. The Cloud Function
+      // intentionally leaves student.linkedUserId untouched; rules now allow
+      // the owner to set it since the mapping lists them as this academy's
+      // student. Non-fatal — the join already succeeded.
+      try {
+        const studentRef = doc(db, `academies/${academyId}/students`, studentId);
+        await updateDoc(studentRef, {
+          linkedUserId: userId,
+          updatedAt: Timestamp.now(),
         });
+      } catch (linkErr) {
+        console.warn('Could not set student.linkedUserId (non-fatal):', linkErr);
       }
 
       // Refresh data

@@ -12,9 +12,10 @@ import {
   CollectionReference,
   serverTimestamp,
 } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
-import { InstructorLinkCode, Permission, UserRole } from '@/types';
-import { linkUserToAcademy, upsertAcademyUser } from './globalUserService';
+import { httpsCallable } from 'firebase/functions';
+import { db, functions } from '@/lib/firebase';
+import { InstructorLinkCode, Permission } from '@/types';
+import { upsertAcademyUser } from './globalUserService';
 
 // ============================================
 // Instructor Link Code Service
@@ -210,32 +211,15 @@ export async function redeemInstructorCode(opts: {
   userEmail: string;
   userDisplayName: string;
 }): Promise<void> {
-  const { code, academyId, userId, userEmail, userDisplayName } = opts;
-
-  // Persist instructor role + extraPermissions in the cross-academy mapping
-  await linkUserToAcademy(userId, academyId, {
-    role: 'instructor' as UserRole,
-    extraPermissions: code.extraPermissions,
-  });
-
-  // Upsert the academy-scoped user doc so legacy code that reads from there
-  // still sees the instructor (mirrors student linking flow).
-  await upsertAcademyUser(academyId, userId, {
-    role: 'instructor',
-    email: userEmail,
-    displayName: userDisplayName,
-    status: 'active',
-  });
-
-  // Mark the code as used (one-shot)
-  const codeRef = doc(db, `academies/${academyId}/instructorLinkCodes/${code.id}`);
-  await setDoc(
-    codeRef,
-    {
-      usedAt: serverTimestamp(),
-      usedBy: userId,
-      usedByName: userDisplayName,
-    },
-    { merge: true }
+  // Routed through the shared `redeemInstructorCode` Cloud Function (deployed
+  // from graduabjj into this same Firebase project). The hardened Firestore
+  // rules forbid a client from self-assigning the `instructor` role in its own
+  // userAcademyMapping, so this MUST run server-side. The function resolves the
+  // academy from the code, stamps role + extraPermissions, mirrors the
+  // academy-scoped user doc, and marks the code used — atomically.
+  const callRedeem = httpsCallable<{ code: string }, { success: boolean; academyId: string }>(
+    functions,
+    'redeemInstructorCode',
   );
+  await callRedeem({ code: opts.code.code });
 }

@@ -200,6 +200,31 @@ export function AcademyProvider({ children }: AcademyProviderProps) {
           updatedAt: data.updatedAt?.toDate() || new Date(),
         });
       } else {
+        // Primary source: userAcademyMapping.academyDetails[academyId]
+        const mappingRef = doc(db, 'userAcademyMapping', firebaseUser.uid);
+        const mappingSnap = await getDoc(mappingRef);
+
+        if (mappingSnap.exists()) {
+          const mapping = mappingSnap.data() as UserAcademyMapping;
+          const details = mapping.academyDetails?.[academyId];
+
+          if (details?.role) {
+            const joinedAt = details.joinedAt instanceof Date
+              ? details.joinedAt
+              : (details.joinedAt as { toDate?: () => Date })?.toDate?.() || new Date();
+            setAcademyUser({
+              id: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              displayName: firebaseUser.displayName || '',
+              role: details.role as UserRole,
+              studentId: details.studentId,
+              createdAt: joinedAt,
+              updatedAt: new Date(),
+            });
+            return;
+          }
+        }
+
         console.log('[AcademyContext] No academy user document found for user:', firebaseUser.uid);
         setAcademyUser(null);
       }
